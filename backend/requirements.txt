@@ -1,0 +1,12 @@
+feedparser>=6.0
+scikit-learn>=1.3
+numpy>=1.24
+kiwipiepy>=0.18
+sentence-transformers>=3.0
+fastapi>=0.110
+uvicorn>=0.29
+sqlmodel>=0.0.22
+# Windows에서 설치가 "파일 이름이나 확장명이 너무 깁니다"로 실패하면
+# (torch 라이선스 폴더 경로가 260자 제한을 넘는 경우) 훨씬 짧은 경로에
+# 따로 설치하세요: pip install --target=pylibs sentence-transformers
+# embedding_utils.py가 backend/pylibs를 자동으로 sys.path에 추가함.

@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .theme-root {
+      --color-bg: #f0eee9;
+      --color-card: #fbf8f2;
+      --color-card-shadow: 0 1px 3px rgba(46,42,36,0.07);
+      --color-ink: #2e2a24;
+      --color-ink-muted: #8a8378;
+      --color-accent-1: #7c8f6e;
+      --color-accent-2: #b5703f;
+      --color-accent-2-tint: #f7ece2;
+      --color-chip-bg: #e9e4d8;
+      --color-divider: #e5e0d3;
+    }
+  </style>
+</helmet>
+
+<div class="theme-root" style="width:390px;height:844px;background:var(--color-bg);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--color-ink);overflow:hidden;">
+
+  <!-- Top bar -->
+  <div style="flex-shrink:0;height:56px;display:flex;align-items:center;gap:10px;padding:0 12px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <div style="font-size:17px;font-weight:700;">설정</div>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:14px 16px;display:flex;flex-direction:column;gap:20px;">
+
+    <!-- account -->
+    <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;padding:14px;display:flex;align-items:center;gap:12px;">
+      <div style="width:42px;height:42px;border-radius:50%;background:var(--color-chip-bg);display:flex;align-items:center;justify-content:center;color:var(--color-accent-1);flex-shrink:0;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5"/></svg>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:14.5px;font-weight:700;">게스트 사용자</div>
+        <div style="font-size:11.5px;color:var(--color-ink-muted);margin-top:2px;">로그인하고 기기 간 저장 기사 동기화</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </div>
+
+    <!-- notifications -->
+    <div>
+      <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);margin-bottom:8px;padding-left:2px;">알림</div>
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-bottom:1px solid var(--color-divider);">
+          <span style="font-size:14px;">관심 이슈 알림</span>
+          <div style="width:40px;height:22px;background:var(--color-accent-1);border-radius:11px;position:relative;flex-shrink:0;">
+            <div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:3px;right:3px;"></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 14px;">
+          <span style="font-size:14px;display:flex;align-items:center;gap:6px;">급상승 키워드 알림 <span style="background:var(--color-accent-2-tint);color:var(--color-accent-2);font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;">프리미엄</span></span>
+          <div style="width:40px;height:22px;background:var(--color-chip-bg);border-radius:11px;position:relative;flex-shrink:0;">
+            <div style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:3px;left:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- subscription -->
+    <div>
+      <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);margin-bottom:8px;padding-left:2px;">구독</div>
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1;background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:var(--color-ink-muted);">무료</div>
+          <div style="font-size:11px;color:var(--color-ink-muted);margin-top:10px;line-height:1.7;">
+            오늘자 이슈만 조회<br/>
+            기본 트렌드 보기<br/>
+            광고 포함
+          </div>
+        </div>
+        <div style="flex:1;background:var(--color-accent-2-tint);border:1.5px solid var(--color-accent-2);border-radius:18px;padding:14px;position:relative;">
+          <div style="position:absolute;top:-9px;right:12px;background:var(--color-accent-2);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px;transform:rotate(3deg);">추천</div>
+          <div style="font-size:13px;font-weight:700;color:var(--color-accent-2);">프리미엄</div>
+          <div style="font-size:11px;color:var(--color-ink);opacity:0.75;margin-top:10px;line-height:1.7;">
+            과거 트렌드 히스토리<br/>
+            매체별 분포 심화<br/>
+            무제한 알림 · 광고 제거
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px;background:var(--color-accent-2);color:#fff;text-align:center;padding:13px;border-radius:16px;font-size:14px;font-weight:700;">
+        [월 구독료]에 프리미엄 시작하기
+      </div>
+    </div>
+
+    <!-- etc -->
+    <div>
+      <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);margin-bottom:8px;padding-left:2px;">기타</div>
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;overflow:hidden;">
+        <div style="padding:13px 14px;border-bottom:1px solid var(--color-divider);font-size:14px;">앱 정보</div>
+        <div style="padding:13px 14px;font-size:14px;color:var(--color-accent-2);">로그아웃</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

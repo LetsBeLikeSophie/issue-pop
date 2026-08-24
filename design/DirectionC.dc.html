@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    /* ===== 색상 토큰: 여기 값만 바꾸면 화면 전체 색이 바뀝니다 ===== */
+    /* 베이스: PANTONE 11-4201 Cloud Dancer (2026 Color of the Year) */
+    /* 포인트: PANTONE "Comfort Zone" 페어링 팔레트(자연스러운 웜톤)에서 세이지그린 + 테라코타 두 가지만 사용 */
+    .theme-root {
+      --color-bg: #f0eee9;        /* Cloud Dancer */
+      --color-card: #ffffff;
+      --color-ink: #2e2a24;
+      --color-ink-muted: #8a8378;
+      --color-accent-1: #7c8f6e;  /* 세이지그린 */
+      --color-accent-2: #b5703f;  /* 테라코타 */
+      --color-chip-bg: #eeece6;
+    }
+  </style>
+</helmet>
+
+<div class="theme-root" style="width:390px;height:540px;background:var(--color-bg);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--color-ink);overflow:hidden;">
+
+  <div style="flex-shrink:0;padding:16px 16px 4px;">
+    <div style="font-size:11px;font-weight:800;color:var(--color-ink-muted);letter-spacing:0.05em;">방향 C (팬톤 기반 재수정) · 색상 변수화 완료</div>
+  </div>
+
+  <div style="flex-shrink:0;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+    <div style="font-size:20px;font-weight:800;color:var(--color-ink);">뉴스</div>
+    <div style="display:flex;gap:12px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4V4z"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5"/></svg>
+    </div>
+  </div>
+
+  <div style="flex-shrink:0;padding:10px 16px;">
+    <div style="background:var(--color-card);border-radius:20px;height:42px;display:flex;align-items:center;gap:8px;padding:0 14px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-1)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <span style="font-size:13px;font-weight:600;color:var(--color-ink-muted);">이슈, 키워드 검색</span>
+    </div>
+  </div>
+
+  <div style="flex:1;padding:6px 16px;display:flex;flex-direction:column;gap:13px;">
+    <div style="font-size:12px;font-weight:800;color:var(--color-ink-muted);">지속 관심 카테고리</div>
+
+    <div style="background:var(--color-card);border-radius:20px;padding:14px;position:relative;">
+      <div style="position:absolute;top:-8px;left:16px;background:var(--color-accent-1);color:#fff;font-size:10px;font-weight:800;padding:4px 10px;border-radius:20px;transform:rotate(-3deg);">오늘 날씨</div>
+      <div style="display:flex;margin-top:10px;">
+        <div style="flex:1;text-align:center;"><div style="font-size:10.5px;color:var(--color-ink-muted);font-weight:700;">어제</div><div style="font-size:15px;font-weight:800;color:var(--color-ink);opacity:0.65;">33.8℃</div></div>
+        <div style="flex:1;text-align:center;"><div style="font-size:10.5px;color:var(--color-accent-2);font-weight:800;">오늘</div><div style="font-size:21px;font-weight:900;color:var(--color-accent-2);">35.2℃</div></div>
+        <div style="flex:1;text-align:center;"><div style="font-size:10.5px;color:var(--color-ink-muted);font-weight:700;">내일</div><div style="font-size:15px;font-weight:800;color:var(--color-ink);opacity:0.65;">34.5℃</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--color-ink-muted);margin-top:9px;">평년보다 6.3℃ 높아요 · 폭염특보 5일째</div>
+    </div>
+
+    <div style="background:var(--color-card);border-radius:20px;padding:11px 14px;display:flex;align-items:center;gap:10px;">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--color-accent-1);display:flex;align-items:center;justify-content:center;flex-shrink:0;transform:rotate(-6deg);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>
+      </div>
+      <div style="flex:1;font-size:13.5px;font-weight:700;">국민연금 개편안</div>
+      <span style="background:var(--color-accent-2);color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;transform:rotate(2deg);display:inline-block;">D+18일째</span>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:800;color:var(--color-ink-muted);margin-bottom:4px;">오늘 많이 언급된 키워드</div>
+      <div style="background:var(--color-card);border-radius:18px;padding:11px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+        <div style="flex:1;font-size:13.5px;font-weight:700;">전기요금 개편</div>
+        <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;">74건</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

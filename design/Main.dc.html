@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    /* ===== 색상 토큰 ===== */
+    .theme-root {
+      --color-bg: #f0eee9;        /* PANTONE 11-4201 Cloud Dancer */
+      --color-card: #fbf8f2;      /* 웜 아이보리 (순백 대신) */
+      --color-card-shadow: 0 1px 3px rgba(46,42,36,0.07);
+      --color-ink: #2e2a24;
+      --color-ink-muted: #8a8378;
+      --color-accent-1: #7c8f6e;  /* 세이지그린 */
+      --color-accent-2: #b5703f;  /* 테라코타 */
+      --color-chip-bg: #e9e4d8;
+    }
+  </style>
+</helmet>
+
+<div class="theme-root" style="width:390px;height:844px;background:var(--color-bg);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--color-ink);overflow:hidden;">
+
+  <!-- Top bar -->
+  <div style="flex-shrink:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+    <div style="font-size:19px;font-weight:800;">뉴스</div>
+    <div style="display:flex;align-items:center;gap:14px;color:var(--color-ink);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4V4z"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.5-3.5 4.5-5 7.5-5s6 1.5 7.5 5"/></svg>
+    </div>
+  </div>
+
+  <!-- Search bar -->
+  <div style="flex-shrink:0;padding:8px 16px 12px;">
+    <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:20px;height:42px;display:flex;align-items:center;gap:8px;padding:0 14px;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-1)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <span style="font-size:13.5px;font-weight:600;color:var(--color-ink-muted);">이슈, 키워드 검색</span>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:2px 16px 8px;display:flex;flex-direction:column;gap:16px;">
+
+    <!-- Section 1: 지속 관심 카테고리 -->
+    <div style="flex-shrink:0;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);">지속 관심 카테고리</div>
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:20px;padding:14px;position:relative;">
+        <div style="position:absolute;top:-8px;left:16px;background:var(--color-accent-1);color:#fff;font-size:10px;font-weight:800;padding:4px 10px;border-radius:20px;transform:rotate(-3deg);">오늘 날씨</div>
+        <div style="font-size:12px;color:var(--color-ink-muted);margin-top:6px;">폭염특보</div>
+        <div style="display:flex;margin-top:9px;">
+          <div style="flex:1;text-align:center;"><div style="font-size:11px;color:var(--color-ink-muted);font-weight:700;">어제</div><div style="font-size:15px;font-weight:800;color:var(--color-ink);opacity:0.65;">33.8℃</div></div>
+          <div style="flex:1;text-align:center;"><div style="font-size:11px;color:var(--color-accent-2);font-weight:800;">오늘</div><div style="font-size:21px;font-weight:900;color:var(--color-accent-2);">35.2℃</div></div>
+          <div style="flex:1;text-align:center;"><div style="font-size:11px;color:var(--color-ink-muted);font-weight:700;">내일</div><div style="font-size:15px;font-weight:800;color:var(--color-ink);opacity:0.65;">34.5℃</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--color-ink-muted);margin-top:9px;">평년보다 6.3℃ 높아요 · 폭염특보 5일째</div>
+      </div>
+
+      <div style="font-size:11px;color:var(--color-ink-muted);margin-top:2px;">장기 진행 이슈</div>
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;padding:11px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="width:26px;height:26px;border-radius:50%;background:var(--color-accent-1);display:flex;align-items:center;justify-content:center;flex-shrink:0;transform:rotate(-6deg);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>
+        </div>
+        <div style="flex:1;font-size:14px;font-weight:700;">국민연금 개편안</div>
+        <span style="background:var(--color-accent-2);color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;transform:rotate(2deg);display:inline-block;">D+18일째</span>
+      </div>
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;padding:11px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="width:26px;height:26px;border-radius:50%;background:var(--color-accent-1);display:flex;align-items:center;justify-content:center;flex-shrink:0;transform:rotate(4deg);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>
+        </div>
+        <div style="flex:1;font-size:14px;font-weight:700;">간호법 개정 논의</div>
+        <span style="background:var(--color-accent-2);color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;transform:rotate(-2deg);display:inline-block;">D+9일째</span>
+      </div>
+    </div>
+
+    <!-- Section 2: 오늘 언급량 랭킹 -->
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;">
+      <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);margin-bottom:8px;flex-shrink:0;">오늘 많이 언급된 키워드</div>
+      <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:8px;">
+
+        <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+          <div style="flex:1;font-size:14px;font-weight:700;">전기요금 개편</div>
+          <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;flex-shrink:0;white-space:nowrap;">74건 · 22매체</span>
+        </div>
+
+        <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+          <div style="flex:1;font-size:14px;font-weight:700;">지하철 파업 예고</div>
+          <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;flex-shrink:0;white-space:nowrap;">61건 · 18매체</span>
+        </div>
+
+        <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+          <div style="flex:1;font-size:14px;font-weight:700;">태풍 북상 경로</div>
+          <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;flex-shrink:0;white-space:nowrap;">45건 · 15매체</span>
+        </div>
+
+        <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
+          <div style="flex:1;font-size:14px;font-weight:700;">최저임금 노사 이견</div>
+          <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;flex-shrink:0;white-space:nowrap;">39건 · 13매체</span>
+        </div>
+
+        <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--color-chip-bg);color:var(--color-accent-1);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">5</div>
+          <div style="flex:1;font-size:14px;font-weight:700;">종합부동산세 개편 논의</div>
+          <span style="background:var(--color-chip-bg);color:var(--color-ink-muted);font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;flex-shrink:0;white-space:nowrap;">28건 · 11매체</span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom nav -->
+  <div style="flex-shrink:0;height:64px;background:var(--color-card);box-shadow:0 -1px 3px rgba(46,42,36,0.06);display:flex;align-items:center;justify-content:space-around;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+      <span style="font-size:10.5px;">홈</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-accent-1);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <span style="font-size:10.5px;font-weight:700;">뉴스</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg>
+      <span style="font-size:10.5px;">뷰티</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-.5-7-3.8-7-8 0-3.3 2-5 4-5 1 0 1.7.4 2 .6.3-.2 1-.6 2-.6 2 0 4 1.7 4 5 0 4.2-3 7.5-7 8z"/><path d="M12 8c0-2 1-3.5 3-4"/></svg>
+      <span style="font-size:10.5px;">식품</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

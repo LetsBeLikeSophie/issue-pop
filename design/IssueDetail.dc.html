@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .theme-root {
+      --color-bg: #f0eee9;
+      --color-card: #fbf8f2;
+      --color-card-shadow: 0 1px 3px rgba(46,42,36,0.07);
+      --color-ink: #2e2a24;
+      --color-ink-muted: #8a8378;
+      --color-accent-1: #7c8f6e;
+      --color-accent-2: #b5703f;
+      --color-chip-bg: #e9e4d8;
+      --color-divider: #e5e0d3;
+    }
+  </style>
+</helmet>
+
+<div class="theme-root" style="width:390px;height:844px;background:var(--color-bg);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--color-ink);overflow:hidden;">
+
+  <!-- Top bar -->
+  <div style="flex-shrink:0;height:56px;display:flex;align-items:center;gap:10px;padding:0 12px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    <div style="font-size:16px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">국민연금 개편안</div>
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16l-6-4-6 4V4z"/></svg>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:10px 16px;display:flex;flex-direction:column;gap:14px;">
+
+    <!-- 매체별 보도 분포 -->
+    <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:20px;padding:16px;flex-shrink:0;">
+      <div style="font-size:12px;color:var(--color-ink-muted);">오늘 기사 발행 현황</div>
+      <div style="font-size:22px;font-weight:800;margin-top:2px;">총 98건</div>
+      <div style="font-size:12px;color:var(--color-ink-muted);margin-top:2px;margin-bottom:14px;">32개 매체 보도 · 많이 다룬 순</div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+        <div style="width:76px;font-size:12px;color:var(--color-ink-muted);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">한국일보</div>
+        <div style="flex:1;height:9px;background:var(--color-chip-bg);border-radius:5px;overflow:hidden;"><div style="height:100%;width:100%;background:var(--color-accent-2);border-radius:5px;"></div></div>
+        <div style="width:24px;font-size:12px;color:var(--color-ink-muted);font-weight:600;text-align:right;flex-shrink:0;">8건</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+        <div style="width:76px;font-size:12px;color:var(--color-ink-muted);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">중앙매일</div>
+        <div style="flex:1;height:9px;background:var(--color-chip-bg);border-radius:5px;overflow:hidden;"><div style="height:100%;width:75%;background:var(--color-accent-1);border-radius:5px;"></div></div>
+        <div style="width:24px;font-size:12px;color:var(--color-ink-muted);font-weight:600;text-align:right;flex-shrink:0;">6건</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+        <div style="width:76px;font-size:12px;color:var(--color-ink-muted);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">동방일보</div>
+        <div style="flex:1;height:9px;background:var(--color-chip-bg);border-radius:5px;overflow:hidden;"><div style="height:100%;width:62%;background:var(--color-accent-1);opacity:0.8;border-radius:5px;"></div></div>
+        <div style="width:24px;font-size:12px;color:var(--color-ink-muted);font-weight:600;text-align:right;flex-shrink:0;">5건</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:76px;font-size:12px;color:var(--color-ink-muted);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">경제타임즈</div>
+        <div style="flex:1;height:9px;background:var(--color-chip-bg);border-radius:5px;overflow:hidden;"><div style="height:100%;width:50%;background:var(--color-accent-1);opacity:0.6;border-radius:5px;"></div></div>
+        <div style="width:24px;font-size:12px;color:var(--color-ink-muted);font-weight:600;text-align:right;flex-shrink:0;">4건</div>
+      </div>
+
+      <div style="font-size:11px;color:var(--color-ink-muted);margin-top:10px;">이 외 28개 매체가 함께 보도했어요</div>
+    </div>
+
+    <!-- 관련 기사 -->
+    <div style="font-size:12.5px;font-weight:800;color:var(--color-ink-muted);flex-shrink:0;">관련 기사 (전체)</div>
+
+    <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:10px;">
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:14px;">
+        <div style="font-size:11.5px;color:var(--color-ink-muted);font-weight:600;margin-bottom:5px;">한국일보</div>
+        <div style="font-size:14px;font-weight:700;line-height:1.4;">보험료율 단계적 인상안, 세대 간 형평성 논쟁</div>
+        <div style="font-size:12px;color:var(--color-ink-muted);margin-top:4px;line-height:1.4;">국회는 이달 안에 최종안을 확정할 계획이라고...</div>
+        <div style="font-size:11px;color:var(--color-ink-muted);margin-top:8px;">3시간 전</div>
+      </div>
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:14px;">
+        <div style="font-size:11.5px;color:var(--color-ink-muted);font-weight:600;margin-bottom:5px;">중앙매일</div>
+        <div style="font-size:14px;font-weight:700;line-height:1.4;">정부, 연금개혁 공청회 다음 주 개최</div>
+        <div style="font-size:12px;color:var(--color-ink-muted);margin-top:4px;line-height:1.4;">이해관계자 의견 수렴을 거쳐 최종안을...</div>
+        <div style="font-size:11px;color:var(--color-ink-muted);margin-top:8px;">4시간 전</div>
+      </div>
+
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:16px;padding:14px;">
+        <div style="font-size:11.5px;color:var(--color-ink-muted);font-weight:600;margin-bottom:5px;">동방일보</div>
+        <div style="font-size:14px;font-weight:700;line-height:1.4;">청년층 &quot;내가 낼 때 받을 수 있나&quot; 불신 여전</div>
+        <div style="font-size:12px;color:var(--color-ink-muted);margin-top:4px;line-height:1.4;">설문 결과 2030 응답자 다수가 회의적...</div>
+        <div style="font-size:11px;color:var(--color-ink-muted);margin-top:8px;">5시간 전</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <div style="flex-shrink:0;height:64px;background:var(--color-card);box-shadow:0 -1px 3px rgba(46,42,36,0.06);display:flex;align-items:center;justify-content:space-around;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+      <span style="font-size:10.5px;">홈</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-accent-1);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <span style="font-size:10.5px;font-weight:700;">뉴스</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg>
+      <span style="font-size:10.5px;">뷰티</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-.5-7-3.8-7-8 0-3.3 2-5 4-5 1 0 1.7.4 2 .6.3-.2 1-.6 2-.6 2 0 4 1.7 4 5 0 4.2-3 7.5-7 8z"/><path d="M12 8c0-2 1-3.5 3-4"/></svg>
+      <span style="font-size:10.5px;">식품</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

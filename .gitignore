@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+
+# backend/embedding_utils.py가 Windows 경로 길이 제한 우회로 여기 설치함
+# (torch 포함이라 용량이 매우 큼, pip install --target=pylibs로 재설치 가능)
+backend/pylibs/
+
+# 런타임에 생성되는 로컬 SQLite DB (커밋 대상 아님)
+backend/news_trend.db
+
+# 스크래치/임시 파일
+backend/_*.txt
+backend/_*.json
+
+# 시크릿 (아직 안 쓰지만 나중에 API 키/DB 접속정보 등 생기면 여기로)
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+
+# 사업 기획 노트 (가격/유료화 전략) — 코드는 공개해도 이건 비공개로
+MONETIZATION.md

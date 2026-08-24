@@ -1,0 +1,162 @@
+[
+  {
+    "outlet": "연합뉴스",
+    "url": "https://www.yna.co.kr/rss/news.xml",
+    "ok": true,
+    "article_count": 120,
+    "elapsed_sec": 0.3,
+    "sample_title": "서교림, 연장서 김민솔 잡고 KLPGA 챔피언십 제패…시즌 4승"
+  },
+  {
+    "outlet": "한겨레",
+    "url": "https://www.hani.co.kr/rss/",
+    "ok": true,
+    "article_count": 30,
+    "elapsed_sec": 0.4,
+    "sample_title": "미 특사 “시리아 폭격은 선거용 도발” 지적에…이스라엘 “오류와 모순” 반박"
+  },
+  {
+    "outlet": "경향신문",
+    "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml",
+    "ok": true,
+    "article_count": 50,
+    "elapsed_sec": 0.21,
+    "sample_title": "상향 평준화에 AI 가격 ‘치킨게임’ 불붙나…오픈AI, 최상위 모델 가격도 3개월 간 인하"
+  },
+  {
+    "outlet": "KBS",
+    "url": "http://world.kbs.co.kr/rss/rss_news.htm?lang=k",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.11,
+    "sample_title": null
+  },
+  {
+    "outlet": "매일경제",
+    "url": "https://www.mk.co.kr/rss/30000001/",
+    "ok": true,
+    "article_count": 50,
+    "elapsed_sec": 0.29,
+    "sample_title": "[매일경제TV] 증시 좌우할 '슈퍼위크' 투자 전략은"
+  },
+  {
+    "outlet": "한국경제",
+    "url": "https://www.hankyung.com/feed/all-news",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.11,
+    "sample_title": null
+  },
+  {
+    "outlet": "머니투데이",
+    "url": "https://rss.mt.co.kr/mt_news.xml",
+    "ok": true,
+    "article_count": 100,
+    "elapsed_sec": 0.3,
+    "sample_title": "&quot;히샬리송 꼴 보기 싫어 제발!&quot; 토트넘 &#039;0-3 개막전 대참사&#039; 날 동안 우승컵 든 케인... 팬들 &quot;제발 돌아와 줘&quot; SOS"
+  },
+  {
+    "outlet": "SBS",
+    "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01",
+    "ok": true,
+    "article_count": 29,
+    "elapsed_sec": 0.46,
+    "sample_title": "당정 \"'불가피 사유' 1주택 비거주자, 거주 인정 확대 공감대\""
+  },
+  {
+    "outlet": "조선일보",
+    "url": "https://www.chosun.com/arc/outboundfeeds/rss/",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.29,
+    "sample_title": null
+  },
+  {
+    "outlet": "중앙일보",
+    "url": "https://rss.joins.com/joins_news_list.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.22,
+    "sample_title": null
+  },
+  {
+    "outlet": "동아일보",
+    "url": "https://rss.donga.com/total.xml",
+    "ok": true,
+    "article_count": 50,
+    "elapsed_sec": 0.29,
+    "sample_title": "軍 “北 러시아 추가파병 임박 징후 포착 안돼”"
+  },
+  {
+    "outlet": "MBC",
+    "url": "https://imnews.imbc.com/rss/news/news_00.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.25,
+    "sample_title": null
+  },
+  {
+    "outlet": "국민일보",
+    "url": "http://rss.kmib.co.kr/data/kmibRssAll.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.07,
+    "sample_title": null
+  },
+  {
+    "outlet": "서울신문",
+    "url": "https://www.seoul.co.kr/xml/rss/rss_politics.xml",
+    "ok": true,
+    "article_count": 10,
+    "elapsed_sec": 0.15,
+    "sample_title": "장동혁 “대통령 입맛대로 대법관 임명하면 법치주의 끝”"
+  },
+  {
+    "outlet": "노컷뉴스",
+    "url": "https://www.nocutnews.co.kr/rss/economy.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.13,
+    "sample_title": null
+  },
+  {
+    "outlet": "이데일리",
+    "url": "https://rss.edaily.co.kr/edaily_news.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.07,
+    "sample_title": null
+  },
+  {
+    "outlet": "헤럴드경제",
+    "url": "http://biz.heraldcorp.com/common/rss_xml.php?ct=news",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.45,
+    "sample_title": null
+  },
+  {
+    "outlet": "파이낸셜뉴스",
+    "url": "https://www.fnnews.com/rss/fn_realnews_all.xml",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.19,
+    "sample_title": null
+  },
+  {
+    "outlet": "오마이뉴스",
+    "url": "https://rss.ohmynews.com/rss/ohmynews.xml",
+    "ok": true,
+    "article_count": 20,
+    "elapsed_sec": 0.26,
+    "sample_title": "'비거주 예외인정' O, '종부세 개편' △... 김민석호 첫 고위당정협 결론은"
+  },
+  {
+    "outlet": "프레시안",
+    "url": "https://www.pressian.com/api/rss/news",
+    "ok": false,
+    "article_count": 0,
+    "elapsed_sec": 0.16,
+    "sample_title": null
+  }
+]

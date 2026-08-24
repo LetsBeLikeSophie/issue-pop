@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+
+    .theme-root {
+      --color-bg: #f0eee9;
+      --color-card: #fbf8f2;
+      --color-card-shadow: 0 1px 3px rgba(46,42,36,0.07);
+      --color-ink: #2e2a24;
+      --color-ink-muted: #8a8378;
+      --color-accent-1: #7c8f6e;
+      --color-accent-2: #b5703f;
+      --color-chip-bg: #e9e4d8;
+    }
+  </style>
+</helmet>
+
+<div class="theme-root" style="width:390px;height:844px;background:var(--color-bg);display:flex;flex-direction:column;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;color:var(--color-ink);overflow:hidden;">
+
+  <!-- Top bar with search field -->
+  <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;padding:12px 12px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M15 18l-6-6 6-6"/></svg>
+    <div style="flex:1;background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:20px;height:40px;display:flex;align-items:center;gap:8px;padding:0 14px;color:var(--color-ink-muted);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-1)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <span style="font-size:13.5px;">이슈, 키워드 검색</span>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:16px 16px;display:flex;flex-direction:column;gap:22px;">
+
+    <div>
+      <div style="font-size:13px;font-weight:800;color:var(--color-ink-muted);margin-bottom:10px;">실시간 인기 검색어</div>
+      <div style="background:var(--color-card);box-shadow:var(--color-card-shadow);border-radius:18px;padding:6px 16px;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+          <span style="font-size:14px;font-weight:800;color:var(--color-accent-2);width:16px;">1</span>
+          <span style="font-size:14px;font-weight:600;">폭염특보</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+          <span style="font-size:14px;font-weight:800;color:var(--color-accent-2);width:16px;">2</span>
+          <span style="font-size:14px;font-weight:600;">국민연금</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+          <span style="font-size:14px;font-weight:800;color:var(--color-accent-2);width:16px;">3</span>
+          <span style="font-size:14px;font-weight:600;">전기요금</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+          <span style="font-size:14px;font-weight:800;color:var(--color-accent-2);width:16px;">4</span>
+          <span style="font-size:14px;font-weight:600;">지하철 파업</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;">
+          <span style="font-size:14px;font-weight:800;color:var(--color-accent-2);width:16px;">5</span>
+          <span style="font-size:14px;font-weight:600;">태풍 경로</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:13px;font-weight:800;color:var(--color-ink-muted);margin-bottom:10px;">최근 검색</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <span style="background:var(--color-chip-bg);color:var(--color-ink);font-size:12.5px;padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;">부동산 정책 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+        <span style="background:var(--color-chip-bg);color:var(--color-ink);font-size:12.5px;padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;">최저임금 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+        <span style="background:var(--color-chip-bg);color:var(--color-ink);font-size:12.5px;padding:6px 12px;border-radius:20px;display:flex;align-items:center;gap:6px;">환율 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-ink-muted)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom nav -->
+  <div style="flex-shrink:0;height:64px;background:var(--color-card);box-shadow:0 -1px 3px rgba(46,42,36,0.06);display:flex;align-items:center;justify-content:space-around;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+      <span style="font-size:10.5px;">홈</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-accent-1);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <span style="font-size:10.5px;font-weight:700;">뉴스</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></svg>
+      <span style="font-size:10.5px;">뷰티</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--color-ink-muted);">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4-.5-7-3.8-7-8 0-3.3 2-5 4-5 1 0 1.7.4 2 .6.3-.2 1-.6 2-.6 2 0 4 1.7 4 5 0 4.2-3 7.5-7 8z"/><path d="M12 8c0-2 1-3.5 3-4"/></svg>
+      <span style="font-size:10.5px;">식품</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
