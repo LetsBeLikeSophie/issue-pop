@@ -28,6 +28,8 @@ import hashlib
 import time
 from collections import Counter
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +39,9 @@ import db
 from pipeline import run
 
 REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
+DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
+DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
+KST = ZoneInfo("Asia/Seoul")
 
 _cache: dict[str, dict] = {}
 _last_refresh: float | None = None
@@ -76,13 +81,71 @@ async def _refresh_loop() -> None:
         await refresh_cache()
 
 
+def _build_digest_text(limit: int = 5) -> str:
+    """다이제스트 알림 본문. 아직 실제 LLM 요약이 없어서(cluster_summaries는
+    수동 입력만 가능, README 참고) AI 요약이 아니라 매체 커버리지 상위
+    이슈 랭킹을 그대로 씀 — v0로는 이 정도가 정직한 수준."""
+    items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))[:limit]
+    if not items:
+        return "오늘의 트렌드를 아직 준비 중이에요."
+    lines = [f"{i+1}. {c['keyword']} ({c['outlet_count']}개 매체)" for i, c in enumerate(items)]
+    return "오늘의 트렌드\n" + "\n".join(lines)
+
+
+def _send_digest_stub(device: db.Device, text: str) -> None:
+    """실제 푸시 발송 자리 — FCM 등 연동 전까지는 로그만 찍음. 나중에
+    이 함수 안쪽만 실제 발송 호출로 바꿔 끼우면 됨(device.push_token,
+    text만 있으면 됨)."""
+    print(f"[digest] (발송 안 함, 로그만) device={device.id} token={device.push_token[:8]}...\n{text}")
+
+
+def _digest_check() -> list[int]:
+    """지금 KST 시각과 digest_hour가 일치하는 기기를 찾아서 발송(스텁)함.
+    같은 시간대에 중복 발송하지 않으려고 last_digest_sent_at을 확인함
+    (5분마다 확인하는데 매번 보내면 한 시간대에 최대 12번 보낼 수 있어서).
+    수동 테스트용으로 POST /digest/run에서도 이 함수를 그대로 씀."""
+    from sqlmodel import select
+
+    now_kst = datetime.now(KST)
+    sent_to: list[int] = []
+    with db.get_session() as session:
+        devices = session.exec(
+            select(db.Device).where(db.Device.digest_hour == now_kst.hour)
+        ).all()
+        now_utc = datetime.now(timezone.utc)
+        for device in devices:
+            if device.last_digest_sent_at is not None:
+                # SQLite는 timezone 정보 없이 저장해서 읽어오면 naive
+                # datetime이 됨 — 저장할 땐 항상 UTC였으니 그걸로 다시
+                # tag만 붙여서 비교함.
+                last_sent = device.last_digest_sent_at
+                if last_sent.tzinfo is None:
+                    last_sent = last_sent.replace(tzinfo=timezone.utc)
+                if (now_utc - last_sent).total_seconds() < DIGEST_DEDUPE_WINDOW_SECONDS:
+                    continue
+            _send_digest_stub(device, _build_digest_text())
+            device.last_digest_sent_at = now_utc
+            session.add(device)
+            sent_to.append(device.id)
+        session.commit()
+    return sent_to
+
+
+async def _digest_loop() -> None:
+    while True:
+        await asyncio.sleep(DIGEST_CHECK_INTERVAL_SECONDS)
+        await asyncio.to_thread(_digest_check)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
     await refresh_cache()  # 첫 요청부터 데이터가 있도록 시작 시 한 번 동기적으로 채움
-    task = asyncio.create_task(_refresh_loop())
+    refresh_task = asyncio.create_task(_refresh_loop())
+    digest_task = asyncio.create_task(_digest_loop())
     yield
-    task.cancel()
+    refresh_task.cancel()
+    digest_task.cancel()
 
 
 app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)
@@ -388,6 +451,15 @@ async def get_digest(device_id: int):
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
         return {"device_id": device_id, "digest_hour": device.digest_hour}
+
+
+@app.post("/digest/run")
+async def run_digest_check():
+    """개발/테스트용 — 지금 KST 시각이 되길 기다리지 않고 다이제스트
+    스케줄러를 즉시 한 번 실행함(5분마다 자동으로도 돌긴 함). 실제
+    발송은 안 하고 로그만 찍음(_send_digest_stub 참고, FCM 연동 전)."""
+    sent_to = await asyncio.to_thread(_digest_check)
+    return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
 
 
 class FavoriteIn(BaseModel):
