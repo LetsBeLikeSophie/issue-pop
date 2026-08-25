@@ -17,13 +17,21 @@ Article 표준 스키마:
 
 from __future__ import annotations
 
+import html
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import feedparser
 
 from sources import RSS_SOURCES
+
+# "오늘 이슈"여야 하는데 매체 피드에 며칠 지난 기사가 섞여 들어오면
+# 클러스터링 결과가 실제보다 부풀려짐(2026-08-25, 실측하며 발견 —
+# 이슈 200여 개가 너무 많다는 피드백을 받고 확인해보니 날짜 필터가
+# 아예 없었음). 24시간이 아니라 30시간으로 좀 여유를 둔 이유: 새벽에
+# 갱신하면 전날 저녁 기사까지는 "오늘 하루치"로 봐도 자연스러움.
+MAX_ARTICLE_AGE = timedelta(hours=30)
 
 
 def _to_iso(entry: Any) -> str | None:
@@ -50,18 +58,31 @@ def fetch_outlet(source: dict) -> list[dict]:
         print(f"[fetch] {source['outlet']} 파싱 실패 또는 빈 피드: {parsed.get('bozo_exception')}")
         return []
 
+    cutoff = datetime.now(timezone.utc) - MAX_ARTICLE_AGE
     articles = []
+    skipped_old = 0
     for entry in parsed.entries:
+        published = _to_iso(entry)
+        # 날짜가 있는데 너무 오래됐으면 제외. 날짜 자체가 없으면(예:
+        # 한겨레 RSS는 published/updated 필드가 아예 없음 — feedparser
+        # 파싱 실패가 아니라 피드 자체에 없는 것, 2026-08-25 실측 확인)
+        # 판단할 근거가 없으니 그냥 포함시킴 — "날짜 없으면 제외"로 했다가
+        # 한겨레 기사가 전부(30건) 날아가는 걸 발견해서 이렇게 바꿈.
+        if published is not None and datetime.fromisoformat(published) < cutoff:
+            skipped_old += 1
+            continue
         articles.append(
             {
                 "outlet": source["outlet"],
                 "category": source.get("category", "종합"),
-                "title": getattr(entry, "title", "").strip(),
-                "summary": getattr(entry, "summary", "").strip(),
+                "title": html.unescape(getattr(entry, "title", "")).strip(),
+                "summary": html.unescape(getattr(entry, "summary", "")).strip(),
                 "link": getattr(entry, "link", ""),
-                "published": _to_iso(entry),
+                "published": published,
             }
         )
+    if skipped_old:
+        print(f"[fetch] {source['outlet']}: {len(articles)}건 채택, {skipped_old}건 오래됨(30시간 초과) 제외")
     return articles
 
 

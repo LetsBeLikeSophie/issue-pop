@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flutter-web",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": [
+        "/c",
+        "cd /d C:\\Users\\lllso\\Downloads\\news-trend-app_1_new\\news-trend-app\\app && C:\\src\\flutter\\flutter\\bin\\flutter.bat run -d web-server --web-port 5544"
+      ],
+      "port": 5544
+    }
+  ]
+}

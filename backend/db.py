@@ -81,12 +81,20 @@ class ClusterSummary(SQLModel, table=True):
 
 class Device(SQLModel, table=True):
     """로그인 없이도 푸시 알림을 보내려고 필요한 최소 식별자(5번,
-    커스텀 키워드 알림용). 계정(User)과는 별개 — 로그인 안 해도 씀."""
+    커스텀 키워드 알림용). 계정(User)과는 별개 — 로그인 안 해도 씀.
+
+    digest_hour: "매일 이 시간에 오늘의 트렌드 요약 푸시(배너)를 보내줘"
+    설정(2026-08-25 추가). null이면 미설정(끔). 기기당 하루 1회. v0
+    한계: 기기의 실제 타임존을 모르니 일단 KST 기준 시(0~23)로 저장함 —
+    나중에 해외 사용자를 받게 되면 타임존 필드를 따로 받아야 함.
+    **실제 발송(FCM 등)은 아직 연동 안 됨** — 이 필드는 "보낼 준비"까지만.
+    """
 
     __tablename__ = "devices"
 
     id: int | None = Field(default=None, primary_key=True)
     push_token: str = Field(unique=True, index=True)
+    digest_hour: int | None = None
     created_at: datetime = Field(default_factory=now)
 
 

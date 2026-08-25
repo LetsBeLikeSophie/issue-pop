@@ -30,6 +30,7 @@ from collections import Counter
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import db
@@ -85,6 +86,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)
+
+# 플러터 웹 개발 서버(다른 포트)에서 호출하려면 CORS 허용이 필요함.
+# 나중에 실제 배포 도메인이 정해지면 origin을 좁혀야 함 — 지금은 로컬
+# 개발용으로 localhost 전체를 허용.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class OutletBreakdown(BaseModel):
@@ -152,17 +163,64 @@ async def get_categories():
     return Counter(c["category"] for c in _cache.values())
 
 
-@app.get("/trending", response_model=list[IssueSummary])
+@app.get("/stats")
+async def get_stats():
+    """홈 화면 마스트헤드 통계용("전체기사"/이슈 수). 캐시가 이미 메모리에
+    있어서 집계만 하는 거라 가벼움 — /trending?limit=1000처럼 이슈 수백
+    개를 기사까지 통째로 내려받을 필요가 없음(2026-08-24: 그렇게 했다가
+    첫 화면 로딩이 느려졌다는 피드백을 받고 이 엔드포인트로 분리함)."""
+    return {
+        "issue_count": len(_cache),
+        "article_count": sum(c["article_count"] for c in _cache.values()),
+    }
+
+
+@app.get("/search", response_model=list[IssueSummary])
+async def search_issues(q: str = "", limit: int = Query(60, ge=1, le=1000), category: str | None = None):
+    """대표 키워드/보조 키워드/대표 헤드라인에 부분 일치하는 이슈 요약만
+    내려줌(기사 목록 제외 — 넓은 검색어일 때 타이핑마다 무거워지는 걸
+    막으려고, 2026-08-24 실측 피드백).
+
+    2026-08-25: q를 빈 문자열로도 부를 수 있게 함(전체 매칭) — 클라이언트가
+    검색할 때마다 서버를 부르는 대신, 가벼운 요약 목록 전체를 한 번만
+    받아서 타이핑마다 로컬에서 걸러내게 하려고("이슈판" 프로토타입만큼
+    검색이 즉각적이지 않다는 피드백. 서버 호출을 매번 하면 로컬 필터보다
+    느릴 수밖에 없어서, 데이터를 가볍게 만들고 클라이언트가 들고 있는
+    쪽으로 다시 바꿈)."""
+    ql = q.lower()
+    items = [
+        (cid, c)
+        for cid, c in _cache.items()
+        if (category is None or c["category"] == category)
+        and (
+            ql in c["keyword"].lower()
+            or any(ql in k.lower() for k in c["keywords"])
+            or ql in c["representative_title"].lower()
+        )
+    ]
+    items.sort(key=lambda kv: (-kv[1]["outlet_count"], -kv[1]["article_count"]))
+    return [_to_summary(cid, c) for cid, c in items[:limit]]
+
+
+@app.get("/trending", response_model=list[IssueDetail])
 async def get_trending(
-    limit: int = Query(40, ge=1, le=200),
+    limit: int = Query(40, ge=1, le=1000),
     category: str | None = None,
 ):
-    """Main.dc.html "오늘 많이 언급된 키워드" 화면용. 매체 커버리지 우선 정렬."""
+    """Main.dc.html "오늘 많이 언급된 키워드" 화면용. 매체 커버리지 우선 정렬.
+
+    2026-08-24: 요약(IssueSummary) 대신 상세(IssueDetail, 기사 목록 포함)를
+    통째로 내려주는 걸로 바꿈 — 플러터 쪽에서 카드를 펼칠 때마다
+    /issues/{id}를 다시 부르니까 "이슈판" 정적 프로토타입보다 체감
+    반응속도가 느리다는 피드백을 받았음. 처음부터 다 갖고 있으면 펼치기도
+    검색도 네트워크 왕복 없이 즉시 됨(이슈판이 원래 그랬던 것처럼).
+    이슈 40개 × 기사 몇~십여 건 수준이라 응답 크기 증가는 감당 가능한
+    수준으로 판단."""
     items = list(_cache.items())
     if category:
         items = [(cid, c) for cid, c in items if c["category"] == category]
     items.sort(key=lambda kv: (-kv[1]["outlet_count"], -kv[1]["article_count"]))
-    return [_to_summary(cid, c) for cid, c in items[:limit]]
+    return [_to_detail(cid, c) for cid, c in items[:limit]]
 
 
 @app.get("/issues/{issue_id}", response_model=IssueDetail)
@@ -188,7 +246,7 @@ async def force_refresh():
 
 
 @app.get("/archive", response_model=list[IssueSummary])
-async def get_archive(since: str | None = None, limit: int = Query(50, ge=1, le=200)):
+async def get_archive(since: str | None = None, limit: int = Query(50, ge=1, le=1000)):
     """1번(히스토리/아카이브). 캐시가 아니라 DB에서 읽음 — 캐시는 30분마다
     갈아엎이지만 DB는 계속 쌓이니까, "예전 이슈"를 보려면 DB를 봐야 함.
     since 생략하면 최근 이슈부터."""
@@ -300,6 +358,36 @@ async def list_watches(device_id: int):
             select(db.DeviceKeywordWatch).where(db.DeviceKeywordWatch.device_id == device_id)
         ).all()
         return [{"id": w.id, "keyword": w.keyword, "created_at": w.created_at} for w in watches]
+
+
+class DigestIn(BaseModel):
+    hour: int | None = None  # 0~23(KST), null이면 끔
+
+
+@app.put("/devices/{device_id}/digest")
+async def set_digest(device_id: int, body: DigestIn):
+    """매일 정해진 시간에 오늘의 트렌드 요약을 푸시(배너)로 보내는 기능의
+    "설정 저장"까지만 함 — 실제 발송(FCM 등 푸시 서비스 연동)은 아직
+    없음, 나중에 붙일 자리만 미리 만들어둠. 기기당 하루 1회."""
+    if body.hour is not None and not (0 <= body.hour <= 23):
+        raise HTTPException(status_code=422, detail="hour must be 0-23")
+    with db.get_session() as session:
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not registered")
+        device.digest_hour = body.hour
+        session.add(device)
+        session.commit()
+        return {"device_id": device_id, "digest_hour": device.digest_hour}
+
+
+@app.get("/devices/{device_id}/digest")
+async def get_digest(device_id: int):
+    with db.get_session() as session:
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not registered")
+        return {"device_id": device_id, "digest_hour": device.digest_hour}
 
 
 class FavoriteIn(BaseModel):
