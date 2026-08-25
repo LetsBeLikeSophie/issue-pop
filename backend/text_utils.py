@@ -108,13 +108,44 @@ def extract_noun_ngrams(text: str) -> list[str]:
     명사만 뽑아서 "낮최고"처럼 단위/숫자가 빠진 애매한 키워드만 나왔는데,
     "그 클러스터가 몇 도/몇 %/몇 명짜리 얘기인지"가 부가 키워드로 유용한
     경우가 많아서 추가함(예: "낮최고"+"38도").
+
+    2026-08-25: "그냥 위치상 붙어있으면 이어붙인다"는 규칙이 실측에서
+    엉뚱한 조합을 두 가지 만들어냈음:
+    1. "중국인 여대생" → kiwi가 "여대"(NNG)+"생"(XSN, 접미사)로 쪼개는데
+       XSN은 NOUN_TAGS에 없어서 "생"이 빠지고, 남은 "여대"가 앞 단어
+       "중국인"이랑 잘못 이어붙어 "중국인여대"가 됨(원래는 "여대생"이
+       맞음). → 명사 바로 뒤에 XSN이 붙으면 먼저 하나로 합치고("여대생"),
+       그 합쳐진 명사는 앞쪽과의 바이그램에서 제외함.
+    2. "10대 특별기구" → "대"(NNG, "10대"의 일부)가 뒤에 오는 무관한
+       "특별"이랑 이어붙어 "대특별"이 됨. "대"는 숫자 바로 뒤에 붙은
+       한 글자 명사라 사실상 "10대"라는 카운터 표현의 일부였던 것. →
+       숫자 바로 뒤에 붙은 한 글자 명사는 뒤쪽과 바이그램을 안 만듦.
     """
     tokens = kiwi.tokenize(text)
+
+    # 명사 바로 뒤에 접미사(XSN)가 붙으면 하나의 단어로 합침(예: "여대"+
+    # "생"→"여대생"). 이 인덱스는 그 합쳐진 형태를 부모 명사 위치에 매핑.
+    fused: dict[int, str] = {}
+    for i in range(len(tokens) - 1):
+        if tokens[i].tag in NOUN_TAGS and tokens[i + 1].tag == "XSN":
+            fused[i] = tokens[i].form + tokens[i + 1].form
+
     noun_idx = [i for i, t in enumerate(tokens) if t.tag in NOUN_TAGS]
-    result = [tokens[i].form for i in noun_idx]
+    result = [fused.get(i, tokens[i].form) for i in noun_idx]
+
     for a, b in zip(noun_idx, noun_idx[1:]):
-        if b == a + 1:
-            result.append(tokens[a].form + tokens[b].form)
+        if b != a + 1:
+            continue
+        if b in fused:
+            # b는 실은 뒤에 접미사가 붙어 다른 단어("여대생")의 일부라서,
+            # 그 앞부분("여대")만 떼어 a와 잘못 이어붙이지 않음.
+            continue
+        if len(tokens[a].form) == 1 and a > 0 and tokens[a - 1].tag == _NUMBER_TAG:
+            # a는 숫자 바로 뒤에 붙은 한 글자 명사("10대"의 "대")라
+            # 그 자체로 카운터 표현의 일부일 가능성이 높음 — 뒤쪽 명사와
+            # 이어붙이지 않음.
+            continue
+        result.append(tokens[a].form + tokens[b].form)
 
     for i, t in enumerate(tokens[:-1]):
         if t.tag == _NUMBER_TAG and tokens[i + 1].tag in _UNIT_TAGS:

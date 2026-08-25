@@ -67,7 +67,11 @@ def test_keywords_are_short_and_on_topic():
     clusters = cluster_articles(articles)
 
     expected = {
-        "보험료율": "보험료",
+        # 2026-08-25: "보험료"→"보험료율"로 바뀜 — text_utils.py의
+        # extract_noun_ngrams가 명사+접미사(XSN, "율")를 이제 하나로
+        # 합쳐서(예전엔 "율"이 빠져서 "보험료"만 남았음) 더 정확한 키워드가
+        # 나옴. 실측으로 확인한 개선이라 기대값을 새 결과로 맞춤.
+        "보험료율": "보험료율",
         "전기요금": "요금인상",
         "폭염특보": "폭염특보",
     }
