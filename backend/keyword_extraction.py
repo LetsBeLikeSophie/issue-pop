@@ -48,9 +48,20 @@ clustering.py가 기사를 이슈 단위로 묶어주긴 하지만, 그 결과�
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 
 from text_utils import clean_summary, clean_title, extract_noun_ngrams, extract_proper_nouns
+
+# "8명", "13%"처럼 숫자+단위(또는 %)만으로 된 토큰인지 — 대표/보조
+# 키워드가 둘 다 이런 형태면 무슨 얘긴지 전혀 안 잡힘(2026-08-26 실측
+# 피드백: "네팔 홍수로 한국인 8명 연락두절·10명 고립" 이슈의 키워드가
+# "8명 · 10명"으로 나와서 실제 사건("네팔", "홍수")이 안 보였음).
+_BARE_NUMBER_RE = re.compile(r"^\d+[가-힣%]{0,3}$")
+
+
+def _is_bare_number(token: str) -> bool:
+    return bool(_BARE_NUMBER_RE.match(token))
 
 STOPWORDS = {
     "오늘", "이번", "지난", "한편", "관련", "위해", "것", "기자",
@@ -60,6 +71,11 @@ STOPWORDS = {
     # 단위 약자(SL 태그라 명사 후보에 들어오지만, 앞에 숫자 없이 혼자
     # 나오면 "오세훈 · cm"처럼 의미 없는 파편이 됨 — 2026-08-24 발견.
     "cm", "kg", "mm", "km", "ml", "mg", "kwh",
+    # 수 관형사(넷/네, 다섯 등) + 단위 명사 조합에서 숫자 쪽은 명사가
+    # 아니라서 형태소 분석 때 떨어지고 단위만 남는 경우 — "네 마디"가
+    # "마디"만 키워드로 뽑혀서 "말 네 마디가 뭔지" 안 보였음(2026-09-05
+    # 발견, "국힘, 李대통령에 '연임 없다' 단 네 마디가 그리 어렵나" 기사).
+    "마디",
 }
 
 
@@ -92,19 +108,26 @@ def build_global_df(all_articles: list[dict]) -> Counter:
     return df
 
 
+_COVERAGE_WEIGHT_MIN_ARTICLES = 15  # 이 이상일 때만 커버리지를 점수에 반영(아래 참고)
+
+
 def _score_candidates(
     cluster_articles: list[dict], global_df: Counter, total_articles: int
 ) -> list[tuple[str, int, float]]:
-    """후보 단어들을 (단어, tf, tf*idf점수)로 점수 매겨서 내림차순 정렬해 반환."""
+    """후보 단어들을 (단어, tf, tf*idf*커버리지 점수)로 점수 매겨서 내림차순 정렬해 반환."""
     weighted: Counter = Counter()
+    coverage: Counter = Counter()  # 몇 개의 "서로 다른" 기사에 등장하는지(반복 안 셈)
     for a in cluster_articles:
         title_toks, all_toks = _article_tokens(a)
         for t in all_toks:
             weighted[t] += 2 if t in title_toks else 1
+        for t in all_toks:
+            coverage[t] += 1
 
     if not weighted:
         return []
 
+    n_articles = len(cluster_articles)
     scored = []
     for t, w in weighted.items():
         idf = math.log(total_articles / (1 + global_df.get(t, 0)))
@@ -112,7 +135,27 @@ def _score_candidates(
         # 예: "연금"(모든 기사에 등장, 흔함)이 raw 빈도로는 "국민연금"(그
         # 클러스터 절반에만 등장, 훨씬 특징적)을 항상 이겨버리는 문제가
         # 있었음 — tf를 그대로 곱하면 등장 횟수 차이가 idf 차이를 압도함.
-        score = math.log1p(w) * idf
+        #
+        # 2026-08-27: 클러스터 내 커버리지(coverage/n_articles, 몇 %의
+        # 기사가 이 단어를 포함하는지)도 곱함 — meta_cluster.py가 여러
+        # 이슈를 하나로 합치기 시작하면서(같은 사건, 다른 프레이밍) 생긴
+        # 큰 클러스터에서, "네팔"/"홍수"처럼 클러스터 전체(coverage 거의
+        # 100%)를 대표하는 단어가 "9명"처럼 일부(약 30%)만 커버하지만
+        # 그날 다른 클러스터들엔 안 나와서 idf만 유독 높은 단어한테 밀리는
+        # 문제를 발견함(실측: "9명" score 11.2 vs "네팔" score 8.6인데
+        # coverage는 33% vs 100%).
+        #
+        # 단, 기사 수가 적을 때(_COVERAGE_WEIGHT_MIN_ARTICLES 미만)는 이걸
+        # 끔 — sample_data 픽스처로 실측해보니, 작은 클러스터에선 오히려
+        # "국민연금"(클러스터 3/4건에 등장, 커버리지 높음)이 "보험료율"
+        # (2/4건, 커버리지 낮지만 더 구체적인 정책 이슈)을 이겨버려서
+        # "연금"이 "국민연금"을 이기던 예전 버그와 같은 종류의 문제가
+        # 재발함. 큰 클러스터에서만 필요한 보정이라 작은 클러스터의
+        # 이미 검증된 동작은 그대로 둠.
+        coverage_ratio = (
+            coverage[t] / n_articles if n_articles >= _COVERAGE_WEIGHT_MIN_ARTICLES else 1.0
+        )
+        score = math.log1p(w) * idf * coverage_ratio
         scored.append((t, w, score))
 
     # 1순위: log(1+tf)*idf(클러스터 내 등장 빈도 x 전역 희소성), 2순위: 완전
@@ -206,4 +249,74 @@ def extract_keywords(
                     keywords[-1] = t
                     break
 
+        # 위 고유명사 보정을 거치고도(고유명사가 상위 8개 후보 안에 아예
+        # 없었던 경우) 대표+보조 키워드가 둘 다 숫자+단위뿐이면, 고유명사
+        # 탐색 범위보다 훨씬 넓게(전체 후보) 찾아서라도 숫자 아닌 단어로
+        # 바꿔치기함 — "네팔"/"홍수"처럼 진짜 주제어가 순위 10위권 밖으로
+        # 밀려나 있는 경우가 실측에서 확인됐음.
+        if all(_is_bare_number(kw) for kw in keywords):
+            for t, _w, _score in scored:
+                if _is_bare_number(t):
+                    continue
+                if any(t in kw or kw in t for kw in keywords[:-1]):
+                    continue
+                keywords[-1] = t
+                break
+
     return keywords
+
+
+def split_articles_by_keywords(
+    articles: list[dict], keywords: list[str]
+) -> tuple[list[list[dict]], list[dict]]:
+    """기사 묶음 하나를 대표 키워드로 다시 검증해서, 실제로는 무관한
+    기사가 섞였으면 걸러내거나(패턴 A) 두 그룹으로 쪼갬(패턴 B).
+
+    clustering.py가 1차 클러스터링 직후 이 판정으로 오염된 클러스터를
+    정리하는 데 쓰고(2026-08-26, "성주재단"+"양자컴퓨터" 섞임 버그 수정),
+    meta_cluster.py도 흩어진 이슈를 다시 합친 뒤 같은 검증을 한 번 더
+    거는 데 씀(2026-08-27, 병합 후에도 "홍수고립"+"조현"처럼 대표 키워드와
+    무관한 기사가 섞여 보인다는 피드백으로 재사용). 기사 딕셔너리 리스트를
+    그대로 받고 그대로 돌려줌 — 전역 인덱스에 안 묶여있어서 두 모듈이
+    다 재사용 가능함.
+
+    실측해보니 "무관한 기사가 섞인" 클러스터는 두 가지 패턴으로 나뉨:
+      (A) 중심 주제 + 소수 낙오 기사 — 1·2등 키워드 중 아무것도 포함
+          안 하는 기사가 있지만 소수(1/3 이하)인 경우. 낙오 기사만 뺌.
+      (B) 두 주제가 반반씩 섞임 — 1등/2등 키워드가 같은 기사에 거의
+          같이 등장하지 않고(겹침 1건 이하) 각자 다른 기사 무리를
+          대표하는 경우. 아예 두 그룹으로 쪼갬.
+    둘 다 아니면(=키워드가 전체를 잘 대표하면) 그대로 둠. 자세한 배경은
+    backend/README.md의 "완전히 무관한 기사가 한 클러스터에 섞이는 버그
+    수정" 항목 참고.
+
+    Returns:
+        (그룹 리스트, 낙오 기사 리스트). 걸러지지 않았으면 ([articles], [])."""
+    if len(articles) < 3 or not keywords:
+        return [articles], []
+
+    texts = [f"{clean_title(a['title'])} {clean_summary(a.get('summary', ''))}" for a in articles]
+
+    if len(keywords) >= 2:
+        kw0, kw1 = keywords[0], keywords[1]
+        only0, only1, both, neither = [], [], [], []
+        for a, t in zip(articles, texts):
+            has0, has1 = kw0 in t, kw1 in t
+            if has0 and has1:
+                both.append(a)
+            elif has0:
+                only0.append(a)
+            elif has1:
+                only1.append(a)
+            else:
+                neither.append(a)
+        if only0 and only1 and len(both) <= 1:
+            return [only0 + both, only1], neither
+
+    matched, unmatched = [], []
+    for a, t in zip(articles, texts):
+        (matched if any(kw in t for kw in keywords) else unmatched).append(a)
+    if unmatched and 3 * len(unmatched) <= len(articles):
+        return [matched], unmatched
+
+    return [articles], []

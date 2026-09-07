@@ -1,11 +1,11 @@
 {
-    "name": "issue_pop",
-    "short_name": "issue_pop",
+    "name": "Issue Pop",
+    "short_name": "Issue Pop",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#EEF1EA",
+    "theme_color": "#35503F",
+    "description": "여러 매체의 RSS를 모아 오늘 많이 보도된 이슈를 클러스터링해서 보여주는 뉴스 트렌드 앱",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

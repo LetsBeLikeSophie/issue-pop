@@ -6,6 +6,9 @@ sentence-transformers>=3.0
 fastapi>=0.110
 uvicorn>=0.29
 sqlmodel>=0.0.22
+requests>=2.31  # 날씨 카드용 Open-Meteo 조회(api.py의 _fetch_weather)
+bcrypt>=4.1  # 로그인 비밀번호 해시(api.py의 _hash_password/_verify_password)
+slowapi>=0.1.9  # 로그인/가입 무차별 대입 방지 rate limiting
 # Windows에서 설치가 "파일 이름이나 확장명이 너무 깁니다"로 실패하면
 # (torch 라이선스 폴더 경로가 260자 제한을 넘는 경우) 훨씬 짧은 경로에
 # 따로 설치하세요: pip install --target=pylibs sentence-transformers

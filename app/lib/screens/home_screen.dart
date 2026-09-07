@@ -3,12 +3,52 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../models/issue.dart';
 import '../theme.dart';
-import '../widgets/app_card.dart';
 import '../widgets/expandable_issue_card.dart';
 import 'archive_screen.dart';
 import 'settings_screen.dart';
+import 'stock_watch_screen.dart';
 
 enum _SortMode { outlet, count }
+
+/// 2026-09-02: 카테고리 필터(같은 목록을 다시 걸러 보여주기)에서
+/// 실제 "페이지"(제스처로 옆으로 넘기면 완전히 다른 화면)로 바꿈 —
+/// 애초에 "신문처럼 페이지가 늘어나는" 컨셉이었고, 카드 스와이프 저장도
+/// 쓰는 앱이라 제스처 내비게이션 방향이 잘 맞는다는 의견.
+///
+/// 2026-09-02~04: 살림/재테크/문화생활/IT 같은 "큐레이션 페이지"를
+/// 여기 붙였다 뺐다 하며 여러 형태(탭바 안에 섞기 → 상단바 아이콘 →
+/// 매거진 캐러셀)로 시도했는데, 결국 "이 앱은 뉴스 클러스터링 하나에
+/// 집중하고, 그런 잡지형 큐레이션은 나중에 완전히 별도 앱으로 빼는 게
+/// 낫겠다"는 결론으로 정리함 — 그래서 이 파일엔 순수 카테고리 필터만
+/// 남음. 큐레이션 쪽 코드는 필요해지면 새 프로젝트에서 처음부터 다시
+/// 설계하는 게 나을 것 같아 여기서는 완전히 제거함.
+class _PageSpec {
+  const _PageSpec(this.label, this.categories);
+
+  /// 탭/페이지 표시 이름.
+  final String label;
+
+  /// 이 페이지가 보여줄 카테고리 집합. null이면 "전체"(모든 이슈,
+  /// _trending의 풍부한 데이터 그대로 씀). 빈 값 없는 Set이면 그
+  /// 카테고리(들)만 클라이언트에서 걸러서 보여줌.
+  final Set<String>? categories;
+
+  /// 탭 점 색깔 — "전체"는 accent, 나머지는 그 카테고리 고유 색.
+  Color get color => categories == null ? AppColors.accent : CategoryColors.of(categories!.first);
+}
+
+final List<_PageSpec> _pageSpecs = [
+  const _PageSpec('전체', null),
+  const _PageSpec('정치', {'정치'}),
+  const _PageSpec('경제', {'경제'}),
+  const _PageSpec('사회', {'사회'}),
+  const _PageSpec('국제', {'국제'}),
+  const _PageSpec('스포츠', {'스포츠'}),
+  const _PageSpec('연예', {'연예'}),
+  const _PageSpec('IT/과학', {'IT/과학'}),
+  const _PageSpec('문화', {'문화'}),
+  const _PageSpec('기타', {'기타'}),
+];
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.api});
@@ -22,55 +62,52 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<IssueDetail>> _trending;
 
-  /// 검색·통계·카테고리 칩 개수용 — 이슈 전체를 요약(기사 목록 제외)만
-  /// 한 번 받아서 클라이언트가 들고 있음. 2026-08-25: 처음엔 타이핑마다
-  /// 서버에 물어보는 구조였는데, "이슈판" 프로토타입만큼 즉각적이지
-  /// 않다는 피드백을 받음 — 네트워크 왕복이 있는 한 로컬 필터보다 빠를
-  /// 수 없어서, 가벼운 데이터를 클라이언트가 들고 있다가 즉시 거르는
-  /// 방식으로 되돌림(대신 기사 목록은 빼서 무거워지지 않게 함).
+  /// 검색·카테고리 페이지용 — 이슈 전체를 요약(기사 목록 제외)만 한 번
+  /// 받아서 클라이언트가 들고 있음. 페이지 전환은 이 데이터를 그때그때
+  /// 걸러서 보여주는 거라 네트워크 왕복이 없음(검색과 같은 패턴).
   late Future<List<IssueSummary>> _index;
 
   _SortMode _sort = _SortMode.outlet;
-  String? _activeCategory;
   final _searchController = TextEditingController();
   String _query = '';
+
+  late final PageController _pageController;
+  int _page = 0;
 
   @override
   void initState() {
     super.initState();
     _trending = widget.api.getTrending(limit: 40);
     _index = widget.api.getIndex();
+    _pageController = PageController();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
     setState(() {
-      _trending = widget.api.getTrending(limit: 40, category: _activeCategory);
+      _trending = widget.api.getTrending(limit: 40);
       _index = widget.api.getIndex();
     });
     await _trending;
   }
 
-  void _setCategory(String? category) {
-    setState(() {
-      _activeCategory = category;
-      _trending = widget.api.getTrending(limit: 40, category: category);
-    });
+  void _goToPage(int i) {
+    _pageController.animateToPage(i, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
   }
 
   List<IssueSummary> _search(List<IssueSummary> pool) {
     final q = _query.toLowerCase();
     return pool
         .where((i) =>
-            (_activeCategory == null || i.category == _activeCategory) &&
-            (i.keyword.toLowerCase().contains(q) ||
-                i.keywords.any((k) => k.toLowerCase().contains(q)) ||
-                i.representativeTitle.toLowerCase().contains(q)))
+            i.keyword.toLowerCase().contains(q) ||
+            i.keywords.any((k) => k.toLowerCase().contains(q)) ||
+            i.representativeTitle.toLowerCase().contains(q))
         .toList();
   }
 
@@ -95,105 +132,168 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            FutureBuilder<List<IssueSummary>>(
-              future: _index,
-              builder: (context, indexSnap) {
-                final index = indexSnap.data;
-                return _TopBar(
-                  index: index,
-                  onArchive: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ArchiveScreen()),
-                  ),
-                  onSettings: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                  ),
-                );
-              },
+            _TopBar(
+              onStocks: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
+              ),
+              onArchive: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ArchiveScreen()),
+              ),
+              onSettings: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => SettingsScreen(api: widget.api)),
+              ),
             ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refresh,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                  children: [
-                    const _OngoingInterestSection(),
-                    const SizedBox(height: 20),
-                    _Toolbar(
-                      controller: _searchController,
-                      sort: _sort,
-                      onSortChanged: (m) => setState(() => _sort = m),
-                      onQueryChanged: (q) => setState(() => _query = q),
-                    ),
-                    const SizedBox(height: 10),
-                    FutureBuilder<List<IssueSummary>>(
-                      future: _index,
-                      builder: (context, indexSnap) {
-                        final index = indexSnap.data;
-                        if (index == null) return const SizedBox.shrink();
-                        final counts = <String, int>{};
-                        for (final i in index) {
-                          counts[i.category] = (counts[i.category] ?? 0) + 1;
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _CategoryBar(
-                            counts: counts,
-                            active: _activeCategory,
-                            onSelected: _setCategory,
-                          ),
-                        );
-                      },
-                    ),
-                    if (isSearching)
-                      FutureBuilder<List<IssueSummary>>(
-                        future: _index,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 40),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          if (snapshot.hasError) {
-                            return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
-                          }
-                          final issues = _sorted(_search(snapshot.data ?? []));
-                          return _IssueList(
+            if (!isSearching)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: _PageTabBar(
+                  specs: _pageSpecs,
+                  active: _page,
+                  onSelected: _goToPage,
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _Toolbar(
+                controller: _searchController,
+                sort: _sort,
+                onSortChanged: (m) => setState(() => _sort = m),
+                onQueryChanged: (q) => setState(() => _query = q),
+              ),
+            ),
+            if (isSearching)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+                  child: FutureBuilder<List<IssueSummary>>(
+                    future: _index,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError) {
+                        return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
+                      }
+                      final issues = _sorted(_search(snapshot.data ?? []));
+                      return ListView(
+                        children: [
+                          _IssueList(
                             issues: issues,
                             api: widget.api,
                             showRank: false,
                             emptyText: '검색 결과가 없어요',
-                          );
-                        },
-                      )
-                    else
-                      FutureBuilder<List<IssueDetail>>(
-                        future: _trending,
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 40),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          if (snapshot.hasError) {
-                            return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
-                          }
-                          final issues = _sorted<IssueDetail>(snapshot.data ?? []);
-                          return _IssueList(
-                            issues: issues,
-                            api: null,
-                            showRank: true,
-                            emptyText: '아직 집계된 이슈가 없어요',
-                          );
-                        },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 6),
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  children: [
+                    for (final spec in _pageSpecs)
+                      _CategoryPage(
+                        spec: spec,
+                        trending: _trending,
+                        index: _index,
+                        api: widget.api,
+                        sorter: _sorted,
+                        onRefresh: _refresh,
                       ),
                   ],
                 ),
               ),
-            ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 카테고리 페이지 하나(전체/정치/경제/…)의 본문 — 필터링된 이슈
+/// 목록을 보여줌. "전체"(spec.categories == null)는 _trending(풍부한
+/// 데이터, 즉시 펼침)을 그대로 쓰고, 나머지는 _index를 클라이언트에서
+/// 걸러서 씀(검색과 같은 패턴 — 페이지 전환마다 네트워크를 안 타서
+/// 즉각적임).
+class _CategoryPage extends StatelessWidget {
+  const _CategoryPage({
+    required this.spec,
+    required this.trending,
+    required this.index,
+    required this.api,
+    required this.sorter,
+    required this.onRefresh,
+  });
+
+  final _PageSpec spec;
+  final Future<List<IssueDetail>> trending;
+  final Future<List<IssueSummary>> index;
+  final ApiClient api;
+  final List<T> Function<T extends IssueSummary>(List<T>) sorter;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = spec.categories;
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          const _SwipeHint(),
+          const SizedBox(height: 6),
+          if (categories == null)
+            FutureBuilder<List<IssueDetail>>(
+              future: trending,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
+                }
+                final issues = sorter<IssueDetail>(snapshot.data ?? []);
+                return _IssueList(
+                  issues: issues,
+                  api: null,
+                  showRank: true,
+                  emptyText: '아직 집계된 이슈가 없어요',
+                );
+              },
+            )
+          else
+            FutureBuilder<List<IssueSummary>>(
+              future: index,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
+                }
+                final filtered = (snapshot.data ?? []).where((i) => categories.contains(i.category)).toList();
+                final issues = sorter(filtered);
+                return _IssueList(
+                  issues: issues,
+                  api: api,
+                  showRank: false,
+                  emptyText: '이 페이지엔 아직 이슈가 없어요',
+                );
+              },
+            ),
+        ],
       ),
     );
   }
@@ -240,20 +340,36 @@ class _IssueList extends StatelessWidget {
   }
 }
 
+/// 카드를 옆으로 밀면 저장할 수 있다는 걸 몰라보는 사람이 있다는
+/// 피드백을 받고 추가한 짧은 안내 문구.
+class _SwipeHint extends StatelessWidget {
+  const _SwipeHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(Icons.swipe_left_outlined, size: 12, color: AppColors.inkFaint),
+        const SizedBox(width: 4),
+        Text('카드를 왼쪽으로 밀면 저장할 수 있어요', style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
+      ],
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.index,
+    required this.onStocks,
     required this.onArchive,
     required this.onSettings,
   });
 
-  final List<IssueSummary>? index;
+  final VoidCallback onStocks;
   final VoidCallback onArchive;
   final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
-    final totalArticles = index?.fold<int>(0, (a, i) => a + i.articleCount);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ink, width: 2.5))),
@@ -264,7 +380,7 @@ class _TopBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('뉴스', style: AppTypography.serif(fontSize: 30, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                Text('Issue Pop', style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink)),
                 const SizedBox(height: 3),
                 Text(
                   '오늘 많이 언급된 이슈 · 매체 커버리지 순',
@@ -273,13 +389,10 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _Stat(n: totalArticles, label: '전체기사'),
-              const SizedBox(width: 14),
-              _Stat(n: index?.length, label: '전체이슈'),
-            ],
+          IconButton(
+            icon: const Icon(Icons.show_chart, color: AppColors.ink),
+            onPressed: onStocks,
+            tooltip: '관심 종목',
           ),
           IconButton(
             icon: const Icon(Icons.bookmark_border, color: AppColors.ink),
@@ -297,41 +410,9 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.n, required this.label});
-
-  final int? n;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          n == null ? '–' : '$n',
-          style: const TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w600,
-            color: AppColors.accent,
-            fontFeatures: [FontFeature.tabularFigures()],
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: AppColors.inkFaint,
-            letterSpacing: 0.4,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 검색창 — "이슈판"과 동일하게 페이지 이동 없이 입력하는 즉시 목록을
 /// 걸러냄(별도 검색 화면으로 넘어가는 방식이 느리게 느껴진다는 피드백).
+/// 검색 중엔 페이지 탭 대신 전체에서 걸러서 보여줌.
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.controller,
@@ -439,46 +520,46 @@ class _SortButton extends StatelessWidget {
   }
 }
 
-class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.counts, required this.active, required this.onSelected});
+/// 2026-09-01: 9개 카테고리 + 전체가 Wrap으로 2~3줄까지 줄바꿈되던 걸
+/// 한 줄 가로 스크롤로 바꿨었음. 2026-09-02: 탭을 누르면 그냥 필터링만
+/// 하던 걸 실제 페이지 전환(PageView)으로 바꿈.
+class _PageTabBar extends StatelessWidget {
+  const _PageTabBar({required this.specs, required this.active, required this.onSelected});
 
-  final Map<String, int> counts;
-  final String? active;
-  final ValueChanged<String?> onSelected;
+  final List<_PageSpec> specs;
+  final int active;
+  final ValueChanged<int> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final total = counts.values.fold(0, (a, b) => a + b);
-    final cats = kCategoryOrder.where((c) => counts.containsKey(c)).toList();
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        _CategoryChip(label: '전체', count: total, color: AppColors.accent, selected: active == null, onTap: () => onSelected(null)),
-        for (final c in cats)
-          _CategoryChip(
-            label: c,
-            count: counts[c]!,
-            color: CategoryColors.of(c),
-            selected: active == c,
-            onTap: () => onSelected(c),
-          ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < specs.length; i++) ...[
+            if (i != 0) const SizedBox(width: 6),
+            _PageTabChip(
+              label: specs[i].label,
+              color: specs[i].color,
+              selected: active == i,
+              onTap: () => onSelected(i),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
 
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({
+class _PageTabChip extends StatelessWidget {
+  const _PageTabChip({
     required this.label,
-    required this.count,
     required this.color,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final int count;
   final Color color;
   final bool selected;
   final VoidCallback onTap;
@@ -489,7 +570,7 @@ class _CategoryChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 5, 11, 5),
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
         decoration: BoxDecoration(
           color: selected ? color.withValues(alpha: 0.16) : AppColors.surface,
           border: Border.all(color: selected ? color : AppColors.line),
@@ -506,87 +587,6 @@ class _CategoryChip extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 color: selected ? AppColors.ink : AppColors.inkSoft,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text('$count', style: TextStyle(fontSize: 11, color: selected ? color : AppColors.inkFaint)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// "지속 관심 카테고리" 섹션 — 날씨 카드 + 장기 진행 이슈.
-///
-/// 지금은 정적 목업임: 날씨는 외부 기상 API 연동이 필요하고, 장기
-/// 진행 이슈("D+N일째")는 리프레시 주기마다 이슈 id가 바뀌는 문제 때문에
-/// 여러 갱신에 걸친 "같은 이슈" 추적 로직이 아직 없음(사용자와 상의 후
-/// 우선순위 낮춰 보류하기로 함 — backend/README.md 알려진 한계 참고).
-/// 두 기능 다 백엔드 작업이 더 필요해서, 화면 골격만 먼저 잡아둠.
-class _OngoingInterestSection extends StatelessWidget {
-  const _OngoingInterestSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 14),
-        const _WeatherCardPlaceholder(),
-        const SizedBox(height: 9),
-        const _OngoingIssuePlaceholder(),
-      ],
-    );
-  }
-}
-
-class _WeatherCardPlaceholder extends StatelessWidget {
-  const _WeatherCardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: 0.55,
-      child: AppCard(
-        radius: 10,
-        child: Row(
-          children: [
-            const Icon(Icons.cloud_outlined, color: AppColors.inkMuted),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '날씨 요약 — 준비 중이에요',
-                style: TextStyle(fontSize: 13, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OngoingIssuePlaceholder extends StatelessWidget {
-  const _OngoingIssuePlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: 0.55,
-      child: AppCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        radius: 10,
-        child: Row(
-          children: [
-            const Icon(Icons.bar_chart, size: 18, color: AppColors.inkMuted),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '장기 이슈 추적 — 준비 중이에요',
-                style: TextStyle(fontSize: 13, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

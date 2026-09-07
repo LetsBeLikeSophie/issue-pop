@@ -26,9 +26,9 @@ DB 스키마 (v0 — SQLite + SQLModel).
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Field, Session, SQLModel, create_engine, delete, select
 
 DB_PATH = "news_trend.db"
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
@@ -102,6 +102,21 @@ class Device(SQLModel, table=True):
     last_digest_sent_at: datetime | None = None  # 같은 시간대에 중복 발송 방지용
     created_at: datetime = Field(default_factory=now)
 
+    # 2026-09-05: 다이제스트(하루 한 번)와 별개로, 새로 뜨거나 급상승한
+    # 이슈를 재계산 주기마다 체크해서 알려주는 "주기적 알림" 설정 —
+    # UI부터 먼저 만들고, 실제 감지/발송 로직은 다음 단계.
+    periodic_alert_enabled: bool = False
+    periodic_interval_minutes: int = 60  # 30분 재계산 주기의 배수만 의미 있음(30/60/120/180)
+    quiet_hours_start: int = 8  # 이 시각부터
+    quiet_hours_end: int = 23  # 이 시각까지만 알림(그 외엔 조용히)
+    min_outlet_count: int = 5  # 이 매체 수 이상인 이슈만 알림
+    alert_categories_json: str | None = None  # null=전체 카테고리, 아니면 ["정치","경제"] 같은 JSON 배열
+    max_daily_alerts: int = 10
+
+    @property
+    def alert_categories(self) -> list[str] | None:
+        return json.loads(self.alert_categories_json) if self.alert_categories_json else None
+
 
 class DeviceKeywordWatch(SQLModel, table=True):
     __tablename__ = "device_keyword_watches"
@@ -112,15 +127,76 @@ class DeviceKeywordWatch(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class DeviceStockWatch(SQLModel, table=True):
+    """2026-09-06: 관심 종목(브랜드) 등록 — S&P500 전체를 미리 다 가져오는
+    대신, 기기마다 관심 있는 티커만 등록해서 그것만 가져오는 구조로 함
+    (device_keyword_watches와 같은 패턴). 기기가 처음 이 기능을 켤 때
+    STARTER_TICKERS로 자동 시드되고, 그 다음부턴 완전히 사용자 편집
+    (기본값도 지울 수 있음) — api.py의 _seed_stock_watches 참고."""
+
+    __tablename__ = "device_stock_watches"
+
+    id: int | None = Field(default=None, primary_key=True)
+    device_id: int = Field(foreign_key="devices.id", index=True)
+    ticker: str
+    created_at: datetime = Field(default_factory=now)
+
+
+class TranslatedHeadline(SQLModel, table=True):
+    """2026-09-06: 관심 종목 뉴스(영어) 번역 캐시 — 파파고는 무료 할당량이
+    넉넉하지 않아서(하루 단위), 같은 헤드라인을 30분마다 돌아오는 갱신
+    주기마다 매번 다시 번역하면 금방 소진됨. cluster_summaries와 같은
+    설계(한 번 번역하면 재사용) — 원문 텍스트 해시를 키로 써서 같은
+    헤드라인이 여러 티커/여러 번 등장해도 번역 API는 한 번만 호출함
+    (stocks.py의 _translate_cached 참고)."""
+
+    __tablename__ = "translated_headlines"
+
+    text_hash: str = Field(primary_key=True)
+    original_text: str
+    translated_text: str
+    translated_at: datetime = Field(default_factory=now)
+
+
+class Feedback(SQLModel, table=True):
+    """베타 "고객의 소리" — 답장 기능 없는 일방향 제출함(2026-08-27).
+    로그인 없이도 보낼 수 있게 device_id는 선택(있으면 어느 기기에서
+    왔는지 참고용, 필수 아님)."""
+
+    __tablename__ = "feedback"
+
+    id: int | None = Field(default=None, primary_key=True)
+    device_id: int | None = Field(default=None, foreign_key="devices.id")
+    message: str
+    created_at: datetime = Field(default_factory=now)
+
+
 class User(SQLModel, table=True):
-    """지금은 아무도 안 채움 — 로그인(소셜 로그인 등) 붙일 때 쓸 자리만
-    미리 잡아둠."""
+    """2026-08-28: 로그인 기능 추가하면서 채워짐. 구글/애플 로그인은
+    각각 API 크리덴셜 발급이 필요해서(FCM/LLM 키와 같은 종류의, 사용자가
+    직접 해야 하는 일) 당장은 이메일+비밀번호 방식만 구현함 —
+    auth_provider/auth_provider_id는 나중에 소셜 로그인 붙일 때 쓸 자리로
+    남겨둠(이메일 계정은 이 둘이 null)."""
 
     __tablename__ = "users"
 
     id: int | None = Field(default=None, primary_key=True)
+    email: str | None = Field(default=None, unique=True, index=True)
+    password_hash: str | None = None
     auth_provider: str | None = None  # "google", "apple" 등
     auth_provider_id: str | None = None
+    created_at: datetime = Field(default_factory=now)
+
+
+class UserSession(SQLModel, table=True):
+    """로그인 세션. 정식 JWT 대신 그냥 무작위 토큰을 DB에 저장해두고
+    맞는지 조회하는 v0 방식 — 세션 만료/갱신 같은 건 아직 없음(로그아웃
+    하면 바로 삭제되는 정도). 나중에 필요해지면 만료 시각을 추가하면 됨."""
+
+    __tablename__ = "user_sessions"
+
+    token: str = Field(primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
     created_at: datetime = Field(default_factory=now)
 
 
@@ -150,8 +226,32 @@ class UserFavorite(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+def _migrate_devices_table() -> None:
+    """SQLModel.metadata.create_all()은 이미 있는 테이블엔 새 컬럼을
+    안 넣어줌 — 이미 배포된 서버의 devices 테이블은 예전 스키마 그대로라
+    여기서 직접 ALTER TABLE로 채워줌(있으면 건너뜀, 여러 번 실행해도
+    안전함). 기존 행의 새 컬럼은 SQLModel의 기본값으로 채움.
+    """
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(devices)").fetchall()}
+        additions = {
+            "periodic_alert_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "periodic_interval_minutes": "INTEGER NOT NULL DEFAULT 60",
+            "quiet_hours_start": "INTEGER NOT NULL DEFAULT 8",
+            "quiet_hours_end": "INTEGER NOT NULL DEFAULT 23",
+            "min_outlet_count": "INTEGER NOT NULL DEFAULT 5",
+            "alert_categories_json": "TEXT",
+            "max_daily_alerts": "INTEGER NOT NULL DEFAULT 10",
+        }
+        for column, ddl in additions.items():
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE devices ADD COLUMN {column} {ddl}")
+        conn.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
+    _migrate_devices_table()
 
 
 def get_session() -> Session:
@@ -198,3 +298,27 @@ def persist_issues(session: Session, clusters_by_id: dict[str, dict]) -> None:
                 )
             )
     session.commit()
+
+
+def prune_old_issues(session: Session, retention_days: int = 3) -> int:
+    """오래된 이슈(와 그 기사들)를 지움.
+
+    2026-09-05 실측: 히스토리 기능이 없어서(사용자가 "의미없다"고 판단해서
+    안 만들기로 함) 지난 이슈를 읽는 곳이 앱에 하나도 없는데도 DB는
+    무한정 쌓이고 있었음 — 배포 8일 만에 이슈 19,465건/기사 48,247건.
+    상당수는 진짜 새 사건이 아니라, 재클러스터링마다 이슈 id가 바뀌면서
+    "같은 진행 중인 사건이 새 행으로 또 잡히는" 현상 때문(알려진 한계).
+
+    last_seen_at 기준으로 지움 — 진행 중인 이슈는 사이클마다 갱신되니
+    안 지워지고, 더 이상 안 잡히는 것만 지워짐. 즐겨찾기(클라이언트 로컬
+    저장, user_favorites/cluster_summaries도 실측 결과 둘 다 비어있음)는
+    이 DB를 안 참조해서 전혀 영향 없음.
+    """
+    # id 리스트를 뽑아서 IN(...)에 넣으면 첫 정리 때(누적분이 많아서)
+    # SQLite의 변수 개수 제한에 걸릴 수 있어 — 서브쿼리로 한 번에 지움.
+    cutoff = now() - timedelta(days=retention_days)
+    stale_issue_ids = select(Issue.id).where(Issue.last_seen_at < cutoff)
+    session.exec(delete(Article).where(Article.issue_id.in_(stale_issue_ids)))  # type: ignore[arg-type]
+    result = session.exec(delete(Issue).where(Issue.last_seen_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount

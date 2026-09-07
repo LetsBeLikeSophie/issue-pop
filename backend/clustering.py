@@ -53,13 +53,50 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from category import classify_category
 from embedding_utils import embed
-from keyword_extraction import build_global_df, extract_keywords
+from keyword_extraction import build_global_df, extract_keywords, split_articles_by_keywords
 from text_utils import clean_summary, clean_title
 
 
 def _vectorize(texts: list[str]):
     """제목+요약 텍스트를 한국어 문장 임베딩으로 변환."""
     return embed(texts)
+
+
+def _complete_linkage_groups(indices: list[int], sim_matrix: np.ndarray, threshold: float) -> list[list[int]]:
+    """주어진 기사 인덱스들을 complete-linkage로 묶음(전역 1차 클러스터링과
+    "낙오 기사" 재클러스터링이 같은 로직을 재사용하려고 뺀 헬퍼)."""
+    if len(indices) <= 1:
+        return [indices]
+    sub = sim_matrix[np.ix_(indices, indices)]
+    sub_distance = np.clip(1 - sub, 0, None)
+    np.fill_diagonal(sub_distance, 0)
+    sub_clustering = AgglomerativeClustering(
+        n_clusters=None,
+        metric="precomputed",
+        linkage="complete",
+        distance_threshold=1 - threshold,
+    ).fit(sub_distance)
+    sub_groups: dict[int, list[int]] = defaultdict(list)
+    for local_i, label in enumerate(sub_clustering.labels_):
+        sub_groups[int(label)].append(indices[local_i])
+    return list(sub_groups.values())
+
+
+def _split_by_keyword_membership(
+    indices: list[int], articles: list[dict], keywords: list[str]
+) -> tuple[list[list[int]], list[int]]:
+    """1차로 묶인 클러스터 안에서, 실제로는 무관한 기사가 섞여 들어온
+    경우를 걸러냄(패턴 A/B 판정 자체는 keyword_extraction.split_articles_by_keywords
+    참고 — clustering.py/meta_cluster.py가 같이 재사용함). 이 함수는 전역
+    기사 인덱스 <-> 기사 딕셔너리 변환만 담당."""
+    if len(indices) < 3 or not keywords:
+        return [indices], []
+
+    idx_by_id = {id(articles[i]): i for i in indices}
+    groups, leftover = split_articles_by_keywords([articles[i] for i in indices], keywords)
+    idx_groups = [[idx_by_id[id(a)] for a in g] for g in groups]
+    idx_leftover = [idx_by_id[id(a)] for a in leftover]
+    return idx_groups, idx_leftover
 
 
 def cluster_articles(articles: list[dict], threshold: float = 0.45) -> list[dict]:
@@ -124,8 +161,22 @@ def cluster_articles(articles: list[dict], threshold: float = 0.45) -> list[dict
     for i, label in enumerate(labels):
         groups[int(label)].append(i)
 
-    clusters = []
+    # 클러스터별로 대표 키워드와 무관한 기사를 걸러내거나(패턴 A) 두
+    # 그룹으로 쪼갬(패턴 B) — _split_by_keyword_membership 참고. 걸러진
+    # 기사들은 자기들끼리 다시 한번 묶어봄(우연히 서로 진짜 같은 주제일
+    # 수 있어서).
+    refined_groups: list[list[int]] = []
+    leftovers: list[int] = []
     for indices in groups.values():
+        probe_keywords = extract_keywords([articles[i] for i in indices], global_df, n)
+        sub_groups, dropped = _split_by_keyword_membership(indices, articles, probe_keywords)
+        refined_groups.extend(sub_groups)
+        leftovers.extend(dropped)
+    if leftovers:
+        refined_groups.extend(_complete_linkage_groups(leftovers, sim_matrix, threshold))
+
+    clusters = []
+    for indices in refined_groups:
         cluster_articles_list = [articles[i] for i in indices]
 
         # 대표 제목: 클러스터 내 다른 기사들과 평균 유사도가 가장 높은 기사

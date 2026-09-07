@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
@@ -16,6 +17,14 @@ import '../theme.dart';
 /// 받아온 경우)이면 펼칠 때 그제서야 [api]로 상세를 받아옴 — 검색 결과
 /// 전체에 기사 목록까지 미리 실었더니 타이핑마다 무거워진다는 피드백을
 /// 받고 이렇게 나눔.
+///
+/// 2026-08-28: 즐겨찾기 저장/해제를 북마크 아이콘 탭 대신 좌우 스와이프로
+/// 바꿈("메시지 지우듯이" 스와이프하는 게 낫겠다는 피드백) — 홈/검색에서는
+/// 스와이프하면 "저장"/"저장 취소" 액션이, 저장한 이슈 화면([archiveMode])
+/// 에서는 "삭제" 액션이 나옴. 즐겨찾기 상태는 이제 FavoritesStore
+/// (ChangeNotifier 싱글턴)를 구독해서 표시하므로, 어느 화면에서 바꾸든
+/// 다른 화면의 카드도 항상 최신 상태로 보임(예전엔 콜백을 못 받은 화면의
+/// 카드가 낡은 상태로 남는 버그가 있었음).
 class ExpandableIssueCard extends StatefulWidget {
   const ExpandableIssueCard({
     super.key,
@@ -24,7 +33,7 @@ class ExpandableIssueCard extends StatefulWidget {
     this.rank,
     this.maxOutletCount = 1,
     this.subtitle,
-    this.onFavoriteChanged,
+    this.archiveMode = false,
   });
 
   final IssueSummary issue;
@@ -41,24 +50,22 @@ class ExpandableIssueCard extends StatefulWidget {
 
   /// 카테고리 배지 아래 보여줄 캡션 (예: 아카이브의 "저장일 8월 24일").
   final String? subtitle;
-  final VoidCallback? onFavoriteChanged;
+
+  /// 저장한 이슈 화면에서 쓰면 true — 스와이프 액션이 "저장"이 아니라
+  /// "삭제"로 바뀜(이 화면의 카드는 항상 이미 저장된 상태라서).
+  final bool archiveMode;
 
   @override
   State<ExpandableIssueCard> createState() => _ExpandableIssueCardState();
 }
 
 class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
-  final _favorites = FavoritesStore();
   bool _expanded = false;
-  bool _saved = false;
   Future<IssueDetail>? _detail;
 
   @override
   void initState() {
     super.initState();
-    _favorites.isSaved(widget.issue.id).then((v) {
-      if (mounted) setState(() => _saved = v);
-    });
     if (widget.issue case final IssueDetail d) {
       _detail = Future.value(d);
     }
@@ -75,10 +82,23 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
     // 즐겨찾기는 기사 목록까지 저장해두는 구조라(favorites_store.dart),
     // 요약만 있는 카드(검색 결과)에서 저장하려면 먼저 상세를 받아야 함.
     final full = await (_detail ??= widget.api!.getIssue(widget.issue.id));
-    await _favorites.toggle(full);
-    final saved = await _favorites.isSaved(widget.issue.id);
-    if (mounted) setState(() => _saved = saved);
-    widget.onFavoriteChanged?.call();
+    final nowSaved = await FavoritesStore.instance.toggle(full);
+    if (!mounted) return;
+    // 스와이프만으로는 저장/삭제가 됐는지 눈에 안 띈다는 피드백을 받고
+    // 추가함 — 잠깐 나타났다 사라지는 스낵바로 결과를 확인해줌.
+    final message = widget.archiveMode ? '삭제했어요' : (nowSaved ? '저장했어요' : '저장을 취소했어요');
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        // SnackBar는 content를 내부적으로 Expanded로 감싸서, 고정 width를
+        // 주면 짧은 문장이 왼쪽 정렬된 채 오른쪽에 빈 공간이 남는
+        // 버그처럼 보이는 현상이 있었음 — Center로 감싸서 해결.
+        content: Center(child: Text(message)),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        width: 180,
+      ),
+    );
   }
 
   @override
@@ -88,123 +108,169 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
     final keywords = issue.keywords.isEmpty ? [issue.keyword] : issue.keywords;
     final isSingle = issue.outletCount <= 1;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: AppColors.cardShadow,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: _toggleExpand,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (widget.rank != null) ...[
-                    SizedBox(
-                      width: 20,
-                      child: Text(
-                        '${widget.rank}',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.inkFaint,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+    return ListenableBuilder(
+      listenable: FavoritesStore.instance,
+      builder: (context, _) {
+        final saved = FavoritesStore.instance.isSaved(issue.id);
+
+        return Slidable(
+          key: ValueKey('slidable-${issue.id}'),
+          endActionPane: ActionPane(
+            motion: const DrawerMotion(),
+            extentRatio: 0.26,
+            // 저장한 이슈 화면([archiveMode])의 삭제는 실제로 카드가 목록에서
+            // 빠지는 동작이라 onDismissed로 진짜 사라지게 함. 홈/검색의
+            // 저장은 반대로 카드가 계속 그 자리에 남아있어야 해서(즐겨찾기
+            // 여부만 토글) confirmDismiss 안에서 토글만 하고 항상 false를
+            // 반환 — closeOnCancel로 원래 자리로 스르륵 돌아가게 함. 끝까지
+            // 밀면 버튼을 안 눌러도 바로 저장/취소되고, 다시 끝까지 밀면
+            // 반대로 토글됨.
+            dismissible: widget.archiveMode
+                ? DismissiblePane(onDismissed: _toggleSave)
+                : DismissiblePane(
+                    // confirmDismiss가 항상 false를 반환해서 실제로는
+                    // 절대 호출 안 되지만, 생성자가 필수로 요구함.
+                    onDismissed: () {},
+                    confirmDismiss: () async {
+                      await _toggleSave();
+                      return false;
+                    },
+                    closeOnCancel: true,
+                  ),
+            children: [
+              if (widget.archiveMode)
+                SlidableAction(
+                  onPressed: (_) => _toggleSave(),
+                  backgroundColor: AppColors.accent2,
+                  foregroundColor: Colors.white,
+                  icon: Icons.delete_outline,
+                  label: '삭제',
+                )
+              else
+                SlidableAction(
+                  onPressed: (context) {
+                    _toggleSave();
+                    Slidable.of(context)?.close();
+                  },
+                  // "저장 취소"는 버튼 폭에서 잘려서 "취소"로 줄임. 아이콘만으로는
+                  // 저장/취소 구분이 잘 안 보인다는 피드백으로 배경색도 상태에
+                  // 따라 다르게 함(삭제와 같은 accent2 톤 재사용).
+                  backgroundColor: saved ? AppColors.accent2 : AppColors.accent,
+                  foregroundColor: Colors.white,
+                  icon: saved ? Icons.bookmark_remove_outlined : Icons.bookmark_add_outlined,
+                  label: saved ? '취소' : '저장',
+                ),
+            ],
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.line),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: AppColors.cardShadow,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: _toggleExpand,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 7,
-                          runSpacing: 2,
-                          children: [
-                            Text(
-                              keywords.first,
-                              style: AppTypography.serif(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.ink,
+                        if (widget.rank != null) ...[
+                          SizedBox(
+                            width: 20,
+                            child: Text(
+                              '${widget.rank}',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: AppColors.inkFaint,
+                                fontFeatures: const [FontFeature.tabularFigures()],
                               ),
                             ),
-                            if (keywords.length > 1)
-                              Text.rich(
-                                TextSpan(children: [
-                                  TextSpan(
-                                    text: '· ',
-                                    style: TextStyle(color: AppColors.inkFaint),
-                                  ),
-                                  TextSpan(
-                                    text: keywords[1],
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 7,
+                                runSpacing: 2,
+                                children: [
+                                  Text(
+                                    keywords.first,
                                     style: AppTypography.serif(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.inkSoft,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ink,
                                     ),
                                   ),
-                                ]),
+                                  if (keywords.length > 1)
+                                    Text.rich(
+                                      TextSpan(children: [
+                                        TextSpan(
+                                          text: '· ',
+                                          style: TextStyle(color: AppColors.inkFaint),
+                                        ),
+                                        TextSpan(
+                                          text: keywords[1],
+                                          style: AppTypography.serif(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.inkSoft,
+                                          ),
+                                        ),
+                                      ]),
+                                    ),
+                                  _CategoryBadge(category: issue.category, color: catColor),
+                                  if (isSingle) const _SingleTag(),
+                                ],
                               ),
-                            _CategoryBadge(category: issue.category, color: catColor),
-                            if (isSingle) const _SingleTag(),
-                          ],
+                              const SizedBox(height: 2),
+                              Text(
+                                issue.representativeTitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, color: AppColors.inkSoft, height: 1.35),
+                              ),
+                              if (widget.subtitle != null) ...[
+                                const SizedBox(height: 3),
+                                Text(widget.subtitle!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
+                              ],
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          issue.representativeTitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: AppColors.inkSoft, height: 1.35),
+                        const SizedBox(width: 10),
+                        _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
+                        const SizedBox(width: 12),
+                        _CountStat(count: issue.articleCount),
+                        const SizedBox(width: 6),
+                        AnimatedRotation(
+                          turns: _expanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
                         ),
-                        if (widget.subtitle != null) ...[
-                          const SizedBox(height: 3),
-                          Text(widget.subtitle!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
-                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
-                  const SizedBox(width: 12),
-                  _CountStat(count: issue.articleCount),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      _saved ? Icons.bookmark : Icons.bookmark_border,
-                      size: 17,
-                      color: _saved ? AppColors.accent2 : AppColors.inkFaint,
-                    ),
-                    onPressed: _toggleSave,
-                  ),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.25 : 0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
-                  ),
-                ],
-              ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  child: _expanded ? _ExpandedBody(detail: _detail!) : const SizedBox(width: double.infinity),
+                ),
+              ],
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            child: _expanded ? _ExpandedBody(detail: _detail!) : const SizedBox(width: double.infinity),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -379,7 +445,14 @@ class _OutletGroup extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          for (final a in articles) _ArticleLine(article: a),
+          // 2026-09-06: 기사가 여러 건일 때 "목록처럼" 안 읽힌다는 피드백으로
+          // 도트 대신 얇은 구분선을 넣음 — 아이콘은 넣지 말아달라던 예전
+          // 결정과는 안 부딪히고(구분선은 아이콘이 아니라 지면 요소), 도트보다
+          // 신문 지면에서 기사 사이를 가르는 느낌이라 이 앱 톤에 더 맞음.
+          for (var i = 0; i < articles.length; i++) ...[
+            if (i != 0) const Divider(height: 1, color: AppColors.divider),
+            _ArticleLine(article: articles[i]),
+          ],
         ],
       ),
     );

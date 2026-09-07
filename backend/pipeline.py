@@ -21,7 +21,7 @@ from pathlib import Path
 
 from clustering import cluster_articles
 from fetcher import fetch_all
-from meta_cluster import group_into_super_clusters
+from meta_cluster import group_into_super_clusters, merge_duplicate_clusters
 
 SAMPLE_PATH = Path(__file__).parent / "sample_data" / "sample_articles.json"
 
@@ -31,9 +31,10 @@ def load_sample_articles() -> list[dict]:
         return json.load(f)
 
 
-def run(live: bool = False, threshold: float = 0.45) -> list[dict]:
+def run(live: bool = False, threshold: float = 0.45, merge_threshold: float = 0.60) -> list[dict]:
     articles = fetch_all() if live else load_sample_articles()
-    return cluster_articles(articles, threshold=threshold)
+    clusters = cluster_articles(articles, threshold=threshold)
+    return merge_duplicate_clusters(clusters, articles, threshold=merge_threshold)
 
 
 def run_grouped(

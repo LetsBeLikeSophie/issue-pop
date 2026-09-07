@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 2026-08-30: 실기기에서 처음 돌려보고 발견함 — 이게 없으면 앱이
+         네트워크 자체를 못 써서 모든 API 호출이 "Failed host lookup"
+         (DNS 조회 실패)로 보임. 지금까지는 웹 프리뷰로만 테스트해서
+         브라우저가 이미 네트워크 권한을 갖고 있으니 못 잡았던 버그. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="issue_pop"
         android:name="${applicationName}"
