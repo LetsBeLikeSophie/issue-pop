@@ -57,13 +57,19 @@ class ArticleOut {
   final String link;
   final String? published;
 
-  ArticleOut({required this.outlet, required this.title, required this.link, this.published});
+  /// 2026-09-07: 기사 썸네일 — 매체마다 있는 곳/없는 곳이 섞여 있어서
+  /// (연합뉴스는 대부분 있음, 경향신문은 거의 없음, 실측 확인) null이면
+  /// 그냥 썸네일 없이 텍스트만 보여주면 됨(fetcher.py의 _extract_image).
+  final String? image;
+
+  ArticleOut({required this.outlet, required this.title, required this.link, this.published, this.image});
 
   factory ArticleOut.fromJson(Map<String, dynamic> json) => ArticleOut(
         outlet: json['outlet'] as String,
         title: json['title'] as String,
         link: json['link'] as String,
         published: json['published'] as String?,
+        image: json['image'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -71,6 +77,7 @@ class ArticleOut {
         'title': title,
         'link': link,
         'published': published,
+        'image': image,
       };
 }
 

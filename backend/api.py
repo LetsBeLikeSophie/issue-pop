@@ -33,19 +33,21 @@ import time
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import bcrypt
 import requests
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 import db
+import quotes
 import stocks
 from pipeline import run
 
@@ -66,6 +68,8 @@ _last_error: str | None = None
 _refresh_lock = asyncio.Lock()
 _weather_cache: dict | None = None
 _stock_news_cache: dict[str, list[dict]] = {}  # 티커 → 최신 뉴스(stocks.py 참고)
+_stock_quote_cache: dict[str, dict] = {}  # 티커 → 가격/변동(quotes.py 참고)
+_usd_krw_rate: float | None = None  # "$ 탭하면 원화로" 토글용, 하루 단위 갱신으로 충분
 
 
 def _make_id(cluster: dict) -> str:
@@ -153,7 +157,7 @@ def _seed_stock_watches(session, device_id: int) -> None:
 
 
 async def refresh_cache() -> None:
-    global _cache, _last_refresh, _last_error, _weather_cache, _stock_news_cache
+    global _cache, _last_refresh, _last_error, _weather_cache, _stock_news_cache, _stock_quote_cache, _usd_krw_rate
     async with _refresh_lock:
         try:
             clusters = await asyncio.to_thread(run, live=True)
@@ -170,6 +174,10 @@ async def refresh_cache() -> None:
 
         tickers = await asyncio.to_thread(_all_watched_tickers)
         _stock_news_cache = await asyncio.to_thread(stocks.fetch_all, tickers)
+        _stock_quote_cache = await asyncio.to_thread(quotes.fetch_quotes, tickers)
+        rate = await asyncio.to_thread(quotes.fetch_usd_krw_rate)
+        if rate is not None:
+            _usd_krw_rate = rate
 
         def _persist():
             with db.get_session() as session:
@@ -296,6 +304,7 @@ class ArticleOut(BaseModel):
     title: str
     link: str
     published: str | None = None
+    image: str | None = None
 
 
 class IssueSummary(BaseModel):
@@ -330,9 +339,45 @@ def _to_detail(issue_id: str, c: dict) -> IssueDetail:
         **_to_summary(issue_id, c).model_dump(),
         outlets=[OutletBreakdown(outlet=o, count=n) for o, n in c["outlets"].items()],
         articles=[
-            ArticleOut(outlet=a["outlet"], title=a["title"], link=a.get("link", ""), published=a.get("published"))
+            ArticleOut(
+                outlet=a["outlet"],
+                title=a["title"],
+                link=a.get("link", ""),
+                published=a.get("published"),
+                image=a.get("image"),
+            )
             for a in c["articles"]
         ],
+    )
+
+
+# 2026-09-07: 기사 썸네일 이미지용 프록시 — Flutter 웹(CanvasKit 렌더러)이
+# CORS 허용 헤더 없는 이미지는 못 그림(실측 확인: 연합뉴스 이미지 서버가
+# Access-Control-Allow-Origin을 아예 안 보냄 — 브라우저 <img> 태그로는
+# 잘 뜨는데 CanvasKit 캔버스에 텍스처로 올릴 때만 막힘). 서버가 대신
+# 받아와서 CORS 허용 헤더를 붙여 다시 내려줌. 아무 URL이나 프록시하면
+# SSRF/무단 대역폭 사용 통로가 될 수 있어서, 실제 수집 중인 매체
+# 도메인만 허용함(sources.py의 RSS_SOURCES와 대응).
+_ALLOWED_IMAGE_DOMAINS = (
+    "yna.co.kr", "mt.co.kr", "sbs.co.kr", "donga.com", "ohmynews.com",
+    "mk.co.kr", "hani.co.kr", "khan.co.kr", "seoul.co.kr",
+)
+
+
+@app.get("/image-proxy")
+async def image_proxy(url: str):
+    host = urlparse(url).hostname or ""
+    if not any(host == d or host.endswith(f".{d}") for d in _ALLOWED_IMAGE_DOMAINS):
+        raise HTTPException(status_code=403, detail="domain not allowed")
+    try:
+        res = await asyncio.to_thread(requests.get, url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        res.raise_for_status()
+    except Exception as e:  # noqa: BLE001 - 이미지 하나 실패해도 프론트가 텍스트만 보여주면 됨
+        raise HTTPException(status_code=502, detail=f"failed to fetch image: {e}") from e
+    return Response(
+        content=res.content,
+        media_type=res.headers.get("Content-Type", "image/jpeg"),
+        headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"},
     )
 
 
@@ -610,9 +655,21 @@ async def list_stock_watches(device_id: int):
                     "name": name,
                     "sector": sector,
                     "news": _stock_news_cache.get(w.ticker, []),
+                    "quote": _stock_quote_cache.get(w.ticker),
                 }
             )
         return result
+
+
+@app.get("/fx/usd-krw")
+async def get_usd_krw_rate():
+    """2026-09-07: 관심 종목 가격을 "탭하면 원화로" 토글하는 기능용 —
+    환율은 자주 안 바뀌니까 하루 단위 캐시(quotes.fetch_usd_krw_rate,
+    refresh_cache에서 갱신)만 읽음. 아직 한 번도 못 가져왔으면(서버
+    막 시작 직후 등) 503."""
+    if _usd_krw_rate is None:
+        raise HTTPException(status_code=503, detail="exchange rate not available yet")
+    return {"usd_krw": _usd_krw_rate}
 
 
 class StockWatchIn(BaseModel):
@@ -650,6 +707,10 @@ async def add_stock_watch(body: StockWatchIn):
     # 이미 다른 기기가 등록해서 캐시에 있으면 다시 안 부름(할당량 절약).
     if ticker not in _stock_news_cache:
         _stock_news_cache[ticker] = await asyncio.to_thread(stocks.fetch_one_with_translation, ticker)
+    if ticker not in _stock_quote_cache:
+        quote = await asyncio.to_thread(quotes.fetch_quote, ticker)
+        if quote is not None:
+            _stock_quote_cache[ticker] = quote
     return {"id": watch.id, "device_id": watch.device_id, "ticker": ticker, "name": name, "sector": sector}
 
 

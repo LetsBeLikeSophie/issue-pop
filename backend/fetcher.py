@@ -12,12 +12,14 @@ Article 표준 스키마:
     "summary": str,       # 요약/본문 일부
     "link": str,          # 원문 링크
     "published": str,     # ISO 8601 문자열 (파싱 실패 시 None)
+    "image": str | None,  # 썸네일 이미지 URL (없으면 None, 2026-09-07 추가)
 }
 """
 
 from __future__ import annotations
 
 import html
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -25,6 +27,27 @@ from typing import Any
 import feedparser
 
 from sources import RSS_SOURCES
+
+# 2026-09-07: "기사에 사진 없으니 심심하다"는 피드백으로 추가 — 매체마다
+# 이미지가 오는 방식이 다름. 연합뉴스/SBS/매일경제는 feedparser가
+# media:content를 구조화해서 주고(entry.media_content), 동아일보/
+# 머니투데이/서울신문/오마이뉴스는 summary 안에 <img src=...> 태그가
+# 그냥 섞여 있음(text_utils.clean_summary가 나중에 이 태그를 지우는데,
+# 그건 유사도 계산용 정제라 여기(fetcher, 정제 전 원본)서 먼저 뽑아야
+# 함). 경향신문처럼 아예 이미지가 없는 매체도 있어서(실측 확인),
+# 없으면 조용히 None — 프론트가 이미지 없는 기사는 썸네일 없이 텍스트만
+# 보여주면 됨.
+_IMG_SRC_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']')
+
+
+def _extract_image(entry: Any) -> str | None:
+    media = getattr(entry, "media_content", None)
+    if media:
+        url = media[0].get("url")
+        if url:
+            return url
+    match = _IMG_SRC_RE.search(getattr(entry, "summary", ""))
+    return match.group(1) if match else None
 
 # "오늘 이슈"여야 하는데 매체 피드에 며칠 지난 기사가 섞여 들어오면
 # 클러스터링 결과가 실제보다 부풀려짐(2026-08-25, 실측하며 발견 —
@@ -79,6 +102,7 @@ def fetch_outlet(source: dict) -> list[dict]:
                 "summary": html.unescape(getattr(entry, "summary", "")).strip(),
                 "link": getattr(entry, "link", ""),
                 "published": published,
+                "image": _extract_image(entry),
             }
         )
     if skipped_old:

@@ -462,6 +462,11 @@ class _OutletGroup extends StatelessWidget {
 /// 기사 한 줄 — 밑줄(언더라인)로 "이건 눌러서 원문으로 나가는 링크"라는
 /// 걸 표시함. 아이콘은 넣지 말아달라는 피드백이 있어서 밑줄 하나로만
 /// 처리했음.
+///
+/// 2026-09-07: "기사에 사진 없으니 심심하다"는 피드백으로 썸네일 추가 —
+/// 매체마다 이미지가 있는 곳/없는 곳이 섞여 있어서(fetcher.py의
+/// _extract_image), 있는 기사만 왼쪽에 작은 정사각형으로 보여주고 없는
+/// 기사는 지금처럼 텍스트만(시안 A안, 아티팩트로 먼저 비교해보고 확정함).
 class _ArticleLine extends StatelessWidget {
   const _ArticleLine({required this.article});
 
@@ -469,22 +474,49 @@ class _ArticleLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final image = article.image;
     return InkWell(
       onTap: article.link.isEmpty
           ? null
           : () => launchUrl(Uri.parse(article.link), mode: LaunchMode.externalApplication),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          article.title,
-          style: TextStyle(
-            fontSize: 12.5,
-            color: AppColors.accent,
-            height: 1.5,
-            decoration: TextDecoration.underline,
-            decorationColor: AppColors.accent.withValues(alpha: 0.35),
-            decorationThickness: 1,
-          ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (image != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.network(
+                  // 2026-09-07: 매체 이미지 서버가 CORS 허용 헤더를 안 보내서
+                  // Flutter 웹(CanvasKit)이 직접 못 그림(실측 확인 — 브라우저
+                  // <img> 태그로는 잘 뜨는데 캔버스 텍스처로 올릴 때만 막힘).
+                  // 서버 프록시(GET /image-proxy)를 거쳐서 받아옴.
+                  ApiClient.proxyImageUrl(image),
+                  width: 44,
+                  height: 44,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(width: 44, height: 44, color: AppColors.surfaceAlt),
+                  loadingBuilder: (context, child, progress) =>
+                      progress == null ? child : Container(width: 44, height: 44, color: AppColors.surfaceAlt),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                article.title,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.accent,
+                  height: 1.5,
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.accent.withValues(alpha: 0.35),
+                  decorationThickness: 1,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

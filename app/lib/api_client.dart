@@ -30,6 +30,14 @@ class ApiClient {
     defaultValue: 'http://127.0.0.1:8000',
   );
 
+  /// 2026-09-07: 기사 썸네일 이미지 프록시 URL 생성용 — 항상
+  /// ApiClient() 인스턴스를 통해서만 쓰이고 baseUrl 오버라이드도 안
+  /// 하므로(main.dart 참고), ExpandableIssueCard처럼 api 인스턴스가
+  /// 없을 수도 있는 곳(archive_screen.dart는 api를 안 넘김)에서도 이
+  /// 정적 기본값으로 프록시 URL을 만들 수 있음.
+  static String proxyImageUrl(String imageUrl) =>
+      '$_defaultBaseUrl/image-proxy?url=${Uri.encodeQueryComponent(imageUrl)}';
+
   final String baseUrl;
 
   /// 2026-08-24: 요약이 아니라 기사 목록까지 포함한 상세를 통째로 받음 —
@@ -171,6 +179,18 @@ class ApiClient {
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => StockCatalogEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 2026-09-07: 관심 종목 가격을 "탭하면 원화로" 토글하는 기능용 환율.
+  /// 서버가 하루 단위로 캐싱해서 갱신함(Frankfurter.app) — 아직 한 번도
+  /// 못 가져왔으면(막 시작 직후 등) 503, 그때는 null을 돌려줘서 호출하는
+  /// 쪽이 그냥 달러만 보여주면 됨.
+  Future<double?> getUsdKrwRate() async {
+    final uri = Uri.parse('$baseUrl/fx/usd-krw');
+    final res = await http.get(uri);
+    if (res.statusCode != 200) return null;
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return (map['usd_krw'] as num).toDouble();
   }
 
   /// 2026-09-06: 관심 종목(브랜드) 뉴스. 기기가 한 번도 등록한 적 없으면
@@ -324,6 +344,20 @@ class StockCatalogEntry {
       );
 }
 
+class StockQuote {
+  const StockQuote({required this.price, required this.change, required this.percent});
+
+  final double price;
+  final double change;
+  final double percent;
+
+  factory StockQuote.fromJson(Map<String, dynamic> json) => StockQuote(
+        price: (json['price'] as num).toDouble(),
+        change: (json['change'] as num).toDouble(),
+        percent: (json['percent'] as num).toDouble(),
+      );
+}
+
 class StockWatch {
   const StockWatch({
     required this.id,
@@ -331,6 +365,7 @@ class StockWatch {
     required this.name,
     required this.sector,
     required this.news,
+    this.quote,
   });
 
   final int id;
@@ -339,8 +374,12 @@ class StockWatch {
   final String sector;
   final List<StockNewsItem> news;
 
-  /// POST /stocks 응답에는 news 필드가 없음(막 추가한 티커라 아직 캐시된
-  /// 뉴스가 없어서) — 그때는 빈 목록으로 처리.
+  /// 2026-09-07: Finnhub 현재가/변동(quotes.py) — 키 없거나 API 실패
+  /// 시 null, 그때는 가격 없이 뉴스만 보여주면 됨.
+  final StockQuote? quote;
+
+  /// POST /stocks 응답에는 news/quote 필드가 없음(막 추가한 티커라 아직
+  /// 캐시된 데이터가 없어서) — 그때는 빈 목록/null로 처리.
   factory StockWatch.fromJson(Map<String, dynamic> json) => StockWatch(
         id: json['id'] as int,
         ticker: json['ticker'] as String,
@@ -350,6 +389,7 @@ class StockWatch {
                 ?.map((e) => StockNewsItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
+        quote: json['quote'] != null ? StockQuote.fromJson(json['quote'] as Map<String, dynamic>) : null,
       );
 }
 

@@ -25,6 +25,19 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   final _scrollController = ScrollController();
   bool _showScrollTop = false;
 
+  /// 2026-09-07: 가격을 탭하면 달러/원화가 화면 전체에서 한 번에 바뀌는
+  /// 토글("환율 계산까지는 힘든가... 원으로 보고 싶다"는 피드백으로 추가,
+  /// 설정 화면까지 가는 대신 숫자 자체를 눌러서 바꾸는 쪽을 택함 — 러닝
+  /// 앱에서 거리 탭하면 km/mile 바뀌는 것과 같은 패턴). 환율은 서버가
+  /// 하루 단위로 캐싱해둔 걸 한 번만 받아옴(Frankfurter.app 기반).
+  double? _usdKrwRate;
+  bool _showKrw = false;
+
+  void _toggleCurrency() {
+    if (_usdKrwRate == null) return; // 환율을 아직 못 받아왔으면 토글해도 의미 없음
+    setState(() => _showKrw = !_showKrw);
+  }
+
   /// 티커 칩을 누르면 그 종목 카드로 스크롤 이동시키는 데 씀(칩이 많아지면
   /// 훑어보기 힘들다는 피드백으로 추가) — 티커별로 하나씩 유지, build()마다
   /// 새로 만들지 않고 없는 것만 채움(같은 키 인스턴스가 유지돼야
@@ -50,6 +63,9 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     _scrollController.addListener(() {
       final show = _scrollController.offset > 300;
       if (show != _showScrollTop) setState(() => _showScrollTop = show);
+    });
+    widget.api.getUsdKrwRate().then((rate) {
+      if (mounted && rate != null) setState(() => _usdKrwRate = rate);
     });
   }
 
@@ -213,6 +229,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                               for (final w in watches)
                                 _TickerChip(
                                   label: w.ticker,
+                                  quote: w.quote,
                                   onTap: () => _scrollToTicker(w.ticker),
                                   onRemove: () => _removeTicker(w.id),
                                 ),
@@ -223,7 +240,13 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                             _SectorLabel(entry.key),
                             const SizedBox(height: 6),
                             for (final w in entry.value) ...[
-                              _StockCard(key: _cardKeys[w.ticker], watch: w),
+                              _StockCard(
+                                key: _cardKeys[w.ticker],
+                                watch: w,
+                                showKrw: _showKrw,
+                                usdKrwRate: _usdKrwRate,
+                                onTapPrice: _toggleCurrency,
+                              ),
                               const SizedBox(height: 8),
                             ],
                             const SizedBox(height: 8),
@@ -243,9 +266,10 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
 }
 
 class _TickerChip extends StatelessWidget {
-  const _TickerChip({required this.label, required this.onTap, required this.onRemove});
+  const _TickerChip({required this.label, required this.onTap, required this.onRemove, this.quote});
 
   final String label;
+  final StockQuote? quote;
 
   /// 라벨 부분을 누르면 그 종목 카드로 스크롤 이동(x 버튼과는 별도 영역).
   final VoidCallback onTap;
@@ -268,6 +292,17 @@ class _TickerChip extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
+                  if (quote != null) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatPercent(quote!.percent),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: quote!.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                      ),
+                    ),
+                  ],
                   // 이 칩이 눌러서 이동 가능하다는 걸 보여주는 힌트 아이콘
                   // ("눌러도 되는지 잘 모르겠다"는 피드백으로 추가).
                   const SizedBox(width: 2),
@@ -285,6 +320,23 @@ class _TickerChip extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatPercent(double percent) => '${percent >= 0 ? '+' : ''}${percent.toStringAsFixed(1)}%';
+
+/// 소수점 둘째 자리까지의 달러 표시("$234.12").
+String _formatUsd(double price) => '\$${price.toStringAsFixed(2)}';
+
+/// 환율 곱해서 반올림 후 3자리마다 콤마 찍은 원화 표시("419,999원").
+String _formatKrw(double usdPrice, double rate) {
+  final won = (usdPrice * rate).round();
+  final digits = won.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  return '$buffer원';
 }
 
 /// 섹터별 색 — 카테고리 색과 겹치지 않게 별도로 둠(백엔드가 색을 안
@@ -329,12 +381,27 @@ class _SectorLabel extends StatelessWidget {
 }
 
 class _StockCard extends StatelessWidget {
-  const _StockCard({super.key, required this.watch});
+  const _StockCard({
+    super.key,
+    required this.watch,
+    required this.showKrw,
+    required this.usdKrwRate,
+    required this.onTapPrice,
+  });
 
   final StockWatch watch;
 
+  /// 2026-09-07: 가격 탭하면 화면 전체가 달러/원화로 한 번에 바뀌는
+  /// 토글 상태 — StockWatchScreen이 들고 있고 여기선 그대로 받아서
+  /// 보여주기만 함(상태를 카드마다 따로 두면 "이 카드는 원인데 저
+  /// 카드는 달러" 같은 혼란이 생겨서 화면 단위로 통일).
+  final bool showKrw;
+  final double? usdKrwRate;
+  final VoidCallback onTapPrice;
+
   @override
   Widget build(BuildContext context) {
+    final quote = watch.quote;
     return AppCard(
       radius: 12,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -351,7 +418,35 @@ class _StockCard extends StatelessWidget {
                 child: Text(watch.ticker, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2)),
               ),
               const SizedBox(width: 7),
-              Text(watch.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              Expanded(
+                child: Text(watch.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              ),
+              if (quote != null) ...[
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: usdKrwRate == null ? null : onTapPrice,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: showKrw && usdKrwRate != null
+                              ? _formatKrw(quote.price, usdKrwRate!)
+                              : _formatUsd(quote.price),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                        ),
+                        TextSpan(
+                          text: ' ${_formatPercent(quote.percent)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           if (watch.news.isEmpty)
