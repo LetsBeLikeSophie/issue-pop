@@ -211,7 +211,16 @@ TICKER_META: dict[str, tuple[str, str]] = {
 
 
 def ticker_meta(ticker: str) -> tuple[str, str]:
-    return TICKER_META.get(ticker.upper(), (ticker.upper(), "기타"))
+    """티커 하나의 (표시명, 섹터) — POST /stocks·자동 시드에서 씀.
+    2026-09-07: TICKER_META(수동 큐레이션)에 없으면 티커 그대로를
+    표시명으로 쓰던 것을, catalog()처럼 SEC 목록도 확인하도록 고침 —
+    안 그러면 카탈로그 검색에서는 "Virgin Galactic Holdings, Inc"로
+    찾아서 추가했는데 정작 목록엔 "SPCE"로만 뜨는 불일치가 생김."""
+    t = ticker.upper()
+    if t in TICKER_META:
+        return TICKER_META[t]
+    sec_names = {e["ticker"]: e["name"] for e in _fetch_sec_catalog()}
+    return (sec_names.get(t, t), "기타")
 
 
 # 2026-09-07: TICKER_META 수동 목록(~120개)이 너무 좁다는 피드백으로
