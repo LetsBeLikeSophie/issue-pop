@@ -4,6 +4,7 @@ import '../api_client.dart';
 import '../device_registry.dart';
 import '../text_scale_store.dart';
 import '../theme.dart';
+import '../theme_store.dart';
 import '../widgets/app_card.dart';
 
 /// 2026-09-05: 계정/구독/의견보내기/앱정보를 전부 뺌 — 로그인은 붙여도
@@ -110,10 +111,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
+                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  const Text('설정', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  Text('설정', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
                 ],
               ),
             ),
@@ -285,7 +286,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     child: TextField(
                                       controller: _keywordController,
                                       onSubmitted: (_) => _addKeyword(),
-                                      style: const TextStyle(fontSize: 13, color: AppColors.ink),
+                                      style: TextStyle(fontSize: 13, color: AppColors.ink),
                                       decoration: InputDecoration(
                                         isDense: true,
                                         hintText: '예: 삼성전자',
@@ -303,7 +304,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   const SizedBox(width: 8),
                                   IconButton(
                                     onPressed: _addKeyword,
-                                    icon: const Icon(Icons.add_circle, color: AppColors.accent),
+                                    icon: Icon(Icons.add_circle, color: AppColors.accent),
                                   ),
                                 ],
                               ),
@@ -346,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('글자 크기', style: TextStyle(fontSize: 14, color: AppColors.ink)),
+                        Text('글자 크기', style: TextStyle(fontSize: 14, color: AppColors.ink)),
                         const SizedBox(height: 10),
                         ListenableBuilder(
                           listenable: TextScaleStore.instance,
@@ -361,6 +362,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       label: TextScaleStore.labels[i],
                                       selected: current == TextScaleStore.steps[i],
                                       onTap: () => TextScaleStore.instance.setScale(TextScaleStore.steps[i]),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  AppCard(
+                    radius: 18,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('색 테마', style: TextStyle(fontSize: 14, color: AppColors.ink)),
+                        const SizedBox(height: 10),
+                        ListenableBuilder(
+                          listenable: ThemeStore.instance,
+                          builder: (context, _) {
+                            final current = ThemeStore.instance.preset;
+                            return Row(
+                              children: [
+                                for (var i = 0; i < ColorPreset.values.length; i++) ...[
+                                  if (i != 0) const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _ThemePresetButton(
+                                      preset: ColorPreset.values[i],
+                                      selected: current == ColorPreset.values[i],
+                                      onTap: () => ThemeStore.instance.setPreset(ColorPreset.values[i]),
                                     ),
                                   ),
                                 ],
@@ -412,11 +444,11 @@ class _ToggleRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: showDivider
-          ? const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
+          ? BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
           : null,
       child: Row(
         children: [
-          Text(label, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
+          Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink)),
           const Spacer(),
           Switch(
             value: value,
@@ -456,6 +488,72 @@ class _TextScaleButton extends StatelessWidget {
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? Colors.white : AppColors.inkSoft,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 2026-09-09: 색 테마 프리셋 버튼 — 라벨만으론 어떤 색인지 안 보여서
+/// 그 프리셋의 실제 bg/accent/accent2를 작은 스와치로 미리 보여줌
+/// (AppColors.previewColors — 지금 선택된 프리셋이 아니라 버튼이 나타내는
+/// 프리셋 자체의 색을 조회함).
+class _ThemePresetButton extends StatelessWidget {
+  const _ThemePresetButton({required this.preset, required this.selected, required this.onTap});
+
+  final ColorPreset preset;
+  final bool selected;
+  final VoidCallback onTap;
+
+  static const _labels = {
+    ColorPreset.current: '기본',
+    ColorPreset.neutral: '화이트',
+    ColorPreset.dark: '다크',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, accent, accent2) = AppColors.previewColors(preset);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.chipBg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: selected ? AppColors.accent : Colors.transparent, width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: bg,
+                shape: BoxShape.circle,
+                border: Border.all(color: selected ? Colors.white : AppColors.line, width: 1),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                  const SizedBox(width: 2),
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: accent2, shape: BoxShape.circle)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _labels[preset]!,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? Colors.white : AppColors.inkSoft,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -515,7 +613,7 @@ class _QuietHourButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label, style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
-            Text(_formatHour(hour), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+            Text(_formatHour(hour), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
           ],
         ),
       ),
@@ -602,12 +700,12 @@ class _KeywordChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accent)),
+          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accent)),
           const SizedBox(width: 2),
           InkWell(
             borderRadius: BorderRadius.circular(999),
             onTap: onRemove,
-            child: const Icon(Icons.close, size: 14, color: AppColors.accent),
+            child: Icon(Icons.close, size: 14, color: AppColors.accent),
           ),
         ],
       ),
@@ -636,11 +734,11 @@ class _PlainRow extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: showDivider
-            ? const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
+            ? BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
             : null,
         child: Row(
           children: [
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 14, color: AppColors.ink))),
+            Expanded(child: Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink))),
             if (trailing != null)
               Text(trailing!, style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
             if (trailing != null) const SizedBox(width: 4),
@@ -688,7 +786,7 @@ class _HourPickerSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink),
               ),
             ),
-            const Divider(height: 1, color: AppColors.divider),
+            Divider(height: 1, color: AppColors.divider),
             Expanded(
               child: ListView.builder(
                 itemCount: 24,
@@ -703,7 +801,7 @@ class _HourPickerSheet extends StatelessWidget {
                         fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                       ),
                     ),
-                    trailing: isSelected ? const Icon(Icons.check, size: 18, color: AppColors.accent) : null,
+                    trailing: isSelected ? Icon(Icons.check, size: 18, color: AppColors.accent) : null,
                     onTap: () => Navigator.of(context).pop(hour),
                   );
                 },

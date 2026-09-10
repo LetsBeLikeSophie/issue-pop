@@ -8,6 +8,11 @@ class IssueSummary {
   final int articleCount;
   final int outletCount;
 
+  /// 2026-09-08: "N일째 보도 중" 배지용 — 이 이슈 id가 DB에 처음 잡힌
+  /// 시각. 일별 보도량 히스토리는 없어서(추이 그래프 대신 이 배지만
+  /// 씀) 진짜 "추이"는 아니고 지속 기간만 보여줌.
+  final DateTime? firstSeenAt;
+
   IssueSummary({
     required this.id,
     required this.keyword,
@@ -16,6 +21,7 @@ class IssueSummary {
     required this.representativeTitle,
     required this.articleCount,
     required this.outletCount,
+    this.firstSeenAt,
   });
 
   factory IssueSummary.fromJson(Map<String, dynamic> json) => IssueSummary(
@@ -26,6 +32,7 @@ class IssueSummary {
         representativeTitle: json['representative_title'] as String,
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
+        firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +43,7 @@ class IssueSummary {
         'representative_title': representativeTitle,
         'article_count': articleCount,
         'outlet_count': outletCount,
+        'first_seen_at': firstSeenAt?.toIso8601String(),
       };
 }
 
@@ -94,6 +102,7 @@ class IssueDetail extends IssueSummary {
     required super.representativeTitle,
     required super.articleCount,
     required super.outletCount,
+    super.firstSeenAt,
     required this.outlets,
     required this.articles,
   });
@@ -106,6 +115,7 @@ class IssueDetail extends IssueSummary {
         representativeTitle: json['representative_title'] as String,
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
+        firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
         outlets: (json['outlets'] as List)
             .map((e) => OutletBreakdown.fromJson(e as Map<String, dynamic>))
             .toList(),

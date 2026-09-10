@@ -2,6 +2,9 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // 2026-09-08: google-services.json을 읽어서 Firebase.initializeApp()이
+    // 네이티브 설정을 자동으로 찾게 해줌(FCM 다이제스트 알림용).
+    id("com.google.gms.google-services")
 }
 
 android {

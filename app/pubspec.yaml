@@ -39,6 +39,9 @@ dependencies:
   url_launcher: ^6.3.1
   google_fonts: ^6.2.1
   flutter_slidable: ^3.1.1
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.6
+  share_plus: ^13.3.0
 
 dev_dependencies:
   flutter_test:

@@ -4,7 +4,9 @@ import '../api_client.dart';
 import '../models/issue.dart';
 import '../theme.dart';
 import '../widgets/expandable_issue_card.dart';
+import '../widgets/share_card.dart';
 import 'archive_screen.dart';
+import 'keyword_watch_screen.dart';
 import 'settings_screen.dart';
 import 'stock_watch_screen.dart';
 
@@ -136,6 +138,14 @@ class _HomeScreenState extends State<HomeScreen> {
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
               ),
+              onKeywords: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => KeywordWatchScreen(api: widget.api)),
+              ),
+              onShare: () async {
+                final issues = await _trending;
+                if (!context.mounted) return;
+                await shareTodayTrend(context, issues);
+              },
               onArchive: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ArchiveScreen()),
               ),
@@ -145,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             if (!isSearching)
               Padding(
+                key: const ValueKey('pageTabBar'),
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                 child: _PageTabBar(
                   specs: _pageSpecs,
@@ -152,7 +163,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   onSelected: _goToPage,
                 ),
               ),
+            // 2026-09-10: 검색어를 입력하면 isSearching이 true가 되면서
+            // 바로 위 카테고리 탭바가 트리에서 사라지는데, 그러면 이
+            // Toolbar(검색창 포함)가 Column의 children 목록에서 한 칸
+            // 앞으로 밀림 — Key 없이는 Flutter가 "그 자리"에 있던 이전
+            // 위젯(카테고리 탭바)과 타입이 달라서 이 Toolbar를 완전히 새로
+            // 마운트해버림. 그 바람에 TextField가 통째로 재생성되면서
+            // 포커스/커서/IME 조합 상태가 다 날아가서 "ㄱ" 치자마자 커서가
+            // 밖으로 나가고 "가"가 "ㄱㅏ"로 따로 놀던 버그였음. Key로
+            // 이 Toolbar가 위치와 무관하게 "같은 위젯"임을 알려줘서 고침.
             Padding(
+              key: const ValueKey('toolbar'),
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: _Toolbar(
                 controller: _searchController,
@@ -163,6 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             if (isSearching)
               Expanded(
+                key: const ValueKey('searchResults'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                   child: FutureBuilder<List<IssueSummary>>(
@@ -190,8 +212,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               )
             else ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 6, key: ValueKey('pageViewGap')),
               Expanded(
+                key: const ValueKey('pageView'),
                 child: PageView(
                   controller: _pageController,
                   onPageChanged: (i) => setState(() => _page = i),
@@ -360,11 +383,15 @@ class _SwipeHint extends StatelessWidget {
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.onStocks,
+    required this.onKeywords,
+    required this.onShare,
     required this.onArchive,
     required this.onSettings,
   });
 
   final VoidCallback onStocks;
+  final VoidCallback onKeywords;
+  final VoidCallback onShare;
   final VoidCallback onArchive;
   final VoidCallback onSettings;
 
@@ -372,37 +399,61 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ink, width: 2.5))),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.ink, width: 2.5))),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Issue Pop', style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                const SizedBox(height: 3),
-                Text(
-                  '오늘 많이 언급된 이슈 · 매체 커버리지 순',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
-                ),
-              ],
+            child: Text(
+              'Issue Pop',
+              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
+              // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
+              // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
+              // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
+              // 들어가면 잘라서 절대 넘치지 않게 함.
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
             ),
           ),
+          // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
+          // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
+          // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
+          // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
           IconButton(
-            icon: const Icon(Icons.show_chart, color: AppColors.ink),
+            icon: Icon(Icons.show_chart, color: AppColors.ink),
             onPressed: onStocks,
             tooltip: '관심 종목',
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
           ),
           IconButton(
-            icon: const Icon(Icons.bookmark_border, color: AppColors.ink),
+            icon: Icon(Icons.person_search, color: AppColors.ink),
+            onPressed: onKeywords,
+            tooltip: '관심 워치',
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: Icon(Icons.ios_share, color: AppColors.ink),
+            onPressed: onShare,
+            tooltip: '오늘의 트렌드 공유',
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
+          ),
+          IconButton(
+            icon: Icon(Icons.bookmark_border, color: AppColors.ink),
             onPressed: onArchive,
             tooltip: '저장한 이슈',
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
           ),
           IconButton(
-            icon: const Icon(Icons.person_outline, color: AppColors.ink),
+            icon: Icon(Icons.person_outline, color: AppColors.ink),
             onPressed: onSettings,
             tooltip: '설정',
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            constraints: const BoxConstraints(),
           ),
         ],
       ),
@@ -447,7 +498,7 @@ class _Toolbar extends StatelessWidget {
                   child: TextField(
                     controller: controller,
                     onChanged: onQueryChanged,
-                    style: const TextStyle(fontSize: 13, color: AppColors.ink),
+                    style: TextStyle(fontSize: 13, color: AppColors.ink),
                     decoration: InputDecoration(
                       isDense: true,
                       isCollapsed: true,

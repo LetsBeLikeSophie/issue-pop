@@ -231,6 +231,8 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                     ),
                                   _CategoryBadge(category: issue.category, color: catColor),
                                   if (isSingle) const _SingleTag(),
+                                  if (_daysTracked(issue.firstSeenAt) case final days? when days >= 2)
+                                    _DaysTrackedBadge(days: days),
                                 ],
                               ),
                               const SizedBox(height: 2),
@@ -302,9 +304,37 @@ class _SingleTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(4)),
-      child: const Text(
+      child: Text(
         '단독',
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accent2, letterSpacing: 0.02),
+      ),
+    );
+  }
+}
+
+/// 2026-09-08: "이슈 추이" 요청으로 시작했는데, 일별 보도량 히스토리가
+/// DB에 없어서(예전에 "의미없다"고 판단해 안 만들기로 함) 진짜 그래프
+/// 대신 지속 기간만 보여주는 배지로 축소함 — first_seen_at 하루만 있어도
+/// 구할 수 있는 정직한 값. 1일째는 "그냥 새 이슈"라 굳이 안 보여주고,
+/// 이틀 이상 이어지는 이슈만 표시함(build()에서 days >= 2로 걸러줌).
+int? _daysTracked(DateTime? firstSeenAt) {
+  if (firstSeenAt == null) return null;
+  return DateTime.now().difference(firstSeenAt).inDays + 1;
+}
+
+class _DaysTrackedBadge extends StatelessWidget {
+  const _DaysTrackedBadge({required this.days});
+
+  final int days;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(4)),
+      child: Text(
+        '$days일째 보도 중',
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accent, letterSpacing: 0.02),
       ),
     );
   }
@@ -361,7 +391,7 @@ class _CountStat extends StatelessWidget {
       children: [
         Text(
           '$count',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
             color: AppColors.ink,
@@ -384,7 +414,7 @@ class _ExpandedBody extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.line))),
       child: FutureBuilder<IssueDetail>(
         future: detail,
         builder: (context, snapshot) {
@@ -441,7 +471,7 @@ class _OutletGroup extends StatelessWidget {
             decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(4)),
             child: Text(
               '$outlet ${articles.length}건',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.accent),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.accent),
             ),
           ),
           const SizedBox(height: 6),
@@ -450,7 +480,7 @@ class _OutletGroup extends StatelessWidget {
           // 결정과는 안 부딪히고(구분선은 아이콘이 아니라 지면 요소), 도트보다
           // 신문 지면에서 기사 사이를 가르는 느낌이라 이 앱 톤에 더 맞음.
           for (var i = 0; i < articles.length; i++) ...[
-            if (i != 0) const Divider(height: 1, color: AppColors.divider),
+            if (i != 0) Divider(height: 1, color: AppColors.divider),
             _ArticleLine(article: articles[i]),
           ],
         ],

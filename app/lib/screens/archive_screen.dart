@@ -22,10 +22,10 @@ class ArchiveScreen extends StatelessWidget {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
+                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  const Text(
+                  Text(
                     '저장한 이슈',
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
                   ),

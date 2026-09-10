@@ -124,16 +124,16 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
+                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text('관심 종목', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
                   ),
                   TextButton.icon(
                     onPressed: _showAddSheet,
-                    icon: const Icon(Icons.add, size: 16, color: AppColors.accent),
-                    label: const Text(
+                    icon: Icon(Icons.add, size: 16, color: AppColors.accent),
+                    label: Text(
                       '종목 추가',
                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.accent),
                     ),
@@ -156,7 +156,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
+                            Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
                             const SizedBox(height: 6),
                             Text(
                               '${snapshot.error}',
@@ -291,7 +291,7 @@ class _TickerChip extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
+                  Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
                   if (quote != null) ...[
                     const SizedBox(width: 4),
                     Text(
@@ -314,7 +314,7 @@ class _TickerChip extends StatelessWidget {
           InkWell(
             borderRadius: BorderRadius.circular(999),
             onTap: onRemove,
-            child: const Icon(Icons.close, size: 14, color: AppColors.accent),
+            child: Icon(Icons.close, size: 14, color: AppColors.accent),
           ),
         ],
       ),
@@ -372,7 +372,7 @@ class _SectorLabel extends StatelessWidget {
           const SizedBox(width: 7),
           Text(
             sector,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkSoft, letterSpacing: 0.3),
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkSoft, letterSpacing: 0.3),
           ),
         ],
       ),
@@ -415,11 +415,11 @@ class _StockCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(5)),
-                child: Text(watch.ticker, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2)),
+                child: Text(watch.ticker, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2)),
               ),
               const SizedBox(width: 7),
               Expanded(
-                child: Text(watch.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
               ),
               if (quote != null) ...[
                 const SizedBox(width: 6),
@@ -432,7 +432,7 @@ class _StockCard extends StatelessWidget {
                           text: showKrw && usdKrwRate != null
                               ? _formatKrw(quote.price, usdKrwRate!)
                               : _formatUsd(quote.price),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
                         ),
                         TextSpan(
                           text: ' ${_formatPercent(quote.percent)}',
@@ -459,7 +459,7 @@ class _StockCard extends StatelessWidget {
             // 말아달라던 예전 결정과 안 부딪히면서, 신문 지면에서 기사
             // 사이를 가르는 느낌 — expandable_issue_card.dart와 같은 처리).
             for (var i = 0; i < watch.news.length; i++) ...[
-              if (i != 0) const Divider(height: 1, color: AppColors.divider),
+              if (i != 0) Divider(height: 1, color: AppColors.divider),
               _NewsRow(item: watch.news[i]),
             ],
         ],
@@ -485,7 +485,7 @@ class _NewsRow extends StatelessWidget {
           children: [
             Text(
               translated ?? item.title,
-              style: const TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4, decoration: TextDecoration.underline),
+              style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4, decoration: TextDecoration.underline),
             ),
             // 번역 성공하면 원문(영어)을 옅은 글씨로 아래에 같이 보여줌 —
             // 번역 실패(키 없음/API 오류)하면 이 줄 없이 원문만 위에 나옴.
@@ -608,7 +608,7 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('종목 추가', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          Text('종목 추가', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
           const SizedBox(height: 4),
           Text('회사 이름이나 티커로 검색하세요 (예: 애플, AAPL)', style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
           const SizedBox(height: 14),
@@ -624,7 +624,7 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                     _errorText = null;
                   }),
                   onSubmitted: (_) => _submit(),
-                  style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                  style: TextStyle(fontSize: 14, color: AppColors.ink),
                   decoration: InputDecoration(
                     isDense: true,
                     hintText: 'AAPL 또는 애플',
@@ -637,7 +637,7 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton(onPressed: () => _submit(), icon: const Icon(Icons.add_circle, color: AppColors.accent)),
+              IconButton(onPressed: () => _submit(), icon: Icon(Icons.add_circle, color: AppColors.accent)),
             ],
           ),
           if (_errorText != null) ...[
@@ -682,7 +682,7 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: matches.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.divider),
+                      separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.divider),
                       itemBuilder: (context, i) {
                         final m = matches[i];
                         return InkWell(
@@ -697,13 +697,13 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                                       color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(5)),
                                   child: Text(
                                     m.ticker,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Text(m.name, style: const TextStyle(fontSize: 13, color: AppColors.ink)),
+                                  child: Text(m.name, style: TextStyle(fontSize: 13, color: AppColors.ink)),
                                 ),
                               ],
                             ),

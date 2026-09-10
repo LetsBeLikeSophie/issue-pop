@@ -182,6 +182,16 @@ async def refresh_cache() -> None:
         def _persist():
             with db.get_session() as session:
                 db.persist_issues(session, _cache)
+                # persist_issues가 새 이슈는 first_seen_at=지금으로 넣고
+                # 기존 이슈는 안 건드리므로, 여기서 다시 읽어오면 "이
+                # id가 DB에 처음 잡힌 시각"을 그대로 얻을 수 있음("N일째
+                # 보도 중" 배지용, IssueSummary.first_seen_at 참고).
+                rows = session.exec(
+                    db.select(db.Issue.id, db.Issue.first_seen_at).where(db.Issue.id.in_(_cache.keys()))
+                ).all()
+                for issue_id, first_seen_at in rows:
+                    if issue_id in _cache:
+                        _cache[issue_id]["first_seen_at"] = first_seen_at.isoformat()
                 pruned = db.prune_old_issues(session)
                 if pruned:
                     print(f"[prune] 오래된 이슈 {pruned}건 정리함")
@@ -315,6 +325,12 @@ class IssueSummary(BaseModel):
     representative_title: str
     article_count: int
     outlet_count: int
+    # 2026-09-08: "이슈 추이" 배지("N일째 보도 중")용 — 진짜 일별 그래프를
+    # 그릴 히스토리 데이터는 없어서(db.py의 prune_old_issues 문서 참고,
+    # 예전에 "의미없다"고 판단해서 안 만들기로 함) 대신 이 이슈 id가 DB에
+    # 처음 잡힌 시각만 노출. _cache는 재수집마다 새로 만들어지는 딕셔너리라
+    # 여기 안 들어있고, refresh_cache()가 DB에서 읽어와 채워줌.
+    first_seen_at: str | None = None
 
 
 class IssueDetail(IssueSummary):
@@ -331,6 +347,7 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
         representative_title=c["representative_title"],
         article_count=c["article_count"],
         outlet_count=c["outlet_count"],
+        first_seen_at=c.get("first_seen_at"),
     )
 
 
