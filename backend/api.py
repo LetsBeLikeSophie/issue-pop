@@ -835,6 +835,15 @@ async def set_alert_settings(device_id: int, body: AlertSettingsIn):
         return _alert_settings_dict(device)
 
 
+@app.get("/digest/preview")
+async def digest_preview():
+    """2026-09-10: 실제 발송(FCM)은 아직 서비스 계정 키가 없어서 못 붙였는데,
+    "그럼 도대체 뭐가 발송되는거야"라는 질문에 답하려고 만든 엔드포인트 —
+    _build_digest_text()가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌
+    (발송/기기 조회 등 부수효과 전혀 없음, 설정 화면의 "미리보기"에서 씀)."""
+    return {"text": _build_digest_text()}
+
+
 @app.post("/digest/run")
 async def run_digest_check():
     """개발/테스트용 — 지금 KST 시각이 되길 기다리지 않고 다이제스트

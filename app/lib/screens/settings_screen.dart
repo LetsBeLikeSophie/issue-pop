@@ -100,6 +100,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _devices.setDigestHour(picked);
   }
 
+  /// 2026-09-10: 실제 발송은 아직 안 붙었지만(서비스 계정 키 필요),
+  /// "그럼 뭐가 발송되는데?"를 바로 확인할 수 있게 지금 이 순간의
+  /// 다이제스트 텍스트를 바텀시트로 보여줌 — 부수효과 없는 조회만.
+  Future<void> _showDigestPreview() async {
+    final preview = widget.api.getDigestPreview();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _DigestPreviewSheet(preview: preview),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -158,9 +171,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               label: '알림 시간',
                               trailing: _formatHour(hour),
                               onTap: () => _pickDigestHour(hour),
-                              showDivider: false,
+                              showDivider: true,
                             );
                           },
+                        ),
+                        _PlainRow(
+                          label: '발송 내용 미리보기',
+                          onTap: _showDigestPreview,
+                          showDivider: false,
                         ),
                       ],
                     ),
@@ -168,7 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      '트렌드 요약 알림은 시간 설정까지만 준비됐고, 실제 발송은 아직 준비 중이에요.',
+                      '실제 발송(푸시)은 아직 준비 중이에요 — 위 미리보기는 지금 보낸다면 어떤 내용이 나갈지만 보여줘요.',
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
@@ -761,6 +779,102 @@ String _formatHour(int hour) {
   if (hour < 12) return '오전 $hour시';
   if (hour < 18) return '오후 ${hour - 12}시';
   return '저녁 ${hour - 12}시';
+}
+
+/// 2026-09-10: "발송 기능이 아직 없는데 그럼 뭐가 발송되는지 보고 싶다"는
+/// 요청으로 추가 — 실제 푸시처럼 보이게 알림 배너 흉내를 낸 카드 안에
+/// GET /digest/preview가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌.
+/// 실제 발송(FCM)과는 무관한 조회 전용이라 기기 목록을 건드리거나
+/// last_digest_sent_at을 바꾸지 않음.
+class _DigestPreviewSheet extends StatelessWidget {
+  const _DigestPreviewSheet({required this.preview});
+
+  final Future<String> preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('발송 내용 미리보기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text(
+            '실제로 지금 보낸다면 이런 내용이 나가요. 발송 자체는 아직 준비 중이에요.',
+            style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
+          ),
+          const SizedBox(height: 16),
+          FutureBuilder<String>(
+            future: preview,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                );
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('불러오지 못했어요: ${snapshot.error}', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                );
+              }
+              final lines = snapshot.data!.split('\n');
+              final title = lines.first;
+              final body = lines.skip(1).join('\n');
+              // 실제 안드로이드/iOS 알림 배너와 비슷한 느낌으로 —
+              // 앱 아이콘 자리 + 제목 + 본문. 진짜 시스템 알림은 아니고
+              // 어떤 텍스트가 들어가는지 보여주는 목업임.
+              return Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.chipBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(8)),
+                      child: const Icon(Icons.newspaper, color: Colors.white, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink),
+                                ),
+                              ),
+                              Text('지금', style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint)),
+                            ],
+                          ),
+                          if (body.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(body, style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.4)),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 다이제스트 알림 시간을 고르는 바텀시트 — 백엔드가 시(0~23) 단위까지만

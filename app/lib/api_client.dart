@@ -125,6 +125,16 @@ class ApiClient {
     _checkOk(res);
   }
 
+  /// 2026-09-10: 실제 발송(FCM)은 아직 안 붙었지만, "그럼 뭐가 발송되는데?"를
+  /// 확인할 수 있게 지금 이 순간의 다이제스트 텍스트만 미리 보여줌(부수효과 없음).
+  Future<String> getDigestPreview() async {
+    final uri = Uri.parse('$baseUrl/digest/preview');
+    final res = await http.get(uri);
+    _checkOk(res);
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return map['text'] as String;
+  }
+
   /// 2026-09-05: 다이제스트(하루 한 번)와 별개로 새로 뜨거나 급상승한
   /// 이슈를 재계산 주기마다 체크해서 알려주는 "주기적 알림" 설정 —
   /// 설정 저장까지만 됨(실제 감지/발송은 다음 단계).
