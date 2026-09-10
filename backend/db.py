@@ -113,6 +113,10 @@ class Device(SQLModel, table=True):
     alert_categories_json: str | None = None  # null=전체 카테고리, 아니면 ["정치","경제"] 같은 JSON 배열
     max_daily_alerts: int = 10
 
+    # 2026-09-11: "오늘의 단어"(오늘 기사에서 뽑은 어려운 말 + 뜻풀이) 알림
+    # on/off — digest_hour와 마찬가지로 설정 저장까지만, 실제 발송은 아직.
+    word_of_day_enabled: bool = False
+
     @property
     def alert_categories(self) -> list[str] | None:
         return json.loads(self.alert_categories_json) if self.alert_categories_json else None
@@ -156,6 +160,22 @@ class TranslatedHeadline(SQLModel, table=True):
     original_text: str
     translated_text: str
     translated_at: datetime = Field(default_factory=now)
+
+
+class WordOfDay(SQLModel, table=True):
+    """2026-09-11: "오늘의 단어" — 오늘 수집된 기사 제목에서 뽑은 단어 +
+    예문(word_of_day.py의 pick_word 참고). KST 날짜를 기본키로 써서
+    하루에 한 번만 고르고(재계산 주기마다 바뀌면 안 되니까) 그 뒤로는
+    캐시처럼 재사용함. definition은 국립국어원 표준국어대사전 Open API
+    연동 전까지는 null — 연동되면 채워 넣을 자리."""
+
+    __tablename__ = "word_of_day"
+
+    date: str = Field(primary_key=True)  # "2026-09-11" (KST)
+    word: str
+    example: str
+    definition: str | None = None
+    created_at: datetime = Field(default_factory=now)
 
 
 class Feedback(SQLModel, table=True):
@@ -242,6 +262,7 @@ def _migrate_devices_table() -> None:
             "min_outlet_count": "INTEGER NOT NULL DEFAULT 5",
             "alert_categories_json": "TEXT",
             "max_daily_alerts": "INTEGER NOT NULL DEFAULT 10",
+            "word_of_day_enabled": "INTEGER NOT NULL DEFAULT 0",
         }
         for column, ddl in additions.items():
             if column not in existing:

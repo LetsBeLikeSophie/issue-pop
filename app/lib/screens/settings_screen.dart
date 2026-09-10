@@ -26,6 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<int?>? _digestHour;
   Future<AlertSettings>? _alertSettings;
   Future<List<KeywordWatch>>? _watches;
+  Future<bool>? _wordOfDayEnabled;
   final _keywordController = TextEditingController();
 
   @override
@@ -34,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _digestHour = _devices.getDigestHour();
     _alertSettings = _devices.getAlertSettings();
     _watches = _devices.listWatches();
+    _wordOfDayEnabled = _devices.getWordOfDayAlert();
   }
 
   @override
@@ -113,6 +115,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _toggleWordOfDay(bool on) async {
+    setState(() {
+      _wordOfDayEnabled = Future.value(on);
+    });
+    await _devices.setWordOfDayAlert(on);
+  }
+
+  /// 2026-09-11: 오늘의 단어도 다이제스트와 같은 이유로 미리보기 제공 —
+  /// 사전 API 연동 전이라 definition은 null일 수 있음(시트에서 안내).
+  Future<void> _showWordOfDayPreview() async {
+    final preview = widget.api.getWordOfDay();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _WordOfDayPreviewSheet(preview: preview),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -178,6 +199,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _PlainRow(
                           label: '발송 내용 미리보기',
                           onTap: _showDigestPreview,
+                          showDivider: true,
+                        ),
+                        // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은
+                        // 어려운 말 + 예문(뜻풀이는 사전 API 연동 전이라
+                        // 아직 없음)을 다이제스트와 별개로 켜고 끌 수 있게 함.
+                        FutureBuilder<bool>(
+                          future: _wordOfDayEnabled,
+                          builder: (context, snapshot) {
+                            return _ToggleRow(
+                              label: '오늘의 단어 알림',
+                              value: snapshot.data ?? false,
+                              onChanged: snapshot.connectionState == ConnectionState.waiting
+                                  ? null
+                                  : _toggleWordOfDay,
+                              showDivider: true,
+                            );
+                          },
+                        ),
+                        _PlainRow(
+                          label: '오늘의 단어 미리보기',
+                          onTap: _showWordOfDayPreview,
                           showDivider: false,
                         ),
                       ],
@@ -866,6 +908,96 @@ class _DigestPreviewSheet extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2026-09-11: "오늘의 단어" 미리보기 — 오늘 기사에서 뽑은 단어를 사전
+/// 표제어 카드처럼 보여줌. 뜻풀이(definition)는 국립국어원 API 연동 전이라
+/// null일 수 있어서, 그 경우엔 안내 문구로 대체함.
+class _WordOfDayPreviewSheet extends StatelessWidget {
+  const _WordOfDayPreviewSheet({required this.preview});
+
+  final Future<WordOfDay> preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('오늘의 단어 미리보기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text(
+            '오늘 기사 제목에서 뽑은 단어예요. 뜻풀이는 아직 준비 중이에요.',
+            style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
+          ),
+          const SizedBox(height: 16),
+          FutureBuilder<WordOfDay>(
+            future: preview,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                );
+              }
+              if (snapshot.hasError || snapshot.data?.word == null) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text('오늘은 뽑을 만한 단어가 없었어요.', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                );
+              }
+              final data = snapshot.data!;
+              return Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.chipBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.word!,
+                      style: AppTypography.serif(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      data.definition ?? '이 단어는 사전에서 못 찾았어요.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: data.definition == null ? AppColors.inkFaint : AppColors.inkSoft,
+                        fontStyle: data.definition == null ? FontStyle.italic : FontStyle.normal,
+                        height: 1.4,
+                      ),
+                    ),
+                    if (data.definition != null) ...[
+                      const SizedBox(height: 4),
+                      // CC BY-SA 2.0 KR 라이선스 조건 — 뜻풀이를 그대로
+                      // 인용할 때 출처 표시 필수(가공 없이 인용만 하는
+                      // 거라 동일조건변경허락까지는 안 걸림).
+                      Text(
+                        '출처: 국립국어원 표준국어대사전',
+                        style: TextStyle(fontSize: 10, color: AppColors.inkFaint),
+                      ),
+                    ],
+                    if (data.example != null) ...[
+                      const SizedBox(height: 10),
+                      Text('오늘 기사 예문', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.inkFaint)),
+                      const SizedBox(height: 3),
+                      Text('“${data.example}”', style: TextStyle(fontSize: 12, color: AppColors.inkSoft, height: 1.4)),
+                    ],
                   ],
                 ),
               );

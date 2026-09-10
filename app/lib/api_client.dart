@@ -135,6 +135,33 @@ class ApiClient {
     return map['text'] as String;
   }
 
+  /// 2026-09-11: 오늘의 단어(오늘 기사에서 뽑은 단어+예문, 뜻풀이는
+  /// 사전 API 연동 전까지 null).
+  Future<WordOfDay> getWordOfDay() async {
+    final uri = Uri.parse('$baseUrl/word-of-day');
+    final res = await http.get(uri);
+    _checkOk(res);
+    return WordOfDay.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<bool> getWordOfDayAlert(int deviceId) async {
+    final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
+    final res = await http.get(uri);
+    _checkOk(res);
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return map['word_of_day_enabled'] as bool;
+  }
+
+  Future<void> setWordOfDayAlert(int deviceId, bool enabled) async {
+    final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
+    final res = await http.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'enabled': enabled}),
+    );
+    _checkOk(res);
+  }
+
   /// 2026-09-05: 다이제스트(하루 한 번)와 별개로 새로 뜨거나 급상승한
   /// 이슈를 재계산 주기마다 체크해서 알려주는 "주기적 알림" 설정 —
   /// 설정 저장까지만 됨(실제 감지/발송은 다음 단계).
@@ -311,6 +338,20 @@ class KeywordWatch {
   factory KeywordWatch.fromJson(Map<String, dynamic> json) => KeywordWatch(
         id: json['id'] as int,
         keyword: json['keyword'] as String,
+      );
+}
+
+class WordOfDay {
+  const WordOfDay({required this.word, required this.example, required this.definition});
+
+  final String? word;
+  final String? example;
+  final String? definition;
+
+  factory WordOfDay.fromJson(Map<String, dynamic> json) => WordOfDay(
+        word: json['word'] as String?,
+        example: json['example'] as String?,
+        definition: json['definition'] as String?,
       );
 }
 

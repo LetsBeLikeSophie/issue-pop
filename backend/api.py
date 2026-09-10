@@ -49,6 +49,7 @@ from slowapi.util import get_remote_address
 import db
 import quotes
 import stocks
+import word_of_day
 from pipeline import run
 
 REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
@@ -842,6 +843,62 @@ async def digest_preview():
     _build_digest_text()가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌
     (발송/기기 조회 등 부수효과 전혀 없음, 설정 화면의 "미리보기"에서 씀)."""
     return {"text": _build_digest_text()}
+
+
+def _get_or_create_word_of_day() -> db.WordOfDay | None:
+    """오늘(KST) 단어가 이미 골라져 있으면 그대로 재사용하고, 없으면 지금
+    캐시에서 하나 뽑아 저장함 — 재계산 주기(30분)마다 바뀌면 "오늘의
+    단어"라는 말이 무색해지니 하루 한 번만 고름."""
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    with db.get_session() as session:
+        existing = session.get(db.WordOfDay, today)
+        if existing is not None:
+            return existing
+        picked = word_of_day.pick_word(_cache)
+        if picked is None:
+            return None
+        word, example, definition = picked
+        row = db.WordOfDay(date=today, word=word, example=example, definition=definition)
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return row
+
+
+@app.get("/word-of-day")
+async def get_word_of_day():
+    """2026-09-11: 오늘 기사에서 뽑은 단어 + 예문 + 뜻풀이(국립국어원
+    API 연동 전까지는 null). 설정 화면의 "오늘의 단어" 미리보기에서 씀."""
+    row = await asyncio.to_thread(_get_or_create_word_of_day)
+    if row is None:
+        return {"date": None, "word": None, "example": None, "definition": None}
+    return {"date": row.date, "word": row.word, "example": row.example, "definition": row.definition}
+
+
+class WordOfDayAlertIn(BaseModel):
+    enabled: bool
+
+
+@app.put("/devices/{device_id}/word-of-day-alert")
+async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
+    """digest_hour와 같은 단계 — 설정 저장까지만, 실제 발송은 아직."""
+    with db.get_session() as session:
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not registered")
+        device.word_of_day_enabled = body.enabled
+        session.add(device)
+        session.commit()
+        return {"device_id": device_id, "word_of_day_enabled": device.word_of_day_enabled}
+
+
+@app.get("/devices/{device_id}/word-of-day-alert")
+async def get_word_of_day_alert(device_id: int):
+    with db.get_session() as session:
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not registered")
+        return {"device_id": device_id, "word_of_day_enabled": device.word_of_day_enabled}
 
 
 @app.post("/digest/run")

@@ -83,6 +83,16 @@ class DeviceRegistry {
     await api.deleteStockWatch(watchId);
   }
 
+  Future<bool> getWordOfDayAlert() async {
+    final id = await _deviceId();
+    return api.getWordOfDayAlert(id);
+  }
+
+  Future<void> setWordOfDayAlert(bool enabled) async {
+    final id = await _deviceId();
+    await api.setWordOfDayAlert(id, enabled);
+  }
+
   String _randomToken() {
     final rand = Random.secure();
     return List.generate(24, (_) => rand.nextInt(16).toRadixString(16)).join();
