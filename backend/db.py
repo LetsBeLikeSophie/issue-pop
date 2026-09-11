@@ -178,6 +178,42 @@ class WordOfDay(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class ClusterAuditFinding(SQLModel, table=True):
+    """2026-09-11: 클러스터링/키워드/카테고리 품질을 LLM으로 감사한 결과.
+    30분 라이브 클러스터링(cluster_audit.py 참고)은 전혀 안 건드리고,
+    하루 한 번 그날 클러스터들을 배치로 LLM에 보내 "키워드가 맞는지/
+    카테고리가 맞는지/안 맞는 기사가 섞였는지" 의심되는 것만 여기 쌓아둠
+    — 유저 화면엔 반영 안 되고, 나중에 사람이 훑어보고 진짜 버그로
+    확인되면 test_pipeline.py의 회귀 테스트로 승격시키는 용도의 "발견
+    목록"임. reviewed는 그 트리아지 여부(기본 미확인)."""
+
+    __tablename__ = "cluster_audit_findings"
+
+    id: int | None = Field(default=None, primary_key=True)
+    date: str  # "2026-09-11"(KST) — 그날 감사 실행분 그룹핑용
+    issue_id: str
+    keyword: str
+    category: str
+    problem_type: str  # "keyword_truncated" | "article_mismatch" | "category_mismatch"
+    detail: str  # LLM이 설명한 구체적 문제
+    suggested_fix: str = ""  # keyword_truncated/category_mismatch용 — 고칠 값 제안
+    reviewed: bool = False
+    created_at: datetime = Field(default_factory=now)
+
+
+class ClusterAuditRun(SQLModel, table=True):
+    """하루 한 번 도는 클러스터 감사(cluster_audit.py)가 오늘 이미
+    실행됐는지 표시하는 마커. 서버가 하루에도 몇 번씩 재시작될 수 있어서
+    (배포 때마다) 메모리 변수로만 "오늘 했음"을 기억하면 재시작마다 또
+    돌아버림 — DB에 기록해서 재시작에도 살아남게 함."""
+
+    __tablename__ = "cluster_audit_runs"
+
+    date: str = Field(primary_key=True)  # "2026-09-11"(KST)
+    finding_count: int = 0
+    ran_at: datetime = Field(default_factory=now)
+
+
 class Feedback(SQLModel, table=True):
     """베타 "고객의 소리" — 답장 기능 없는 일방향 제출함(2026-08-27).
     로그인 없이도 보낼 수 있게 device_id는 선택(있으면 어느 기기에서
@@ -270,9 +306,24 @@ def _migrate_devices_table() -> None:
         conn.commit()
 
 
+def _migrate_table_columns(table: str, additions: dict[str, str]) -> None:
+    """_migrate_devices_table과 같은 패턴을 다른 테이블에도 쓰려고 뺀
+    공용 버전 — create_all()이 기존 테이블엔 새 컬럼을 안 넣어줘서,
+    모델에 필드를 나중에 추가할 때마다 여기서 ALTER TABLE로 채워줌."""
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
+        for column, ddl in additions.items():
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        conn.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_devices_table()
+    # 2026-09-11: suggested_fix를 cluster_audit_findings 테이블 첫 배포
+    # 이후에 추가함 — 이미 그 테이블이 있는 서버엔 마찬가지로 안 채워짐.
+    _migrate_table_columns("cluster_audit_findings", {"suggested_fix": "TEXT NOT NULL DEFAULT ''"})
 
 
 def get_session() -> Session:

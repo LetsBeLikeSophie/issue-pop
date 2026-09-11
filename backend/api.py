@@ -46,6 +46,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+import cluster_audit
 import db
 import quotes
 import stocks
@@ -53,6 +54,11 @@ import word_of_day
 from pipeline import run
 
 REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
+# 2026-09-11: 클러스터 감사(cluster_audit.py) — 트래픽 적은 새벽 시간에
+# 하루 한 번만 돎(라이브 클러스터링과는 별개, LLM 배치 호출이라 비쌀 건
+# 없지만 그래도 굳이 피크 시간에 돌 이유는 없어서).
+CLUSTER_AUDIT_HOUR_KST = 4
+CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS = 30 * 60
 DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
 DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
 KST = ZoneInfo("Asia/Seoul")
@@ -262,15 +268,93 @@ async def _digest_loop() -> None:
         await asyncio.to_thread(_digest_check)
 
 
+def _run_cluster_audit() -> int:
+    """지금 캐시(_cache)의 클러스터들을 LLM으로 감사해서 의심되는 것들을
+    db.ClusterAuditFinding에 저장함. 30분 라이브 클러스터링은 전혀 안
+    건드리는 별도 읽기 전용 점검 — 반환값은 이번에 찾은 개수.
+
+    2026-09-11: 이슈가 200개 넘으면 배치가 십수 개라 전체를 다 처리하는 데
+    몇 분씩 걸림 — 배치마다 바로 커밋해서, 중간에 서버가 재시작되거나
+    (배포 중 자주 그럼) 요청이 타임아웃나도 그때까지 찾은 건 안 날아가게
+    함(원래는 끝까지 다 돈 다음 한 번에 저장했는데, 그러다 통째로 유실된
+    적이 있었음).
+
+    수동 테스트용으로 POST /admin/cluster-audit/run에서도 이 함수를
+    그대로 씀(스케줄 시간까지 안 기다리고 바로 돌려볼 수 있게)."""
+    clusters = [
+        {
+            "issue_id": issue_id,
+            "keyword": c["keyword"],
+            "category": c["category"],
+            "titles": [a["title"] for a in c.get("articles", [])],
+        }
+        for issue_id, c in _cache.items()
+    ]
+
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    total_findings = 0
+    for batch in cluster_audit.iter_batches(clusters):
+        findings = cluster_audit.audit_one_batch(batch)
+        if not findings:
+            continue
+        with db.get_session() as session:
+            for f in findings:
+                c = _cache.get(f["issue_id"])
+                session.add(
+                    db.ClusterAuditFinding(
+                        date=today,
+                        issue_id=f["issue_id"],
+                        keyword=c["keyword"] if c else "",
+                        category=c["category"] if c else "",
+                        problem_type=f["problem_type"],
+                        detail=f["detail"],
+                        suggested_fix=f.get("suggested_fix", ""),
+                    )
+                )
+            session.commit()
+        total_findings += len(findings)
+
+    with db.get_session() as session:
+        # 오늘 이미 실행했다는 마커 — 재시작해도 하루에 두 번 안 돌게 함.
+        existing_run = session.get(db.ClusterAuditRun, today)
+        if existing_run:
+            existing_run.finding_count = total_findings
+        else:
+            session.add(db.ClusterAuditRun(date=today, finding_count=total_findings))
+        session.commit()
+    return total_findings
+
+
+def _cluster_audit_check() -> bool:
+    """지금 KST 시각이 CLUSTER_AUDIT_HOUR_KST이고 오늘 아직 안 돌았으면
+    실행함. 실행했으면 True."""
+    today = datetime.now(KST).strftime("%Y-%m-%d")
+    if datetime.now(KST).hour != CLUSTER_AUDIT_HOUR_KST:
+        return False
+    with db.get_session() as session:
+        if session.get(db.ClusterAuditRun, today) is not None:
+            return False
+    _run_cluster_audit()
+    return True
+
+
+async def _cluster_audit_loop() -> None:
+    while True:
+        await asyncio.sleep(CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS)
+        await asyncio.to_thread(_cluster_audit_check)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
     await refresh_cache()  # 첫 요청부터 데이터가 있도록 시작 시 한 번 동기적으로 채움
     refresh_task = asyncio.create_task(_refresh_loop())
     digest_task = asyncio.create_task(_digest_loop())
+    cluster_audit_task = asyncio.create_task(_cluster_audit_loop())
     yield
     refresh_task.cancel()
     digest_task.cancel()
+    cluster_audit_task.cancel()
 
 
 app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)
@@ -908,6 +992,82 @@ async def run_digest_check():
     발송은 안 하고 로그만 찍음(_send_digest_stub 참고, FCM 연동 전)."""
     sent_to = await asyncio.to_thread(_digest_check)
     return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
+
+
+_cluster_audit_running = False
+
+
+async def _run_cluster_audit_background() -> None:
+    global _cluster_audit_running
+    try:
+        await asyncio.to_thread(_run_cluster_audit)
+    finally:
+        _cluster_audit_running = False
+
+
+@app.post("/admin/cluster-audit/run")
+async def run_cluster_audit_now():
+    """개발/테스트용 — 새벽 스케줄(CLUSTER_AUDIT_HOUR_KST)까지 안 기다리고
+    지금 캐시로 바로 감사를 돌림. 초반이라 버그를 빨리 많이 찾아야 해서
+    (2026-09-11) 수동으로 여러 번 돌려볼 수 있게 남겨둠 — 오늘 이미
+    스케줄로 실행됐어도 이 엔드포인트는 상관없이 또 돌림(마커 갱신됨).
+
+    2026-09-11: 이슈 200개 넘으면 배치가 십수 개라 몇 분 걸리는데, 끝날
+    때까지 기다렸다 응답하면 nginx/Cloudflare 프록시 타임아웃(60초)에
+    걸려서 504가 남 — 그래서 백그라운드로 던져놓고 바로 응답함. 진행
+    상황은 GET /admin/cluster-audit/findings로 중간중간 확인하면 됨
+    (배치마다 바로 커밋되니까 도는 중에도 그때까지 찾은 게 보임)."""
+    global _cluster_audit_running
+    if _cluster_audit_running:
+        return {"status": "already_running", "issue_count": len(_cache)}
+    _cluster_audit_running = True
+    asyncio.create_task(_run_cluster_audit_background())
+    return {"status": "started", "issue_count": len(_cache)}
+
+
+@app.get("/admin/cluster-audit/status")
+async def cluster_audit_status():
+    return {"running": _cluster_audit_running}
+
+
+@app.get("/admin/cluster-audit/findings")
+async def list_cluster_audit_findings(reviewed: bool | None = None, limit: int = Query(100, le=500)):
+    """검토 대기열 조회 — reviewed=false로 필터하면 아직 안 본 것만."""
+    from sqlmodel import select
+
+    with db.get_session() as session:
+        stmt = select(db.ClusterAuditFinding).order_by(db.ClusterAuditFinding.created_at.desc()).limit(limit)
+        if reviewed is not None:
+            stmt = stmt.where(db.ClusterAuditFinding.reviewed == reviewed)
+        rows = session.exec(stmt).all()
+        return [
+            {
+                "id": r.id,
+                "date": r.date,
+                "issue_id": r.issue_id,
+                "keyword": r.keyword,
+                "category": r.category,
+                "problem_type": r.problem_type,
+                "detail": r.detail,
+                "suggested_fix": r.suggested_fix,
+                "reviewed": r.reviewed,
+            }
+            for r in rows
+        ]
+
+
+@app.put("/admin/cluster-audit/findings/{finding_id}")
+async def mark_cluster_audit_finding_reviewed(finding_id: int):
+    """검토 완료 표시(진짜 버그로 확인해서 규칙/회귀 테스트에 반영했든,
+    오탐이라 넘기기로 했든 — 어느 쪽이든 "봤음" 표시만 함)."""
+    with db.get_session() as session:
+        finding = session.get(db.ClusterAuditFinding, finding_id)
+        if finding is None:
+            raise HTTPException(status_code=404, detail="finding not found")
+        finding.reviewed = True
+        session.add(finding)
+        session.commit()
+        return {"id": finding_id, "reviewed": True}
 
 
 class FavoriteIn(BaseModel):
