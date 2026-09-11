@@ -2,7 +2,7 @@
 """
 아주 가벼운 회귀 테스트. pytest 없이 그냥 `python3 test_pipeline.py`로 돌려요.
 
-sample_data/sample_articles.json은 사람이 직접 "이 17건은 사실 6개 이슈다"라고
+sample_data/sample_articles.json은 사람이 직접 "이 18건은 사실 7개 이슈다"라고
 정답을 알고 만든 픽스처예요. 클러스터링 알고리즘/threshold가 바뀔 때마다
 이 정답에 딱 맞진 않을 수 있는데(작은 픽스처의 최적 threshold가 실제
 대량 데이터의 최적값과 항상 일치하진 않음 — 여러 번 겪은 패턴), 그래도
@@ -29,8 +29,8 @@ def _find_cluster_containing(clusters, substring):
     raise AssertionError(f"'{substring}'이 들어간 클러스터를 못 찾음")
 
 
-def test_sample_data_clusters_into_seven_issues():
-    """정답을 아는 17건 픽스처 기준 클러스터링 결과 확인.
+def test_sample_data_clusters_into_expected_issues():
+    """정답을 아는 18건 픽스처 기준 클러스터링 결과 확인.
 
     2026-08-24: 문자 n-gram → 한국어 문장 임베딩(ko-sroberta-multitask)으로
     바꾸면서 threshold를 0.40(픽스처와 정확히 일치)이 아니라 0.45로
@@ -42,12 +42,17 @@ def test_sample_data_clusters_into_seven_issues():
     한 번 겪었던 것과 같은 종류의 트레이드오프. 둘 다 여전히 말이 되는
     분리라(국민연금 정책 자체 vs 청년 세대 반응/공청회), 정답을 이걸로
     갱신함.
+
+    2026-09-11: "김승원 신약 로비" 단독 기사(#18)를 추가함 — 키워드 추출의
+    고유명사 스코어링 버그(아래 test_keywords_are_short_and_on_topic 참고)를
+    회귀로 고정하려는 목적. 다른 이슈와 안 묶이는 단독 기사라 클러스터
+    크기 목록에 1이 하나 더 늘어남.
     """
     articles = load_sample_articles()
     clusters = cluster_articles(articles)
 
     sizes = sorted((c["article_count"] for c in clusters), reverse=True)
-    assert sizes == [4, 4, 3, 2, 2, 1, 1], f"예상과 다른 클러스터 크기: {sizes}"
+    assert sizes == [4, 4, 3, 2, 2, 1, 1, 1], f"예상과 다른 클러스터 크기: {sizes}"
     assert sum(sizes) == len(articles)  # 기사 수 보존(누락/중복 없음)
 
     # "보험료율 인상"(4건)과 "청년층 불신/공청회"(2건)를 합치면 원래
@@ -58,7 +63,7 @@ def test_sample_data_clusters_into_seven_issues():
     assert core["article_count"] + fringe["article_count"] == 6
     assert len(combined_outlets) == 6, f"매체 커버리지 부족: {combined_outlets}"
 
-    print("OK: 7개 클러스터, 사이즈", sizes)
+    print(f"OK: {len(clusters)}개 클러스터, 사이즈", sizes)
 
 
 def test_keywords_are_short_and_on_topic():
@@ -82,7 +87,22 @@ def test_keywords_are_short_and_on_topic():
     for c in clusters:
         assert len(c["keyword"]) <= 10, f"키워드가 너무 김(헤드라인이 그대로 나온 듯): {c['keyword']}"
 
-    print("OK: 키워드 추출 정상 (보험료/요금인상/폭염특보 등)")
+    # 2026-09-11: "김승원" 고유명사 스코어링 버그 회귀 테스트.
+    # extract_noun_ngrams가 인접 명사를 이어붙여 "김승원신약" 같은 글자
+    # 조합을 만드는데, 이 조합이 코퍼스 전체에서 유일해서(global_df=0)
+    # idf가 비정상적으로 커져 흔한 고유명사 "김승원"(global_df 높음)보다
+    # 점수가 더 높게 나와 키워드 자리를 차지해버리는 버그가 있었음
+    # (실제 라이브 데이터로 확인, keyword_extraction.py 참고). "김승원"이
+    # 안 잘리고 그대로 키워드 후보에 있어야 함 — "김승원신약" 같은 글자가
+    # 붙은 형태로 나오면 회귀.
+    kim = _find_cluster_containing(clusters, "김승원")
+    assert "김승원" in ([kim["keyword"]] + kim.get("keywords", [])), (
+        f"김승원 고유명사가 키워드에서 잘림: keyword={kim['keyword']!r} keywords={kim.get('keywords')!r}"
+    )
+    for kw in [kim["keyword"]] + kim.get("keywords", []):
+        assert "김승원신약" not in kw, f"고유명사 스코어링 버그 재발: {kw!r}"
+
+    print("OK: 키워드 추출 정상 (보험료/요금인상/폭염특보/김승원 등)")
 
 
 def test_no_cross_topic_contamination():
@@ -114,7 +134,7 @@ def test_super_clusters_preserve_all_issues():
 
 
 if __name__ == "__main__":
-    test_sample_data_clusters_into_seven_issues()
+    test_sample_data_clusters_into_expected_issues()
     test_no_cross_topic_contamination()
     test_keywords_are_short_and_on_topic()
     test_super_clusters_preserve_all_issues()

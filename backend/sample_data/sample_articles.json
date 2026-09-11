@@ -20,5 +20,7 @@
 
   {"outlet": "중앙매일", "category": "국제", "title": "태풍 경로, 이번 주말 한반도 영향권", "summary": "제11호 태풍이 이번 주말 한반도에 영향을 줄 것으로 예상된다.", "link": "https://example.com/16", "published": "2026-08-23T07:00:00+00:00"},
 
-  {"outlet": "한국일보", "category": "IT", "title": "국내 스타트업, 신규 투자 유치 성공", "summary": "한 국내 스타트업이 시리즈B 투자 유치에 성공했다고 밝혔다.", "link": "https://example.com/17", "published": "2026-08-23T08:00:00+00:00"}
+  {"outlet": "한국일보", "category": "IT", "title": "국내 스타트업, 신규 투자 유치 성공", "summary": "한 국내 스타트업이 시리즈B 투자 유치에 성공했다고 밝혔다.", "link": "https://example.com/17", "published": "2026-08-23T08:00:00+00:00"},
+
+  {"outlet": "연합뉴스", "category": "정치", "title": "식약처장, 김승원 신약 로비 의혹에 \"과학적 심사…특혜 없었다\"", "summary": "식약처장은 김승원 씨 관련 신약 허가 로비 의혹에 대해 절차상 특혜는 없었다고 밝혔다.", "link": "https://example.com/18", "published": "2026-08-23T09:00:00+00:00"}
 ]

@@ -199,7 +199,17 @@ def extract_keyword(cluster_articles: list[dict], global_df: Counter, total_arti
     return scored[0][0]
 
 
-_PROPER_NOUN_SEARCH_WINDOW = 8  # 상위 몇 개 후보 안에서 고유명사를 찾아볼지
+# 상위 몇 개 후보 안에서 고유명사를 찾아볼지.
+#
+# 2026-09-11 LLM 감사에서 발견: "김승원"처럼 그 자체로 코퍼스 전체에서
+# 이미 아주 흔한 인물(예: df=994/20636건)은 idf가 낮아서 순위가 많이
+# 밀림(실측: 12위) — 반면 "김승원신약"처럼 그 기사에만 등장하는 어색한
+# 바이그램은 df=0이라 idf가 극단적으로 높아져 1위로 뽑힘. 탐색범위가
+# 8이면 12위인 "김승원"을 못 찾아서, 결국 보조 키워드가 진짜 고유명사
+# 대신 이 이상한 합성어("김승원신약")로 남는 버그가 있었음. 많이 다뤄질
+# 수록(=흔해질수록) 오히려 자기 이름이 키워드에서 밀려나는 역설이라,
+# 탐색 범위를 넉넉히 넓혀서 이런 경우도 찾아내게 함.
+_PROPER_NOUN_SEARCH_WINDOW = 20
 
 
 def extract_keywords(
@@ -242,6 +252,27 @@ def extract_keywords(
         for a in cluster_articles:
             proper_nouns |= extract_proper_nouns(clean_title(a["title"]))
             proper_nouns |= extract_proper_nouns(clean_summary(a.get("summary", "")))
+
+        # 2026-09-11 LLM 감사에서 발견: extract_noun_ngrams의 바이그램
+        # 이어붙이기가 "김승원"(고유명사)+"신약"을 "김승원신약"으로 붙여
+        # 버리면, 그 이상한 합성어가 점수 1등으로 뽑히는 경우가 있었음
+        # (df.py의 idf가 "코퍼스 전체에서 이 정확한 문자열이 얼마나
+        # 희귀한가"를 보는데, 붙인 합성어는 그 기사에만 있어서 인위적으로
+        # 희귀해 보임). 아래(예전 로직)는 "keywords 중 아무도 고유명사가
+        # 아니면 마지막 자리에 하나 끼워넣기"만 했는데, 이 합성어가 마지막
+        # 자리가 아니라 1등 자리에 온 경우 "이미 고유명사(김승원)를
+        # 포함하고 있다"고 오인해서 손을 안 댔음 — 그래서 고유명사가
+        # *포함된* 자리를 그 자리 그대로 깨끗한 고유명사로 바꿔치기하는
+        # 패스를 먼저 돌림(위치 무관).
+        for i, kw in enumerate(keywords):
+            if kw in proper_nouns:
+                continue
+            contained = [p for p in proper_nouns if p != kw and p in kw]
+            if not contained:
+                continue
+            clean = max(contained, key=len)
+            if clean not in keywords:
+                keywords[i] = clean
 
         if not any(kw in proper_nouns for kw in keywords):
             for t, _w, _score in scored[:_PROPER_NOUN_SEARCH_WINDOW]:
