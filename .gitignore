@@ -20,5 +20,11 @@ backend/_*.json
 *.pem
 secrets.json
 
+# 2026-09-11: Firebase API 키가 든 파일 — 실수로 커밋했다가 public 레포에
+# 노출돼서 GitHub 알람 받음(google-services.json). 앱 빌드엔 로컬에 파일이
+# 있어야 하니 삭제는 아니고 git 추적만 뺌.
+app/android/app/google-services.json
+app/ios/Runner/GoogleService-Info.plist
+
 # 사업 기획 노트 (가격/유료화 전략) — 코드는 공개해도 이건 비공개로
 MONETIZATION.md
