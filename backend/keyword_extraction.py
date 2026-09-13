@@ -51,7 +51,13 @@ import math
 import re
 from collections import Counter
 
-from text_utils import clean_summary, clean_title, extract_noun_ngrams, extract_proper_nouns
+from text_utils import (
+    clean_summary,
+    clean_title,
+    extract_fused_syllable_chains,
+    extract_noun_ngrams,
+    extract_proper_nouns,
+)
 
 # "8명", "13%"처럼 숫자+단위(또는 %)만으로 된 토큰인지 — 대표/보조
 # 키워드가 둘 다 이런 형태면 무슨 얘긴지 전혀 안 잡힘(2026-08-26 실측
@@ -250,27 +256,36 @@ def extract_keywords(
     if k >= 2 and len(keywords) >= 2:
         proper_nouns: set[str] = set()
         for a in cluster_articles:
-            proper_nouns |= extract_proper_nouns(clean_title(a["title"]))
-            proper_nouns |= extract_proper_nouns(clean_summary(a.get("summary", "")))
+            title = clean_title(a["title"])
+            summary = clean_summary(a.get("summary", ""))
+            proper_nouns |= extract_proper_nouns(title)
+            proper_nouns |= extract_proper_nouns(summary)
+            # 2026-09-13: kiwipiepy 사전에 없는 인명은 NNP 태그를 아예
+            # 못 받아서(예: "용혜인"이 NNG+NNG+XSN으로 쪼개짐) 위
+            # extract_proper_nouns만으론 못 잡음. 사전 등재 여부와 무관하게
+            # "1음절 명사가 조사·공백 없이 여러 개 붙어있는 구간"(대부분
+            # 미등록 인명) 자체를 고유명사 후보로 같이 넣음 — _USER_WORDS에
+            # 매번 사람이 이름을 추가하지 않아도 같은 패턴이면 자동으로 잡힘.
+            proper_nouns |= set(extract_fused_syllable_chains(title))
+            proper_nouns |= set(extract_fused_syllable_chains(summary))
 
         # 2026-09-11 LLM 감사에서 발견: extract_noun_ngrams의 바이그램
         # 이어붙이기가 "김승원"(고유명사)+"신약"을 "김승원신약"으로 붙여
         # 버리면, 그 이상한 합성어가 점수 1등으로 뽑히는 경우가 있었음
         # (df.py의 idf가 "코퍼스 전체에서 이 정확한 문자열이 얼마나
         # 희귀한가"를 보는데, 붙인 합성어는 그 기사에만 있어서 인위적으로
-        # 희귀해 보임). 아래(예전 로직)는 "keywords 중 아무도 고유명사가
-        # 아니면 마지막 자리에 하나 끼워넣기"만 했는데, 이 합성어가 마지막
-        # 자리가 아니라 1등 자리에 온 경우 "이미 고유명사(김승원)를
-        # 포함하고 있다"고 오인해서 손을 안 댔음 — 그래서 고유명사가
-        # *포함된* 자리를 그 자리 그대로 깨끗한 고유명사로 바꿔치기하는
-        # 패스를 먼저 돌림(위치 무관).
+        # 희귀해 보임). 반대 방향도 있음(2026-09-13, "용혜인"→"혜인"처럼
+        # 뽑힌 키워드가 진짜 고유명사의 잘린 조각인 경우). 그래서 방향
+        # 상관없이(포함하든 포함되든) 고유명사와 겹치는 자리를 찾아서 그
+        # 자리 그대로 깨끗한 고유명사로 바꿔치기하는 패스를 먼저 돌림
+        # (위치 무관).
         for i, kw in enumerate(keywords):
             if kw in proper_nouns:
                 continue
-            contained = [p for p in proper_nouns if p != kw and p in kw]
-            if not contained:
+            related = [p for p in proper_nouns if p != kw and (p in kw or kw in p)]
+            if not related:
                 continue
-            clean = max(contained, key=len)
+            clean = max(related, key=len)
             if clean not in keywords:
                 keywords[i] = clean
 

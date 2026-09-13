@@ -119,6 +119,47 @@ _NUMBER_TAG = "SN"  # 숫자
 _UNIT_TAGS = {"NNB", "SW"}  # 의존명사(예: "도", "명", "건") / 기호(예: "%")
 
 
+_CHAIN_TAGS = {"NNG", "NNP", "XSN"}
+
+
+def extract_fused_syllable_chains(text: str) -> list[str]:
+    """1음절짜리 명사/접미사 토큰이 공백·조사 없이 여러 개 붙어있는
+    구간을 통째로 이어붙여 반환.
+
+    2026-09-13: "용혜인"이 "혜인"으로 잘려서 나오던 문제(_USER_WORDS에
+    추가해서 고침)를 보다가, "매번 사람이 발견할 때마다 사전에 등록해야
+    하냐"는 피드백을 받음. 실제로 "용혜인"도, 사전에 아예 없는 임의의
+    이름("김솦원" 등으로 테스트)도 kiwipiepy에서 똑같은 패턴으로 쪼개짐 —
+    성 1음절 + 이름 1~2음절이 전부 NNG/NNP/XSN 태그의 1음절 토큰으로,
+    공백·조사 없이 바로 붙어서 나옴. 한국어는 보통 서로 다른 단어 사이에
+    조사나 띄어쓰기가 오기 때문에, 1음절 명사 토큰이 구분자 없이 연달아
+    나오는 건 사전에 없는 인명일 가능성이 높다는 신호로 보고 통째로
+    이어붙임 — 이러면 _USER_WORDS에 미리 등록 안 된 새 인명도 같은
+    패턴이면 자동으로 잡힘.
+    """
+    return _fused_syllable_chains_from_tokens(kiwi.tokenize(text))
+
+
+def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
+    chains: list[str] = []
+    run: list = []
+
+    def _is_candidate(t) -> bool:
+        return t.tag in _CHAIN_TAGS and len(t.form) == 1
+
+    for t in tokens:
+        contiguous = bool(run) and t.start == run[-1].start + run[-1].len
+        if _is_candidate(t) and (not run or contiguous):
+            run.append(t)
+            continue
+        if len(run) >= 2:
+            chains.append("".join(x.form for x in run))
+        run = [t] if _is_candidate(t) else []
+    if len(run) >= 2:
+        chains.append("".join(x.form for x in run))
+    return chains
+
+
 def extract_noun_ngrams(text: str) -> list[str]:
     """명사 유니그램 + 바로 붙어있는 명사쌍(바이그램) + 숫자·단위 조합.
 
@@ -174,5 +215,7 @@ def extract_noun_ngrams(text: str) -> list[str]:
     for i, t in enumerate(tokens[:-1]):
         if t.tag == _NUMBER_TAG and tokens[i + 1].tag in _UNIT_TAGS:
             result.append(t.form + tokens[i + 1].form)
+
+    result.extend(_fused_syllable_chains_from_tokens(tokens))
 
     return result
