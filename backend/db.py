@@ -214,6 +214,40 @@ class ClusterAuditRun(SQLModel, table=True):
     ran_at: datetime = Field(default_factory=now)
 
 
+class EmbeddingCache(SQLModel, table=True):
+    """문장 임베딩 캐시 (2026-09-14).
+
+    Oracle 무료 티어(1 OCPU/1GB)에서 재배포 때마다 서버가 30분 주기
+    클러스터링을 처음부터 다시 돌리는데, 그때마다 살아있는 기사
+    전부(보통 400~500건)를 문장 임베딩 모델로 다시 인코딩함. RAM이
+    빠듯해서(`free -h` 기준 상시 스왑 사용 중) 이 인코딩 구간에서만
+    재시작에 20~30분이 걸리는 걸 실측으로 확인함(로컬 PC에서는 461건에
+    20~50초인데 서버에서는 훨씬 오래 걸림 — 스왑 때문으로 추정).
+
+    같은 기사(제목+요약 텍스트가 동일)는 재시작 전후로 대부분 그대로
+    남아있으니(30시간 이내 최신 기사만 유지), 텍스트 해시를 키로 벡터를
+    캐싱해두면 재시작 때 "이미 인코딩해본 적 있는 기사"는 모델 호출
+    없이 캐시에서 바로 꺼내 쓸 수 있음 — 새로 들어온 기사만 실제로
+    인코딩하면 됨.
+    """
+
+    __tablename__ = "embedding_cache"
+
+    text_hash: str = Field(primary_key=True)  # sha256(제목+요약 텍스트)
+    vector: bytes  # float32 배열을 그대로 바이트로 저장(차원은 모델 고정값)
+    last_seen: datetime = Field(default_factory=now)  # 캐시 적중 때마다 갱신, 정리 기준
+
+
+def prune_old_embedding_cache(session: Session, retention_days: int = 3) -> int:
+    """`last_seen`이 오래된(=최근 재시작들에서 계속 캐시 미스였던, 즉
+    더 이상 안 쓰이는) 임베딩 캐시 행을 지움. 기사가 살아있는 기간이
+    최대 30시간(fetcher.py)이라 3일이면 충분히 여유 있는 기준."""
+    cutoff = now() - timedelta(days=retention_days)
+    result = session.exec(delete(EmbeddingCache).where(EmbeddingCache.last_seen < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
 class Feedback(SQLModel, table=True):
     """베타 "고객의 소리" — 답장 기능 없는 일방향 제출함(2026-08-27).
     로그인 없이도 보낼 수 있게 device_id는 선택(있으면 어느 기기에서

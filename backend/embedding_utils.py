@@ -35,10 +35,13 @@ n-gram 버전보다 더 정확했음(연금개혁 공청회 기사까지 국민�
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
 import numpy as np
+
+import db
 
 # Windows 경로 길이 제한 우회로 backend/pylibs에 별도 설치된 경우를 위한
 # 폴백. 정식 site-packages에 sentence-transformers가 있으면 이 경로는
@@ -60,8 +63,69 @@ def _get_model():
     return _model
 
 
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+_cache_table_ready = False
+
+
+def _ensure_cache_table() -> None:
+    """api.py는 시작할 때 db.init_db()를 부르지만, test_pipeline.py나
+    `pipeline.py --live`처럼 DB 없이 가볍게 돌리는 경로도 있어서 embed()
+    호출 시점에 테이블이 없을 수 있음. 캐시 레이어가 스스로 준비하게
+    해서, 호출하는 쪽이 매번 db.init_db()를 기억해서 부를 필요 없게 함.
+    이미 있는 테이블은 건드리지 않는 create_all이라 안전하고 저렴함."""
+    global _cache_table_ready
+    if not _cache_table_ready:
+        db.SQLModel.metadata.create_all(db.engine, tables=[db.EmbeddingCache.__table__])
+        _cache_table_ready = True
+
+
 def embed(texts: list[str]) -> np.ndarray:
-    """텍스트 리스트를 정규화된(코사인 유사도용) 임베딩 행렬로 변환."""
+    """텍스트 리스트를 정규화된(코사인 유사도용) 임베딩 행렬로 변환.
+
+    2026-09-14: 서버 재배포 때마다(30분 주기 클러스터링을 처음부터 다시
+    돌릴 때) 살아있는 기사(보통 400~500건) 전부를 매번 다시 인코딩하는
+    게 재시작 시간의 대부분(20~30분)을 차지하는 걸 실측으로 확인함
+    (Oracle 무료 티어 1GB RAM이라 상시 스왑 사용 중 — 로컬 PC 461건
+    20~50초와 비교하면 훨씬 느림, db.py의 EmbeddingCache 참고). 같은
+    기사는 재시작 전후로 텍스트가 그대로라, 텍스트 해시로 벡터를
+    캐싱해두면 재시작 때 "이미 인코딩해본 기사"는 모델 호출 없이 캐시
+    에서 바로 꺼내고, 새로 들어온 기사만 실제로 인코딩하면 됨.
+    """
     if not texts:
         return np.zeros((0, _get_model().get_sentence_embedding_dimension()))
-    return _get_model().encode(texts, show_progress_bar=False, normalize_embeddings=True)
+
+    _ensure_cache_table()
+    hashes = [_text_hash(t) for t in texts]
+    unique_hashes = list(dict.fromkeys(hashes))  # 순서 보존 dedup(같은 텍스트 중복 방지)
+    cached: dict[str, np.ndarray] = {}
+
+    with db.get_session() as session:
+        rows = session.exec(
+            db.select(db.EmbeddingCache).where(db.EmbeddingCache.text_hash.in_(unique_hashes))  # type: ignore[arg-type]
+        ).all()
+        for row in rows:
+            cached[row.text_hash] = np.frombuffer(row.vector, dtype=np.float32)
+            row.last_seen = db.now()
+            session.add(row)
+        session.commit()
+
+        miss_hashes = [h for h in unique_hashes if h not in cached]
+        if miss_hashes:
+            first_text_by_hash: dict[str, str] = {}
+            for t, h in zip(texts, hashes):
+                first_text_by_hash.setdefault(h, t)
+            miss_vectors = _get_model().encode(
+                [first_text_by_hash[h] for h in miss_hashes],
+                show_progress_bar=False,
+                normalize_embeddings=True,
+            )
+            for h, vec in zip(miss_hashes, miss_vectors):
+                vec = np.asarray(vec, dtype=np.float32)
+                cached[h] = vec
+                session.add(db.EmbeddingCache(text_hash=h, vector=vec.tobytes()))
+            session.commit()
+
+    return np.stack([cached[h] for h in hashes])

@@ -202,6 +202,9 @@ async def refresh_cache() -> None:
                 pruned = db.prune_old_issues(session)
                 if pruned:
                     print(f"[prune] 오래된 이슈 {pruned}건 정리함")
+                pruned_embeddings = db.prune_old_embedding_cache(session)
+                if pruned_embeddings:
+                    print(f"[prune] 오래된 임베딩 캐시 {pruned_embeddings}건 정리함")
 
         await asyncio.to_thread(_persist)
 
