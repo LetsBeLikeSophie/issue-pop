@@ -220,14 +220,31 @@ async def _refresh_loop() -> None:
         await refresh_cache()
 
 
+_DIGEST_TITLE_MAX_LEN = 40  # 공유 카드(share_card.dart)와 같은 한 줄 미리보기 길이 기준
+
+
+def _truncate(text: str, max_len: int) -> str:
+    return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
+
+
 def _build_digest_text(limit: int = 5) -> str:
     """다이제스트 알림 본문. 아직 실제 LLM 요약이 없어서(cluster_summaries는
     수동 입력만 가능, README 참고) AI 요약이 아니라 매체 커버리지 상위
-    이슈 랭킹을 그대로 씀 — v0로는 이 정도가 정직한 수준."""
+    이슈 랭킹을 그대로 씀 — v0로는 이 정도가 정직한 수준.
+
+    2026-09-14: 발송 미리보기로 보다가 "키워드만 있으니 무슨 뉴스인지
+    안 와닿는다, 공유 카드(share_card.dart)처럼 대표 기사 미리보기 한
+    줄을 같이 넣으면 좋겠다"는 피드백을 받음. 알림 한 줄에 넣을 공간이
+    빠듯해서 키워드는 보조 키워드 없이 대표 키워드 하나만 쓰고, 그
+    밑에 대표 기사 제목을 한 줄(길면 잘라서) 붙임.
+    """
     items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))[:limit]
     if not items:
         return "오늘의 트렌드를 아직 준비 중이에요."
-    lines = [f"{i+1}. {c['keyword']} ({c['outlet_count']}개 매체)" for i, c in enumerate(items)]
+    lines = []
+    for i, c in enumerate(items):
+        lines.append(f"{i+1}. {c['keyword']} ({c['outlet_count']}개 매체)")
+        lines.append(f"   {_truncate(c['representative_title'], _DIGEST_TITLE_MAX_LEN)}")
     return "오늘의 트렌드\n" + "\n".join(lines)
 
 
