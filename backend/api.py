@@ -237,13 +237,17 @@ def _build_digest_text(limit: int = 5) -> str:
     줄을 같이 넣으면 좋겠다"는 피드백을 받음. 알림 한 줄에 넣을 공간이
     빠듯해서 키워드는 보조 키워드 없이 대표 키워드 하나만 쓰고, 그
     밑에 대표 기사 제목을 한 줄(길면 잘라서) 붙임.
+
+    2026-09-15: 기사 미리보기 줄이 생기니 "(N개 매체)" 표기가 굳이
+    필요 없다는 피드백으로 뺌 — 랭킹 정렬 기준(outlet_count 우선)은
+    그대로, 화면에 숫자로 노출만 안 함.
     """
     items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))[:limit]
     if not items:
         return "오늘의 트렌드를 아직 준비 중이에요."
     lines = []
     for i, c in enumerate(items):
-        lines.append(f"{i+1}. {c['keyword']} ({c['outlet_count']}개 매체)")
+        lines.append(f"{i+1}. {c['keyword']}")
         lines.append(f"   {_truncate(c['representative_title'], _DIGEST_TITLE_MAX_LEN)}")
     return "오늘의 트렌드\n" + "\n".join(lines)
 
