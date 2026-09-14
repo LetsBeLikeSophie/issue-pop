@@ -61,6 +61,11 @@ CLUSTER_AUDIT_HOUR_KST = 4
 CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS = 30 * 60
 DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
 DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
+# 2026-09-14: 오늘의 단어를 유저가 그날 처음 GET /word-of-day를 부를 때
+# 그 자리에서(사전 API 최대 15번 + LLM 1번, 순차 호출) 계산해서 그
+# 첫 요청이 눈에 띄게 느리다는 피드백을 받음("너무 늦게 뜨거든") —
+# 유저 요청을 기다리지 않고 미리 계산해두려고 백그라운드 루프를 따로 둠.
+WORD_OF_DAY_CHECK_INTERVAL_SECONDS = 10 * 60
 KST = ZoneInfo("Asia/Seoul")
 
 # 홈 화면 "오늘 날씨" 카드용. 기상청 공식 API는 계정 가입 + 키 발급이
@@ -347,6 +352,20 @@ async def _cluster_audit_loop() -> None:
         await asyncio.to_thread(_cluster_audit_check)
 
 
+async def _word_of_day_loop() -> None:
+    """오늘의 단어를 미리 계산해두는 백그라운드 루프.
+
+    원래는 GET /word-of-day를 그날 처음 부르는 사람이 계산까지 그
+    자리에서 기다렸음(사전 API 순차 호출 최대 15번 + LLM 1번이라 꽤
+    걸림) — 서버 재시작 직후라서 느린 게 아니라 매일 첫 요청마다
+    반복되는 구조적인 문제였음. `_get_or_create_word_of_day`는 이미
+    있으면 그냥 반환하는 idempotent 함수라, 여기서 주기적으로 미리
+    불러두면 실제 유저는 거의 항상 DB에 이미 저장된 값만 받아감."""
+    while True:
+        await asyncio.to_thread(_get_or_create_word_of_day)
+        await asyncio.sleep(WORD_OF_DAY_CHECK_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
@@ -354,10 +373,12 @@ async def lifespan(app: FastAPI):
     refresh_task = asyncio.create_task(_refresh_loop())
     digest_task = asyncio.create_task(_digest_loop())
     cluster_audit_task = asyncio.create_task(_cluster_audit_loop())
+    word_of_day_task = asyncio.create_task(_word_of_day_loop())
     yield
     refresh_task.cancel()
     digest_task.cancel()
     cluster_audit_task.cancel()
+    word_of_day_task.cancel()
 
 
 app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)
