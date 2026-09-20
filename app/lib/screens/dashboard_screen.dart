@@ -16,15 +16,9 @@ import 'stock_watch_screen.dart';
 /// 각 섹션은 "더보기"로 해당 전체 화면(등록/삭제 등 관리 기능이 있는
 /// 원래 화면)으로 넘어감, 여기서는 관리 기능 없이 훑어보기만.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.api, this.leaningFilter});
+  const DashboardScreen({super.key, required this.api});
 
   final ApiClient api;
-
-  /// 2026-09-21: 홈 화면 우측 상단 성향 필터가 걸려있는 상태로 여기
-  /// 들어오면 "관심 워치"·"오늘의 트렌드" 둘 다 그 성향 매체 기준으로
-  /// 다시 걸러서 보여줌 — 필터를 걸어놓고 대시보드로 넘어와도 결과가
-  /// 그대로 안 반영되던 문제("이거 무슨 필터야" 피드백) 수정.
-  final String? leaningFilter;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -38,6 +32,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final Future<List<IssueSummary>> _index;
   late final Future<List<IssueDetail>> _trending;
 
+  /// 2026-09-21: 정치성향 필터 — 원래 홈 화면 상단바에 있었는데, "홈
+  /// 화면엔 필터 UI 자체가 안 보여야 한다, 다른 데 있어야 한다"는
+  /// 피드백으로 여기(대시보드)로 옮김. 관심사를 모아보는 화면이 필터
+  /// 상태를 들고 있는 자리로 더 맞다고 판단함.
+  String? _leaningFilter;
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +50,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<T> _filterByLeaning<T extends IssueSummary>(List<T> issues) {
-    final f = widget.leaningFilter;
+    final f = _leaningFilter;
     if (f == null) return issues;
     return issues.where((i) => i.leanings.contains(f)).toList();
   }
@@ -96,31 +96,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
                     ),
                   ),
-                  // 2026-09-21: 홈 화면에서 성향 필터를 걸어놓고 넘어왔으면
-                  // 여기서도 그 필터가 실제로 반영되고 있다는 걸 눈에 보이게
-                  // 표시함 — "무슨 필터가 반영된다는 거냐"는 피드백으로 추가.
-                  if (widget.leaningFilter != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceAlt,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: leaningTint(widget.leaningFilter).withValues(alpha: 0.4)),
-                        ),
-                        child: Text(
-                          '${widget.leaningFilter} 반영 중',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: leaningTint(widget.leaningFilter),
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 40),
+                  // 2026-09-21: 정치성향 필터 컨트롤 — 홈 화면에서 옮겨온
+                  // 자리. 여기서 바꾸면 "관심 워치"·"오늘의 트렌드" 둘 다
+                  // 바로 그 성향 매체 기준으로 다시 걸러짐.
+                  _LeaningCycler(
+                    active: _leaningFilter,
+                    onChanged: (l) => setState(() => _leaningFilter = l),
+                    api: widget.api,
+                  ),
                 ],
               ),
             ),
@@ -169,7 +152,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     top: _filterByLeaning(_matches(index, w.keyword)).take(1).toList(),
                                     api: widget.api,
                                     maxOutletCount: maxOutlet,
-                                    activeLeaning: widget.leaningFilter,
+                                    activeLeaning: _leaningFilter,
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -224,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Text(
-                              widget.leaningFilter == null ? '아직 집계된 이슈가 없어요' : '${widget.leaningFilter} 매체의 이슈가 없어요',
+                              _leaningFilter == null ? '아직 집계된 이슈가 없어요' : '$_leaningFilter 매체의 이슈가 없어요',
                               style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint),
                             ),
                           );
@@ -238,7 +221,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 rank: i + 1,
                                 issue: issues[i],
                                 maxOutletCount: maxOutlet,
-                                activeLeaning: widget.leaningFilter,
+                                activeLeaning: _leaningFilter,
                               ),
                               if (i != issues.length - 1) const SizedBox(height: 8),
                             ],
@@ -448,6 +431,178 @@ class _QuoteChip extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 2026-09-21: 정치성향 필터 — 화살표로 kLeaningOptions를 순환 선택.
+/// 원래 home_screen.dart 상단바에 있었는데 "홈 화면엔 필터 UI 자체가
+/// 안 보여야 한다"는 피드백으로 여기로 옮김. 라벨 색은 실제 진영 색
+/// (빨강=보수/파랑=진보, 중도는 검정에 가까운 ink)을 스펙트럼 위치에
+/// 따라 섞어서 보여줌(theme.dart의 leaningTint). 라벨을 누르면 지금
+/// 확보한 매체 현황 + 분류 근거를 모달로 보여줌.
+class _LeaningCycler extends StatelessWidget {
+  const _LeaningCycler({required this.active, required this.onChanged, required this.api});
+
+  final String? active;
+  final ValueChanged<String?> onChanged;
+  final ApiClient api;
+
+  void _step(int delta) {
+    final i = kLeaningOptions.indexOf(active);
+    final next = (i + delta) % kLeaningOptions.length;
+    onChanged(kLeaningOptions[next < 0 ? next + kLeaningOptions.length : next]);
+  }
+
+  void _showInfo(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      isScrollControlled: true,
+      builder: (_) => _LeaningInfoSheet(api: api),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(Icons.chevron_left, size: 18, color: AppColors.inkFaint),
+          onPressed: () => _step(-1),
+          tooltip: '이전 성향',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+        InkWell(
+          onTap: () => _showInfo(context),
+          child: SizedBox(
+            width: 52,
+            height: 36,
+            child: Center(
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: leaningTint(active)),
+                child: Text(active ?? '전체', textAlign: TextAlign.center),
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: Icon(Icons.chevron_right, size: 18, color: AppColors.inkFaint),
+          onPressed: () => _step(1),
+          tooltip: '다음 성향',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+      ],
+    );
+  }
+}
+
+/// 정치성향 필터 라벨을 누르면 뜨는 안내 모달 — "지금 우리가 실제로
+/// 수집 중인 매체가 어디까지고, 성향은 어떻게 분류했는지" 설명함.
+/// 데이터는 새로 안 만들고 backend sources.py를 그대로 노출하는
+/// /outlets/leanings를 호출함(단일 소스 유지).
+class _LeaningInfoSheet extends StatelessWidget {
+  const _LeaningInfoSheet({required this.api});
+
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '지금 우리가 보는 매체',
+              style: AppTypography.serif(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '조중동=보수, 한겨레·경향=진보처럼 학계·언론에서 통상적으로 '
+              '쓰이는 분류와 최근 소유구조 변화 등 사실관계를 참고했어요. '
+              '국가 공인 통계가 아닌 참고용이라, 한국언론진흥재단의 '
+              '〈언론수용자 조사〉가 새로 나올 때마다 다시 검토해요.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+              child: FutureBuilder<List<OutletLeaningInfo>>(
+                future: api.getOutletLeanings(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  }
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                    );
+                  }
+                  final outlets = [...snapshot.data!]..sort(
+                      (a, b) => kLeaningOptions.indexOf(a.politicalLeaning).compareTo(
+                            kLeaningOptions.indexOf(b.politicalLeaning),
+                          ),
+                    );
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: outlets.length,
+                    separatorBuilder: (_, _) => Divider(height: 16, color: AppColors.line),
+                    itemBuilder: (context, i) {
+                      final o = outlets[i];
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 96,
+                            child: Text(
+                              o.outlet,
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              o.politicalLeaning ?? '미분류',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: leaningTint(o.politicalLeaning),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              o.leaningSource ?? '',
+                              style: TextStyle(fontSize: 11, color: AppColors.inkFaint, height: 1.4),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '한국언론진흥재단 〈언론수용자 조사〉 · 매체 소유구조 등 공개 정보 종합',
+              style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint),
+            ),
+          ],
+        ),
       ),
     );
   }

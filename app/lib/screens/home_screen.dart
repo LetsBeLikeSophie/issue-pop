@@ -13,14 +13,6 @@ import 'stock_watch_screen.dart';
 
 enum _SortMode { outlet, count }
 
-// 2026-09-20: 정치성향 필터 — sources.py의 political_leaning 5분류 그대로.
-// null은 "전체"(필터 없음). 매체 지형도 문서 기준으로 지금 확보한 10개
-// 매체의 성향 분포가 보수/중도/진보 3:4:3 정도로 균형 잡혀있어서 필터를
-// 실제로 노출해도 특정 성향만 텅 비어 보이진 않는다고 판단해 추가함.
-// 옵션 목록 자체(kLeaningOptions)는 models/issue.dart로 옮김 —
-// dashboard_screen.dart도 같은 스펙트럼 순서를 써야 해서(더보기 화면이
-// 서로 다른 순서를 쓰면 안 됨).
-
 /// 2026-09-02: 카테고리 필터(같은 목록을 다시 걸러 보여주기)에서
 /// 실제 "페이지"(제스처로 옆으로 넘기면 완전히 다른 화면)로 바꿈 —
 /// 애초에 "신문처럼 페이지가 늘어나는" 컨셉이었고, 카드 스와이프 저장도
@@ -76,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<IssueSummary>> _index;
 
   _SortMode _sort = _SortMode.outlet;
-  String? _leaningFilter;
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -120,12 +111,6 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList();
   }
 
-  List<T> _filterByLeaning<T extends IssueSummary>(List<T> issues) {
-    final f = _leaningFilter;
-    if (f == null) return issues;
-    return issues.where((i) => i.leanings.contains(f)).toList();
-  }
-
   List<T> _sorted<T extends IssueSummary>(List<T> issues) {
     final list = [...issues];
     if (_sort == _SortMode.count) {
@@ -149,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _TopBar(
               onDashboard: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api, leaningFilter: _leaningFilter)),
+                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api)),
               ),
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
@@ -168,9 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
               onSettings: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => SettingsScreen(api: widget.api)),
               ),
-              leaningFilter: _leaningFilter,
-              onLeaningChanged: (l) => setState(() => _leaningFilter = l),
-              api: widget.api,
             ),
             if (!isSearching)
               Padding(
@@ -215,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (snapshot.hasError) {
                         return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
                       }
-                      final issues = _sorted(_filterByLeaning(_search(snapshot.data ?? [])));
+                      final issues = _sorted(_search(snapshot.data ?? []));
                       return ListView(
                         children: [
                           _IssueList(
@@ -223,7 +205,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             api: widget.api,
                             showRank: false,
                             emptyText: '검색 결과가 없어요',
-                            activeLeaning: _leaningFilter,
                           ),
                         ],
                       );
@@ -246,8 +227,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         index: _index,
                         api: widget.api,
                         sorter: _sorted,
-                        leaningFilter: _filterByLeaning,
-                        activeLeaning: _leaningFilter,
                         onRefresh: _refresh,
                       ),
                   ],
@@ -273,8 +252,6 @@ class _CategoryPage extends StatelessWidget {
     required this.index,
     required this.api,
     required this.sorter,
-    required this.leaningFilter,
-    required this.activeLeaning,
     required this.onRefresh,
   });
 
@@ -283,8 +260,6 @@ class _CategoryPage extends StatelessWidget {
   final Future<List<IssueSummary>> index;
   final ApiClient api;
   final List<T> Function<T extends IssueSummary>(List<T>) sorter;
-  final List<T> Function<T extends IssueSummary>(List<T>) leaningFilter;
-  final String? activeLeaning;
   final Future<void> Function() onRefresh;
 
   @override
@@ -310,13 +285,12 @@ class _CategoryPage extends StatelessWidget {
                 if (snapshot.hasError) {
                   return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
-                final issues = sorter<IssueDetail>(leaningFilter<IssueDetail>(snapshot.data ?? []));
+                final issues = sorter<IssueDetail>(snapshot.data ?? []);
                 return _IssueList(
                   issues: issues,
                   api: null,
                   showRank: true,
                   emptyText: '아직 집계된 이슈가 없어요',
-                  activeLeaning: activeLeaning,
                 );
               },
             )
@@ -334,13 +308,12 @@ class _CategoryPage extends StatelessWidget {
                   return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
                 final filtered = (snapshot.data ?? []).where((i) => categories.contains(i.category)).toList();
-                final issues = sorter(leaningFilter(filtered));
+                final issues = sorter(filtered);
                 return _IssueList(
                   issues: issues,
                   api: api,
                   showRank: false,
                   emptyText: '이 페이지엔 아직 이슈가 없어요',
-                  activeLeaning: activeLeaning,
                 );
               },
             ),
@@ -358,14 +331,12 @@ class _IssueList extends StatelessWidget {
     required this.api,
     required this.showRank,
     required this.emptyText,
-    this.activeLeaning,
   });
 
   final List<IssueSummary> issues;
   final ApiClient? api;
   final bool showRank;
   final String emptyText;
-  final String? activeLeaning;
 
   @override
   Widget build(BuildContext context) {
@@ -385,7 +356,6 @@ class _IssueList extends StatelessWidget {
             issue: issues[i],
             api: api,
             maxOutletCount: maxOutlet,
-            activeLeaning: activeLeaning,
           ),
           if (i != issues.length - 1) const SizedBox(height: 8),
         ],
@@ -419,9 +389,6 @@ class _TopBar extends StatelessWidget {
     required this.onShare,
     required this.onArchive,
     required this.onSettings,
-    required this.leaningFilter,
-    required this.onLeaningChanged,
-    required this.api,
   });
 
   final VoidCallback onDashboard;
@@ -430,9 +397,6 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onArchive;
   final VoidCallback onSettings;
-  final String? leaningFilter;
-  final ValueChanged<String?> onLeaningChanged;
-  final ApiClient api;
 
   @override
   Widget build(BuildContext context) {
@@ -445,265 +409,77 @@ class _TopBar extends StatelessWidget {
           Expanded(
             child: Text(
               'Issue Pop',
-              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
+              // 2026-09-09: 좁은 화면 + 아이콘 6개 조합에서 "Issue"가 한
               // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
               // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
               // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
               // 들어가면 잘라서 절대 넘치지 않게 함.
-              //
-              // 2026-09-20: 성향 필터 색을 로고에도 입혀봤는데("업데이트:
-              // 성향 필터 색을 로고에도 적용" 커밋) 실제로 보니 이상하다는
-              // 피드백으로 되돌림 — 로고는 항상 ink 고정, 필터 색은
-              // 우측 상단 작은 라벨(_LeaningCycler)에만 남김.
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
             ),
           ),
-          // 2026-09-20: 정치성향 필터 칩 줄을 목록 위에 항상 띄워두는 대신,
-          // 타이틀(2줄까지 허용)과 아이콘 줄 높이 차이로 원래 비어있던
-          // 우측 상단 공간에 얹음 — "화면 자리 차지 안 하면서 늘 접근
-          // 가능하게" 해달라는 피드백. 좌우 화살표로 순환(전체→진보→…→
-          // 보수→전체), 라벨 색은 선택된 성향에 따라 포인트 컬러 농도가
-          // 달라져서(전체=무채색, 그 외엔 진할수록 스펙트럼 우측) 목록을
-          // 안 봐도 "필터가 걸려있다"는 게 눈에 띄게 함.
-          Column(
+          // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
+          // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
+          // IconButton은 48px 최소 탭 영역을 잡는데, 이 여러 개를 다 그렇게
+          // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
+          //
+          // 2026-09-21: 정치성향 필터 컨트롤을 여기(홈 상단바)에 뒀었는데,
+          // "홈 화면엔 안 보이고 다른 데 있어야 한다"는 피드백으로
+          // 관심사 대시보드로 옮김 — 이 자리엔 다시 아이콘 6개만 남음.
+          Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _LeaningCycler(active: leaningFilter, onChanged: onLeaningChanged, api: api),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
-                // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
-                // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
-                // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
-                children: [
-                  // 2026-09-21: 관심 워치·관심 종목·오늘의 트렌드를 한 화면에
-                  // 모아 보여주는 "관심사 대시보드" 진입점 — 아이콘이
-                  // 5개→6개로 늘어나 타이틀이 더 좁아지지만, 기존 두 화면은
-                  // 이미 이 대시보드의 "더보기"로도 갈 수 있어서 완전히
-                  // 새로운 동선은 아님(빠른 개별 접근은 그대로 유지).
-                  IconButton(
-                    icon: Icon(Icons.dashboard_outlined, color: AppColors.ink),
-                    onPressed: onDashboard,
-                    tooltip: '관심사 대시보드',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.show_chart, color: AppColors.ink),
-                    onPressed: onStocks,
-                    tooltip: '관심 종목',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.person_search, color: AppColors.ink),
-                    onPressed: onKeywords,
-                    tooltip: '관심 워치',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.ios_share, color: AppColors.ink),
-                    onPressed: onShare,
-                    tooltip: '오늘의 트렌드 공유',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.bookmark_border, color: AppColors.ink),
-                    onPressed: onArchive,
-                    tooltip: '저장한 이슈',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.person_outline, color: AppColors.ink),
-                    onPressed: onSettings,
-                    tooltip: '설정',
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
+              // 2026-09-21: 관심 워치·관심 종목·오늘의 트렌드를 한 화면에
+              // 모아 보여주는 "관심사 대시보드" 진입점(정치성향 필터도
+              // 이제 여기 안에 있음) — 기존 두 화면은 이미 이 대시보드의
+              // "더보기"로도 갈 수 있어서 완전히 새로운 동선은 아님(빠른
+              // 개별 접근은 그대로 유지).
+              IconButton(
+                icon: Icon(Icons.dashboard_outlined, color: AppColors.ink),
+                onPressed: onDashboard,
+                tooltip: '관심사 대시보드',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.show_chart, color: AppColors.ink),
+                onPressed: onStocks,
+                tooltip: '관심 종목',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.person_search, color: AppColors.ink),
+                onPressed: onKeywords,
+                tooltip: '관심 워치',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.ios_share, color: AppColors.ink),
+                onPressed: onShare,
+                tooltip: '오늘의 트렌드 공유',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.bookmark_border, color: AppColors.ink),
+                onPressed: onArchive,
+                tooltip: '저장한 이슈',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
+              ),
+              IconButton(
+                icon: Icon(Icons.person_outline, color: AppColors.ink),
+                onPressed: onSettings,
+                tooltip: '설정',
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                constraints: const BoxConstraints(),
               ),
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// 2026-09-20: 정치성향 필터 — 화살표로 kLeaningOptions를 순환 선택.
-/// 라벨 색은 실제 진영 색(빨강=보수/파랑=진보, 중도는 검정에 가까운
-/// ink)을 스펙트럼 위치에 따라 섞어서 보여줌(theme.dart의 leaningTint —
-/// "그냥 우리 포인트 컬러 농도만 바뀌는 건 티가 안 난다"는 피드백으로,
-/// 이 컨트롤 하나만 "클린 뉴스룸"의 무채색 원칙에서 의도적으로 벗어남).
-/// 라벨을 누르면 지금 확보한 매체 현황 + 분류 근거를 모달로 보여줌.
-class _LeaningCycler extends StatelessWidget {
-  const _LeaningCycler({required this.active, required this.onChanged, required this.api});
-
-  final String? active;
-  final ValueChanged<String?> onChanged;
-  final ApiClient api;
-
-  void _step(int delta) {
-    final i = kLeaningOptions.indexOf(active);
-    final next = (i + delta) % kLeaningOptions.length;
-    onChanged(kLeaningOptions[next < 0 ? next + kLeaningOptions.length : next]);
-  }
-
-  void _showInfo(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      isScrollControlled: true,
-      builder: (_) => _LeaningInfoSheet(api: api),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: Icon(Icons.chevron_left, size: 18, color: AppColors.inkFaint),
-          onPressed: () => _step(-1),
-          tooltip: '이전 성향',
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        ),
-        InkWell(
-          onTap: () => _showInfo(context),
-          child: SizedBox(
-            width: 52,
-            height: 36,
-            child: Center(
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: leaningTint(active)),
-                child: Text(active ?? '전체', textAlign: TextAlign.center),
-              ),
-            ),
-          ),
-        ),
-        IconButton(
-          icon: Icon(Icons.chevron_right, size: 18, color: AppColors.inkFaint),
-          onPressed: () => _step(1),
-          tooltip: '다음 성향',
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        ),
-      ],
-    );
-  }
-}
-
-/// 정치성향 필터 라벨을 누르면 뜨는 안내 모달 — "지금 우리가 실제로
-/// 수집 중인 매체가 어디까지고, 성향은 어떻게 분류했는지" 설명함.
-/// 데이터는 새로 안 만들고 backend sources.py를 그대로 노출하는
-/// /outlets/leanings를 호출함(단일 소스 유지).
-class _LeaningInfoSheet extends StatelessWidget {
-  const _LeaningInfoSheet({required this.api});
-
-  final ApiClient api;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '지금 우리가 보는 매체',
-              style: AppTypography.serif(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '조중동=보수, 한겨레·경향=진보처럼 학계·언론에서 통상적으로 '
-              '쓰이는 분류와 최근 소유구조 변화 등 사실관계를 참고했어요. '
-              '국가 공인 통계가 아닌 참고용이라, 한국언론진흥재단의 '
-              '〈언론수용자 조사〉가 새로 나올 때마다 다시 검토해요.',
-              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
-            ),
-            const SizedBox(height: 16),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
-              child: FutureBuilder<List<OutletLeaningInfo>>(
-                future: api.getOutletLeanings(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                    );
-                  }
-                  if (snapshot.hasError || snapshot.data == null) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
-                    );
-                  }
-                  final outlets = [...snapshot.data!]..sort(
-                      (a, b) => kLeaningOptions.indexOf(a.politicalLeaning).compareTo(
-                            kLeaningOptions.indexOf(b.politicalLeaning),
-                          ),
-                    );
-                  return ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: outlets.length,
-                    separatorBuilder: (_, _) => Divider(height: 16, color: AppColors.line),
-                    itemBuilder: (context, i) {
-                      final o = outlets[i];
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: 96,
-                            child: Text(
-                              o.outlet,
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 52,
-                            child: Text(
-                              o.politicalLeaning ?? '미분류',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: leaningTint(o.politicalLeaning),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              o.leaningSource ?? '',
-                              style: TextStyle(fontSize: 11, color: AppColors.inkFaint, height: 1.4),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '한국언론진흥재단 〈언론수용자 조사〉 · 매체 소유구조 등 공개 정보 종합',
-              style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint),
-            ),
-          ],
-        ),
       ),
     );
   }
