@@ -49,6 +49,7 @@ from slowapi.util import get_remote_address
 import cluster_audit
 import db
 import quotes
+import sources
 import stocks
 import word_of_day
 from pipeline import run
@@ -461,11 +462,21 @@ class IssueSummary(BaseModel):
     # 처음 잡힌 시각만 노출. _cache는 재수집마다 새로 만들어지는 딕셔너리라
     # 여기 안 들어있고, refresh_cache()가 DB에서 읽어와 채워줌.
     first_seen_at: str | None = None
+    # 2026-09-20: 정치성향 필터용 — 이 이슈에 기여한 매체들의 성향을
+    # 중복 제거해서 모아둠(예: 보수 매체 1곳 + 진보 매체 2곳이 같이 보도한
+    # 이슈면 ["보수", "진보"]). sources.py의 OUTLET_LEANING이 원천 데이터라
+    # 매체가 늘거나 성향이 재검증되면 자동으로 반영됨. 미분류 매체는 빠짐.
+    leanings: list[str] = []
 
 
 class IssueDetail(IssueSummary):
     outlets: list[OutletBreakdown]
     articles: list[ArticleOut]
+
+
+def _leanings_of(outlets: dict) -> list[str]:
+    found = {sources.OUTLET_LEANING[o] for o in outlets if o in sources.OUTLET_LEANING}
+    return sorted(found)
 
 
 def _to_summary(issue_id: str, c: dict) -> IssueSummary:
@@ -478,6 +489,7 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
         article_count=c["article_count"],
         outlet_count=c["outlet_count"],
         first_seen_at=c.get("first_seen_at"),
+        leanings=_leanings_of(c["outlets"]),
     )
 
 

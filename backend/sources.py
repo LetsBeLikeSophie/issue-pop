@@ -121,6 +121,13 @@ RSS_SOURCES = [
     },
 ]
 
+# 2026-09-20: 정치성향 필터용 조회 테이블 — outlet 이름 → political_leaning.
+# RSS_SOURCES(실제 수집 중인 매체)만 포함함, CANDIDATE_SOURCES는 애초에
+# 기사가 안 들어오니 필터 대상이 될 일이 없음.
+OUTLET_LEANING: dict[str, str] = {
+    s["outlet"]: s["political_leaning"] for s in RSS_SOURCES if s.get("political_leaning")
+}
+
 # 2026-08-23에 죽은 걸로 확인됐거나(dead) 아예 시도를 안 해본(untried)
 # 후보들. fetch_all()이 안 도는 목록이라 실제 수집엔 영향 없음 — RSS
 # URL을 다시 찾아서 살리거나(dead), 처음 검증하면(untried) RSS_SOURCES로
