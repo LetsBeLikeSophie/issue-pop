@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
+import 'dashboard_screen.dart';
 import 'keyword_watch_screen.dart';
 import 'settings_screen.dart';
 import 'stock_watch_screen.dart';
@@ -145,6 +146,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _TopBar(
+              onDashboard: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api)),
+              ),
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
               ),
@@ -407,6 +411,7 @@ class _SwipeHint extends StatelessWidget {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    required this.onDashboard,
     required this.onStocks,
     required this.onKeywords,
     required this.onShare,
@@ -417,6 +422,7 @@ class _TopBar extends StatelessWidget {
     required this.api,
   });
 
+  final VoidCallback onDashboard;
   final VoidCallback onStocks;
   final VoidCallback onKeywords;
   final VoidCallback onShare;
@@ -472,6 +478,18 @@ class _TopBar extends StatelessWidget {
                 // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
                 // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
                 children: [
+                  // 2026-09-21: 관심 워치·관심 종목·오늘의 트렌드를 한 화면에
+                  // 모아 보여주는 "관심사 대시보드" 진입점 — 아이콘이
+                  // 5개→6개로 늘어나 타이틀이 더 좁아지지만, 기존 두 화면은
+                  // 이미 이 대시보드의 "더보기"로도 갈 수 있어서 완전히
+                  // 새로운 동선은 아님(빠른 개별 접근은 그대로 유지).
+                  IconButton(
+                    icon: Icon(Icons.dashboard_outlined, color: AppColors.ink),
+                    onPressed: onDashboard,
+                    tooltip: '관심사 대시보드',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
                   IconButton(
                     icon: Icon(Icons.show_chart, color: AppColors.ink),
                     onPressed: onStocks,
