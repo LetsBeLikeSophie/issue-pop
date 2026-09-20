@@ -12,6 +12,12 @@ import 'stock_watch_screen.dart';
 
 enum _SortMode { outlet, count }
 
+/// 2026-09-20: 정치성향 필터 — sources.py의 political_leaning 5분류 그대로.
+/// null은 "전체"(필터 없음). 매체 지형도 문서 기준으로 지금 확보한
+/// 10개 매체의 성향 분포가 보수/중도/진보 3:4:3 정도로 균형 잡혀있어서
+/// 필터를 실제로 노출해도 특정 성향만 텅 비어 보이진 않는다고 판단해 추가함.
+const List<String?> _leaningOptions = [null, '진보', '중도진보', '중도', '중도보수', '보수'];
+
 /// 2026-09-02: 카테고리 필터(같은 목록을 다시 걸러 보여주기)에서
 /// 실제 "페이지"(제스처로 옆으로 넘기면 완전히 다른 화면)로 바꿈 —
 /// 애초에 "신문처럼 페이지가 늘어나는" 컨셉이었고, 카드 스와이프 저장도
@@ -67,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<IssueSummary>> _index;
 
   _SortMode _sort = _SortMode.outlet;
+  String? _leaningFilter;
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -108,6 +115,12 @@ class _HomeScreenState extends State<HomeScreen> {
             i.keywords.any((k) => k.toLowerCase().contains(q)) ||
             i.representativeTitle.toLowerCase().contains(q))
         .toList();
+  }
+
+  List<T> _filterByLeaning<T extends IssueSummary>(List<T> issues) {
+    final f = _leaningFilter;
+    if (f == null) return issues;
+    return issues.where((i) => i.leanings.contains(f)).toList();
   }
 
   List<T> _sorted<T extends IssueSummary>(List<T> issues) {
@@ -179,6 +192,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 onQueryChanged: (q) => setState(() => _query = q),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _LeaningFilterBar(
+                active: _leaningFilter,
+                onSelected: (l) => setState(() => _leaningFilter = l),
+              ),
+            ),
             if (isSearching)
               Expanded(
                 key: const ValueKey('searchResults'),
@@ -193,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (snapshot.hasError) {
                         return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
                       }
-                      final issues = _sorted(_search(snapshot.data ?? []));
+                      final issues = _sorted(_filterByLeaning(_search(snapshot.data ?? [])));
                       return ListView(
                         children: [
                           _IssueList(
@@ -223,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         index: _index,
                         api: widget.api,
                         sorter: _sorted,
+                        leaningFilter: _filterByLeaning,
                         onRefresh: _refresh,
                       ),
                   ],
@@ -248,6 +269,7 @@ class _CategoryPage extends StatelessWidget {
     required this.index,
     required this.api,
     required this.sorter,
+    required this.leaningFilter,
     required this.onRefresh,
   });
 
@@ -256,6 +278,7 @@ class _CategoryPage extends StatelessWidget {
   final Future<List<IssueSummary>> index;
   final ApiClient api;
   final List<T> Function<T extends IssueSummary>(List<T>) sorter;
+  final List<T> Function<T extends IssueSummary>(List<T>) leaningFilter;
   final Future<void> Function() onRefresh;
 
   @override
@@ -281,7 +304,7 @@ class _CategoryPage extends StatelessWidget {
                 if (snapshot.hasError) {
                   return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
-                final issues = sorter<IssueDetail>(snapshot.data ?? []);
+                final issues = sorter<IssueDetail>(leaningFilter<IssueDetail>(snapshot.data ?? []));
                 return _IssueList(
                   issues: issues,
                   api: null,
@@ -304,7 +327,7 @@ class _CategoryPage extends StatelessWidget {
                   return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
                 final filtered = (snapshot.data ?? []).where((i) => categories.contains(i.category)).toList();
-                final issues = sorter(filtered);
+                final issues = sorter(leaningFilter(filtered));
                 return _IssueList(
                   issues: issues,
                   api: api,
@@ -623,6 +646,68 @@ class _PageTabChip extends StatelessWidget {
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? AppColors.ink : AppColors.inkFaint,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 2026-09-20: 정치성향 필터 — sources.py의 10개 매체 성향 분포가 보수/
+/// 중도/진보 3:4:3 정도로 균형 잡혀서 실제로 노출하기로 함. 이슈 목록
+/// 상단 툴바 바로 아래, 다른 탭/정렬과 같은 "텍스트+밑줄" 톤으로 맞춤.
+class _LeaningFilterBar extends StatelessWidget {
+  const _LeaningFilterBar({required this.active, required this.onSelected});
+
+  final String? active;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _leaningOptions.length; i++) ...[
+            if (i != 0) const SizedBox(width: 4),
+            _LeaningChip(
+              label: _leaningOptions[i] ?? '전체',
+              selected: active == _leaningOptions[i],
+              onTap: () => onSelected(_leaningOptions[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaningChip extends StatelessWidget {
+  const _LeaningChip({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      customBorder: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Container(
+          padding: const EdgeInsets.only(bottom: 1),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: selected ? AppColors.ink : Colors.transparent, width: 1.5)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? AppColors.ink : AppColors.inkFaint,
+            ),
           ),
         ),
       ),

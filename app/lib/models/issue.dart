@@ -13,6 +13,12 @@ class IssueSummary {
   /// 씀) 진짜 "추이"는 아니고 지속 기간만 보여줌.
   final DateTime? firstSeenAt;
 
+  /// 2026-09-20: 정치성향 필터용 — 이 이슈에 기여한 매체들의 성향을 중복
+  /// 제거해서 모은 목록(예: ["보수","진보"]). 즐겨찾기/아카이브처럼 DB에서
+  /// 바로 읽어오는 경로는 매체별 breakdown이 없어서 빈 배열로 옴 — 그
+  /// 경로는 애초에 이 필터를 쓰는 화면이 아님.
+  final List<String> leanings;
+
   IssueSummary({
     required this.id,
     required this.keyword,
@@ -22,6 +28,7 @@ class IssueSummary {
     required this.articleCount,
     required this.outletCount,
     this.firstSeenAt,
+    this.leanings = const [],
   });
 
   factory IssueSummary.fromJson(Map<String, dynamic> json) => IssueSummary(
@@ -33,6 +40,7 @@ class IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
+        leanings: json['leanings'] == null ? const [] : (json['leanings'] as List).cast<String>(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -44,6 +52,7 @@ class IssueSummary {
         'article_count': articleCount,
         'outlet_count': outletCount,
         'first_seen_at': firstSeenAt?.toIso8601String(),
+        'leanings': leanings,
       };
 }
 
@@ -103,6 +112,7 @@ class IssueDetail extends IssueSummary {
     required super.articleCount,
     required super.outletCount,
     super.firstSeenAt,
+    super.leanings,
     required this.outlets,
     required this.articles,
   });
@@ -116,6 +126,7 @@ class IssueDetail extends IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
+        leanings: json['leanings'] == null ? const [] : (json['leanings'] as List).cast<String>(),
         outlets: (json['outlets'] as List)
             .map((e) => OutletBreakdown.fromJson(e as Map<String, dynamic>))
             .toList(),
