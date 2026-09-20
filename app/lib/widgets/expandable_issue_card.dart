@@ -178,17 +178,20 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (widget.rank != null) ...[
-                          SizedBox(
-                            width: 20,
-                            child: Text(
-                              widget.rank.toString().padLeft(2, '0'),
-                              style: AppTypography.mono(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.inkFaint),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: SizedBox(
+                              width: 20,
+                              child: Text(
+                                widget.rank.toString().padLeft(2, '0'),
+                                style: AppTypography.mono(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.inkFaint),
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                         ],
                         Expanded(
                           child: Column(
@@ -231,29 +234,49 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                     _DaysTrackedBadge(days: days),
                                 ],
                               ),
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 6),
                               Text(
                                 issue.representativeTitle,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12, color: AppColors.inkSoft, height: 1.35),
+                                style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.45),
                               ),
                               if (widget.subtitle != null) ...[
                                 const SizedBox(height: 3),
                                 Text(widget.subtitle!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
                               ],
+                              const SizedBox(height: 10),
+                              // 2026-09-20: "클린 뉴스룸" 톤 리디자인(F안) —
+                              // 헤드라인 아래 별도 줄로 도달 표시 + 건수를
+                              // 양끝 정렬. IssueDetail(홈 "전체" 페이지처럼
+                              // 매체별 기사 목록을 이미 들고 있는 경우)이면
+                              // 매체 이니셜 아바타 스택을 보여주고, 요약본만
+                              // 있는 카드(검색/워치 등, 매체명 목록이 없음)는
+                              // 기존 점 방식으로 자동 대체함 — 카드 하나로
+                              // 두 데이터 모양을 다 받아야 해서 이렇게 분기함.
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: issue is IssueDetail
+                                        ? _ReachAvatars(outlets: issue.outlets, totalCount: issue.outletCount)
+                                        : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${issue.articleCount}건',
+                                    style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  AnimatedRotation(
+                                    turns: _expanded ? 0.25 : 0,
+                                    duration: const Duration(milliseconds: 150),
+                                    child: Icon(Icons.chevron_right, size: 15, color: AppColors.inkFaint),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
-                        const SizedBox(width: 12),
-                        _CountStat(count: issue.articleCount),
-                        const SizedBox(width: 6),
-                        AnimatedRotation(
-                          turns: _expanded ? 0.25 : 0,
-                          duration: const Duration(milliseconds: 150),
-                          child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
                         ),
                       ],
                     ),
@@ -337,6 +360,10 @@ class _DaysTrackedBadge extends StatelessWidget {
 
 /// "이슈판"의 .dots — 오늘 가장 많이 보도된 이슈(maxOutletCount)를
 /// 기준으로 칸을 만들고, 이 이슈가 보도된 매체 수만큼 채움.
+///
+/// 2026-09-20: 검색·워치 화면처럼 매체명 목록이 없는 요약 카드(IssueSummary)
+/// 용 폴백. 매체명이 있으면(IssueDetail) [_ReachAvatars]를 대신 씀 — 헤드라인
+/// 아래 가로 한 줄에 들어가는 배치라 세로 스택이 아니라 가로로 나열함.
 class _ReachDots extends StatelessWidget {
   const _ReachDots({required this.count, required this.max});
 
@@ -346,14 +373,11 @@ class _ReachDots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = max < 1 ? 1 : max;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
         Wrap(
           spacing: 2.5,
           runSpacing: 2.5,
-          alignment: WrapAlignment.end,
           children: [
             for (var i = 0; i < total; i++)
               Container(
@@ -361,33 +385,64 @@ class _ReachDots extends StatelessWidget {
                 height: 5,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  // 2026-09-20: "클린 뉴스룸" 톤 — 도달 표시도 액센트 컬러 대신
-                  // 흑백 명암으로만 구분(색은 accent 하나만 쓰는 원칙).
+                  // "클린 뉴스룸" 톤 — 도달 표시도 액센트 컬러 대신 흑백
+                  // 명암으로만 구분(색은 accent 하나만 쓰는 원칙).
                   color: i < count ? AppColors.ink : AppColors.line,
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text('$count개 매체', style: AppTypography.mono(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.inkFaint)),
+        const SizedBox(width: 6),
+        Text('$count개 매체', style: AppTypography.mono(fontSize: 10.5, fontWeight: FontWeight.w500, color: AppColors.inkFaint)),
       ],
     );
   }
 }
 
-class _CountStat extends StatelessWidget {
-  const _CountStat({required this.count});
+/// 2026-09-20: "클린 뉴스룸" 톤 리디자인(F안) — 점 대신 매체 이니셜을
+/// 겹친 원형 아바타로 "이 안에 여러 매체가 묶여있다"를 보여줌. 매체명이
+/// 실제로 있는 카드(IssueDetail)에서만 씀. outlets는 백엔드에서 이미
+/// 보도량 내림차순으로 정렬해서 내려주므로 그대로 앞에서부터 씀.
+class _ReachAvatars extends StatelessWidget {
+  const _ReachAvatars({required this.outlets, required this.totalCount});
 
-  final int count;
+  final List<OutletBreakdown> outlets;
+  final int totalCount;
+
+  static const _maxAvatars = 3;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    final shown = outlets.take(_maxAvatars).toList();
+    final remaining = totalCount - shown.length;
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$count', style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.accent)),
-        Text('건', style: TextStyle(fontSize: 10, color: AppColors.inkFaint)),
+        for (var i = 0; i < shown.length; i++)
+          Transform.translate(
+            offset: Offset(-6.0 * i, 0),
+            child: Container(
+              width: 19,
+              height: 19,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surfaceAlt,
+                border: Border.all(color: AppColors.surface, width: 1.5),
+              ),
+              child: Text(
+                shown[i].outlet.substring(0, 1),
+                style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w700, color: AppColors.inkSoft),
+              ),
+            ),
+          ),
+        Transform.translate(
+          offset: Offset(-6.0 * (shown.length - 1).clamp(0, _maxAvatars), 0),
+          child: Text(
+            remaining > 0 ? '+$remaining개 매체' : '$totalCount개 매체',
+            style: AppTypography.mono(fontSize: 10.5, fontWeight: FontWeight.w500, color: AppColors.inkFaint),
+          ),
+        ),
       ],
     );
   }
