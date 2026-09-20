@@ -164,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               leaningFilter: _leaningFilter,
               onLeaningChanged: (l) => setState(() => _leaningFilter = l),
+              api: widget.api,
             ),
             if (!isSearching)
               Padding(
@@ -413,6 +414,7 @@ class _TopBar extends StatelessWidget {
     required this.onSettings,
     required this.leaningFilter,
     required this.onLeaningChanged,
+    required this.api,
   });
 
   final VoidCallback onStocks;
@@ -422,6 +424,7 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onSettings;
   final String? leaningFilter;
   final ValueChanged<String?> onLeaningChanged;
+  final ApiClient api;
 
   @override
   Widget build(BuildContext context) {
@@ -455,7 +458,7 @@ class _TopBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _LeaningCycler(active: leaningFilter, onChanged: onLeaningChanged),
+              _LeaningCycler(active: leaningFilter, onChanged: onLeaningChanged, api: api),
               const SizedBox(height: 2),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -510,16 +513,21 @@ class _TopBar extends StatelessWidget {
 }
 
 /// 2026-09-20: 정치성향 필터 — 화살표로 _leaningOptions를 순환 선택.
-/// 라벨 색은 accent 색의 농도를 성향 스펙트럼 위치에 따라 다르게 줘서
-/// (전체=무채색, 진보 쪽일수록 옅게 → 보수 쪽일수록 진하게) 목록을 안
-/// 보고도 "지금 필터가 걸려있다"가 한눈에 들어오게 함 — 다만 색 자체는
-/// 우리 accent 하나뿐이라("클린 뉴스룸" 톤에서 무지개 배지를 없앤 결정과
-/// 안 부딪힘) 정치 진영을 실제 색(빨강/파랑)으로 연상시키진 않음.
+/// 라벨 색은 실제 진영 색(빨강=보수/파랑=진보, 중도는 검정에 가까운
+/// ink)을 스펙트럼 위치에 따라 섞어서 보여줌 — "그냥 우리 포인트 컬러
+/// 농도만 바뀌는 건 티가 안 난다"는 피드백으로, 이 컨트롤 하나만
+/// "클린 뉴스룸"의 무채색 원칙에서 의도적으로 벗어남(정치 성향을
+/// 나타내는 게 이 컨트롤의 목적 자체라서). 라벨을 누르면 지금 확보한
+/// 매체 현황 + 분류 근거를 모달로 보여줌.
 class _LeaningCycler extends StatelessWidget {
-  const _LeaningCycler({required this.active, required this.onChanged});
+  const _LeaningCycler({required this.active, required this.onChanged, required this.api});
 
   final String? active;
   final ValueChanged<String?> onChanged;
+  final ApiClient api;
+
+  static const _red = Color(0xFF9C3B3B);
+  static const _blue = Color(0xFF2E4C82);
 
   void _step(int delta) {
     final i = _leaningOptions.indexOf(active);
@@ -527,12 +535,21 @@ class _LeaningCycler extends StatelessWidget {
     onChanged(_leaningOptions[next < 0 ? next + _leaningOptions.length : next]);
   }
 
-  Color _tint() {
-    if (active == null) return AppColors.inkFaint;
-    final i = _leaningOptions.indexOf(active) - 1; // 0..4 (전체 제외)
-    final steps = _leaningOptions.length - 1;
-    final t = 0.45 + 0.55 * (i / (steps - 1));
-    return Color.lerp(AppColors.inkFaint, AppColors.accent, t)!;
+  static Color tintFor(String? leaning) {
+    if (leaning == null) return AppColors.inkFaint;
+    final i = _leaningOptions.indexOf(leaning) - 1; // 0(진보)..4(보수)
+    if (i <= 2) return Color.lerp(_blue, AppColors.ink, i / 2)!;
+    return Color.lerp(AppColors.ink, _red, (i - 2) / 2)!;
+  }
+
+  void _showInfo(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      isScrollControlled: true,
+      builder: (_) => _LeaningInfoSheet(api: api),
+    );
   }
 
   @override
@@ -547,12 +564,18 @@ class _LeaningCycler extends StatelessWidget {
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         ),
-        SizedBox(
-          width: 52,
-          child: Text(
-            active ?? '전체',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _tint()),
+        InkWell(
+          onTap: () => _showInfo(context),
+          child: SizedBox(
+            width: 52,
+            height: 36,
+            child: Center(
+              child: Text(
+                active ?? '전체',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tintFor(active)),
+              ),
+            ),
           ),
         ),
         IconButton(
@@ -563,6 +586,111 @@ class _LeaningCycler extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         ),
       ],
+    );
+  }
+}
+
+/// 정치성향 필터 라벨을 누르면 뜨는 안내 모달 — "지금 우리가 실제로
+/// 수집 중인 매체가 어디까지고, 성향은 어떻게 분류했는지" 설명함.
+/// 데이터는 새로 안 만들고 backend sources.py를 그대로 노출하는
+/// /outlets/leanings를 호출함(단일 소스 유지).
+class _LeaningInfoSheet extends StatelessWidget {
+  const _LeaningInfoSheet({required this.api});
+
+  final ApiClient api;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '지금 우리가 보는 매체',
+              style: AppTypography.serif(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '조중동=보수, 한겨레·경향=진보처럼 학계·언론에서 통상적으로 '
+              '쓰이는 분류와 최근 소유구조 변화 등 사실관계를 참고했어요. '
+              '국가 공인 통계가 아닌 참고용이라, 한국언론진흥재단의 '
+              '〈언론수용자 조사〉가 새로 나올 때마다 다시 검토해요.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+              child: FutureBuilder<List<OutletLeaningInfo>>(
+                future: api.getOutletLeanings(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  }
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                    );
+                  }
+                  final outlets = [...snapshot.data!]..sort(
+                      (a, b) => _leaningOptions.indexOf(a.politicalLeaning).compareTo(
+                            _leaningOptions.indexOf(b.politicalLeaning),
+                          ),
+                    );
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: outlets.length,
+                    separatorBuilder: (_, _) => Divider(height: 16, color: AppColors.line),
+                    itemBuilder: (context, i) {
+                      final o = outlets[i];
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 96,
+                            child: Text(
+                              o.outlet,
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              o.politicalLeaning ?? '미분류',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: _LeaningCycler.tintFor(o.politicalLeaning),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              o.leaningSource ?? '',
+                              style: TextStyle(fontSize: 11, color: AppColors.inkFaint, height: 1.4),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '한국언론진흥재단 〈언론수용자 조사〉 · 매체 소유구조 등 공개 정보 종합',
+              style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

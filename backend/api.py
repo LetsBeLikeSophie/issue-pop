@@ -562,6 +562,33 @@ async def get_categories():
     return Counter(c["category"] for c in _cache.values())
 
 
+class OutletLeaningInfo(BaseModel):
+    outlet: str
+    category: str
+    political_leaning: str | None
+    leaning_source: str | None
+    leaning_updated: str | None
+
+
+@app.get("/outlets/leanings", response_model=list[OutletLeaningInfo])
+async def get_outlet_leanings():
+    """2026-09-20: 홈 화면 성향 필터 컨트롤에서 "지금 우리 현황이 뭔지,
+    분류 근거가 뭔지" 안내 모달을 열 때 씀. sources.py RSS_SOURCES(실제
+    수집 중인 매체)가 유일한 소스라 여기서 새로 만들지 않고 그대로 노출함
+    — 매체가 추가되거나 leaning_source가 갱신되면 이 응답도 자동으로
+    같이 바뀜."""
+    return [
+        OutletLeaningInfo(
+            outlet=s["outlet"],
+            category=s["category"],
+            political_leaning=s.get("political_leaning"),
+            leaning_source=s.get("leaning_source"),
+            leaning_updated=s.get("leaning_updated"),
+        )
+        for s in sources.RSS_SOURCES
+    ]
+
+
 @app.get("/stats")
 async def get_stats():
     """홈 화면 마스트헤드 통계용("전체기사"/이슈 수). 캐시가 이미 메모리에

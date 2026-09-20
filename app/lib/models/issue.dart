@@ -56,6 +56,33 @@ class IssueSummary {
       };
 }
 
+/// backend/api.py의 OutletLeaningInfo — 정치성향 필터 안내 모달용.
+/// sources.py RSS_SOURCES를 그대로 노출하는 것이라 매체가 늘거나
+/// leaning_source가 갱신되면 이 모델도 별도 변경 없이 그대로 반영됨.
+class OutletLeaningInfo {
+  final String outlet;
+  final String category;
+  final String? politicalLeaning;
+  final String? leaningSource;
+  final String? leaningUpdated;
+
+  OutletLeaningInfo({
+    required this.outlet,
+    required this.category,
+    this.politicalLeaning,
+    this.leaningSource,
+    this.leaningUpdated,
+  });
+
+  factory OutletLeaningInfo.fromJson(Map<String, dynamic> json) => OutletLeaningInfo(
+        outlet: json['outlet'] as String,
+        category: json['category'] as String,
+        politicalLeaning: json['political_leaning'] as String?,
+        leaningSource: json['leaning_source'] as String?,
+        leaningUpdated: json['leaning_updated'] as String?,
+      );
+}
+
 class OutletBreakdown {
   final String outlet;
   final int count;
