@@ -107,6 +107,18 @@ RSS_SOURCES = [
         "leaning_source": "시민기자 모델, 진보 성향 뚜렷",
         "leaning_updated": "2026-09-20",
     },
+    {
+        # 2026-09-20: CANDIDATE_SOURCES에서 승격 — 홈페이지
+        # <link rel="alternate" rss+xml>로 새 주소 발견, fetch_outlet()으로
+        # 실제 검증(250건 채택, 요약문도 500자씩 정상 포함). 한국경제 때와
+        # 달리 첫 시도부터 에러 없이 깔끔하게 붙어서 신뢰도 높다고 판단함.
+        "outlet": "헤럴드경제", "category": "경제",
+        "url": "https://biz.heraldcorp.com/rss/google/newsAll",
+        "confidence": "verified", "last_verified": "2026-09-20",
+        "political_leaning": "중도",
+        "leaning_source": "경제 전문지",
+        "leaning_updated": "2026-09-20",
+    },
 ]
 
 # 2026-08-23에 죽은 걸로 확인됐거나(dead) 아예 시도를 안 해본(untried)
@@ -152,81 +164,86 @@ CANDIDATE_SOURCES = [
     },
     {
         "outlet": "KBS", "category": "방송", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도",
         "leaning_source": "공영방송, 정권 교체마다 논조 변동 비판이 양쪽에서 나옴",
     },
     {
         "outlet": "MBC", "category": "방송", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도진보",
         "leaning_source": "공영방송, 중도진보로 평가되는 경우가 많음(보수 진영에선 비판)",
     },
     {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음.
         "outlet": "국민일보", "category": "종합", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도보수",
         "leaning_source": "개신교(여의도순복음교회) 배경",
     },
     {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음. /RSS/economy.xml,
+        # /rss/economy.xml 등 흔한 패턴도 전부 실제로는 그냥 HTML 페이지였음
+        # (200이지만 text/html, RSS 아님).
         "outlet": "노컷뉴스", "category": "종합", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도진보",
         "leaning_source": "CBS(기독교방송) 계열",
     },
     {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음, /rss/rss.xml도
+        # 실제론 HTML 페이지(가짜 200).
         "outlet": "이데일리", "category": "경제", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도",
         "leaning_source": "경제 전문지",
     },
     {
-        "outlet": "헤럴드경제", "category": "경제", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
-        "political_leaning": "중도",
-        "leaning_source": "경제 전문지",
-    },
-    {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음, 흔한 패턴도
+        # 전부 HTML 페이지(가짜 200).
         "outlet": "파이낸셜뉴스", "category": "경제", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도",
         "leaning_source": "경제 전문지",
     },
     {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음, /api/rss/,
+        # /rss/allArticle.xml 다 404.
         "outlet": "프레시안", "category": "종합", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "진보",
         "leaning_source": "진보 성향 인터넷신문",
     },
     # 2026-09-20 추가: 20개 후보에 아예 없었던 방송사들 — "매체 지형도"
-    # 문서를 만들며 전체 그림을 위해 참고로 넣음, 시도 자체를 안 해봄.
+    # 문서를 만들며 전체 그림을 위해 참고로 넣음. 오늘 홈페이지 RSS
+    # 링크 태그 확인해봤는데 전부 없었음(untried → dead로 갱신).
     {
         "outlet": "TV조선", "category": "방송", "url": None,
-        "status": "untried", "last_checked": None,
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "보수",
         "leaning_source": "조선일보 계열 종편, 보수 성향 뚜렷",
     },
     {
         "outlet": "채널A", "category": "방송", "url": None,
-        "status": "untried", "last_checked": None,
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "보수",
         "leaning_source": "동아일보 계열 종편, TV조선보다 다소 온건",
     },
     {
         "outlet": "MBN", "category": "방송", "url": None,
-        "status": "untried", "last_checked": None,
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도보수",
         "leaning_source": "매일경제 계열 종편",
     },
     {
         "outlet": "YTN", "category": "방송", "url": None,
-        "status": "untried", "last_checked": None,
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도",
         "leaning_source": "2024년 민영화로 지형 변화 진행 중",
     },
     {
         "outlet": "JTBC", "category": "방송", "url": None,
-        "status": "untried", "last_checked": None,
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "중도진보",
         "leaning_source": "중앙일보 계열이지만 방송은 중도진보 평가(손석희 앵커 시절 영향)",
     },
