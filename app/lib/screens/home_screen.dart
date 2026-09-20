@@ -34,9 +34,6 @@ class _PageSpec {
   /// _trending의 풍부한 데이터 그대로 씀). 빈 값 없는 Set이면 그
   /// 카테고리(들)만 클라이언트에서 걸러서 보여줌.
   final Set<String>? categories;
-
-  /// 탭 점 색깔 — "전체"는 accent, 나머지는 그 카테고리 고유 색.
-  Color get color => categories == null ? AppColors.accent : CategoryColors.of(categories!.first);
 }
 
 final List<_PageSpec> _pageSpecs = [
@@ -521,25 +518,20 @@ class _Toolbar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.line),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              _SortButton(label: '매체수', selected: sort == _SortMode.outlet, onTap: () => onSortChanged(_SortMode.outlet)),
-              _SortButton(label: '기사수', selected: sort == _SortMode.count, onTap: () => onSortChanged(_SortMode.count)),
-            ],
-          ),
+        Row(
+          children: [
+            _SortButton(label: '매체수', selected: sort == _SortMode.outlet, onTap: () => onSortChanged(_SortMode.outlet)),
+            const SizedBox(width: 10),
+            _SortButton(label: '기사수', selected: sort == _SortMode.count, onTap: () => onSortChanged(_SortMode.count)),
+          ],
         ),
       ],
     );
   }
 }
 
+/// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 채워진 알약 토글 대신
+/// 텍스트 + 밑줄(선택된 것만)로 바꿈.
 class _SortButton extends StatelessWidget {
   const _SortButton({required this.label, required this.selected, required this.onTap});
 
@@ -550,20 +542,18 @@ class _SortButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(6),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.only(bottom: 1),
         decoration: BoxDecoration(
-          color: selected ? AppColors.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          border: Border(bottom: BorderSide(color: selected ? AppColors.ink : Colors.transparent, width: 1.5)),
         ),
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? AppColors.bg : AppColors.inkSoft,
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? AppColors.ink : AppColors.inkFaint,
           ),
         ),
       ),
@@ -588,10 +578,9 @@ class _PageTabBar extends StatelessWidget {
       child: Row(
         children: [
           for (var i = 0; i < specs.length; i++) ...[
-            if (i != 0) const SizedBox(width: 6),
+            if (i != 0) const SizedBox(width: 16),
             _PageTabChip(
               label: specs[i].label,
-              color: specs[i].color,
               selected: active == i,
               onTap: () => onSelected(i),
             ),
@@ -602,45 +591,35 @@ class _PageTabBar extends StatelessWidget {
   }
 }
 
+/// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 카테고리별 원색 점 대신
+/// BBC/Reuters류 텍스트 탭(선택된 탭만 굵게 + accent 밑줄)으로 바꿈.
 class _PageTabChip extends StatelessWidget {
   const _PageTabChip({
     required this.label,
-    required this.color,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final Color color;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        padding: const EdgeInsets.only(bottom: 9),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.16) : AppColors.surface,
-          border: Border.all(color: selected ? color : AppColors.line),
-          borderRadius: BorderRadius.circular(999),
+          border: Border(bottom: BorderSide(color: selected ? AppColors.accent : Colors.transparent, width: 2)),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? AppColors.ink : AppColors.inkSoft,
-              ),
-            ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? AppColors.ink : AppColors.inkFaint,
+          ),
         ),
       ),
     );

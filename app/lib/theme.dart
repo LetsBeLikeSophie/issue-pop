@@ -192,6 +192,16 @@ class AppTypography {
     Color? color,
   }) =>
       GoogleFonts.notoSerifKr(fontSize: fontSize, fontWeight: fontWeight, color: color);
+
+  /// 2026-09-20: "클린 뉴스룸" 톤(BBC/Reuters류 레퍼런스) 리디자인 시안
+  /// 적용 — 숫자 데이터(매체수·기사수·순번)는 고정폭 모노스페이스로
+  /// 구분해서 "이건 수치다"가 시각적으로 바로 읽히게 함.
+  static TextStyle mono({
+    required double fontSize,
+    required FontWeight fontWeight,
+    Color? color,
+  }) =>
+      GoogleFonts.ibmPlexMono(fontSize: fontSize, fontWeight: fontWeight, color: color);
 }
 
 class AppTheme {

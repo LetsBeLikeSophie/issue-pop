@@ -104,7 +104,6 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
   @override
   Widget build(BuildContext context) {
     final issue = widget.issue;
-    final catColor = CategoryColors.of(issue.category);
     final keywords = issue.keywords.isEmpty ? [issue.keyword] : issue.keywords;
     final isSingle = issue.outletCount <= 1;
 
@@ -184,12 +183,8 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                           SizedBox(
                             width: 20,
                             child: Text(
-                              '${widget.rank}',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: AppColors.inkFaint,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
+                              widget.rank.toString().padLeft(2, '0'),
+                              style: AppTypography.mono(fontSize: 11, fontWeight: FontWeight.w500, color: AppColors.inkFaint),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -229,7 +224,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         ),
                                       ]),
                                     ),
-                                  _CategoryBadge(category: issue.category, color: catColor),
+                                  _CategoryBadge(category: issue.category),
                                   if (isSingle) const _SingleTag(),
                                   if (_daysTracked(issue.firstSeenAt) case final days? when days >= 2)
                                     _DaysTrackedBadge(days: days),
@@ -277,37 +272,40 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
   }
 }
 
+/// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 카테고리별 원색 배지 대신
+/// BBC/Reuters류처럼 색 없는 라벨 텍스트만 씀(구분은 색이 아니라
+/// 자간·크기로). [color]를 안 받게 바꿔서 CategoryColors 의존을 끊음 —
+/// 다른 화면(설정 필터 칩 등)은 계속 색을 쓰니 그쪽 CategoryColors는
+/// 그대로 둠.
 class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category, required this.color});
+  const _CategoryBadge({required this.category});
 
   final String category;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-      child: Text(
-        category,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color, letterSpacing: 0.02),
+    return Text(
+      category,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: AppColors.inkFaint,
+        letterSpacing: 0.5,
       ),
     );
   }
 }
 
+/// "단독"/"N일째 보도중"과 같은 톤 — 배경 칩 없이 액센트 컬러 텍스트만
+/// 씀(리디자인 시안의 라벨 처리 그대로).
 class _SingleTag extends StatelessWidget {
   const _SingleTag();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(4)),
-      child: Text(
-        '단독',
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accent2, letterSpacing: 0.02),
-      ),
+    return Text(
+      '단독',
+      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.accent, letterSpacing: 0.4),
     );
   }
 }
@@ -329,13 +327,9 @@ class _DaysTrackedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(4)),
-      child: Text(
-        '$days일째 보도 중',
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.accent, letterSpacing: 0.02),
-      ),
+    return Text(
+      '$days일째 보도중',
+      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.accent, letterSpacing: 0.4),
     );
   }
 }
@@ -366,13 +360,15 @@ class _ReachDots extends StatelessWidget {
                 height: 5,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: i < count ? AppColors.accent : AppColors.line,
+                  // 2026-09-20: "클린 뉴스룸" 톤 — 도달 표시도 액센트 컬러 대신
+                  // 흑백 명암으로만 구분(색은 accent 하나만 쓰는 원칙).
+                  color: i < count ? AppColors.ink : AppColors.line,
                 ),
               ),
           ],
         ),
         const SizedBox(height: 4),
-        Text('$count개 매체', style: TextStyle(fontSize: 10, color: AppColors.inkFaint)),
+        Text('$count개 매체', style: AppTypography.mono(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.inkFaint)),
       ],
     );
   }
@@ -389,15 +385,7 @@ class _CountStat extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '$count',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.ink,
-            fontFeatures: [FontFeature.tabularFigures()],
-          ),
-        ),
+        Text('$count', style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.accent)),
         Text('건', style: TextStyle(fontSize: 10, color: AppColors.inkFaint)),
       ],
     );
