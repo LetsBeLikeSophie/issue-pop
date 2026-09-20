@@ -1,30 +1,216 @@
 # -*- coding: utf-8 -*-
 """
-RSS 피드 출처 목록.
+매체 출처 코드테이블 — RSS 피드 + 신뢰도/카테고리/정치성향 메타데이터.
 
-실제 서비스에서는 이 리스트를 DB 테이블(outlets)로 옮기고,
-매체별 신뢰도/카테고리/성향 메타데이터를 함께 관리하게 될 거예요.
-지금은 프로토타입 단계라 파이썬 리스트로 하드코딩했어요.
+2026-09-20: "기사는 결국 outlet에 종속되는데, 성향 필터를 만들든 안
+만들든 이 메타데이터 자체는 구조화된 테이블로 관리돼야 한다"는 피드백으로
+정리함. sources.py 원래 docstring에도 "언젠가 DB 테이블(outlets)로
+옮긴다"는 계획이 있었는데, 지금 규모(9~20건)와 갱신 방식(사람이 가끔
+손으로 고치는 참고 자료)을 보면 SQLite 테이블보다 이렇게 파이썬
+리스트로 버전관리(git)되는 게 오히려 나음 — 누가 언제 왜 바꿨는지
+커밋 히스토리에 그대로 남음. 유저 데이터가 아니라 "코드 취급하는
+참고 데이터"라 이 파일 자체가 "코드테이블"인 셈.
 
-2026-08-23: validate_sources.py를 로컬 PC(실제 인터넷 가능)에서 돌려서
-20개 중 9개가 살아있는 걸 확인했어요. 죽은 11개(KBS, 한국경제, 조선일보,
-중앙일보, MBC, 국민일보, 노컷뉴스, 이데일리, 헤럴드경제, 파이낸셜뉴스,
-프레시안)는 목록에서 뺐고, 살아있는 9개는 confidence를 "verified"로
-올렸어요. 원본 결과는 sources_status.json 참고.
+**갱신 주기(사람이 직접 해야 함, 자동화 없음)**:
+  - `last_verified` (RSS 생존 여부): 월 1회 정도, `validate_sources.py`
+    다시 돌려서 갱신. URL이 바뀌거나 서비스가 죽으면 이 값으로 알아챔.
+  - `leaning_updated` (정치성향 라벨): 연 1회, 한국언론진흥재단이
+    〈언론수용자 조사〉를 새로 낼 때마다 그 기준으로 재검증.
+    (자세한 배경/스펙트럼 위치는 2026-09-20 작성한 "이슈판 매체
+    지형도" 문서 참고 — 이 파일이 그 문서의 실제 데이터 소스가 됨.)
 
-  - verified   : 실제로 인터넷 되는 곳에서 살아있는 걸 확인한 URL
-  - unverified : 알려진 패턴으로 추정해서 넣었지만 직접 확인은 못 한 URL
-                 (매체가 도메인/경로를 바꿨으면 죽어있을 수 있음)
+**필드 설명**:
+  - outlet         : 매체명
+  - category       : RSS 피드 자체의 카테고리(종합/경제 등) — category.py의
+                      9분류(정치/경제/사회/...)와는 다른 축, 혼동 주의.
+  - url            : RSS 피드 주소
+  - confidence     : "verified"(생존 확인) | "unverified"(추정만 함)
+  - last_verified  : confidence를 마지막으로 확인한 날짜(YYYY-MM-DD)
+  - political_leaning : "진보" | "중도진보" | "중도" | "중도보수" | "보수" | None(미분류)
+                      학술·보도에서 통상적으로 언급되는 분류 참고용 — 국가
+                      승인통계 아님, 논쟁 있을 수 있음. 실제 유저 대상
+                      필터 기능에 쓰기 전엔 반드시 KPF 최신 자료로 재검증.
+  - leaning_source : 위 분류의 근거를 한 줄로(출처가 약할수록 신중하게 취급).
+  - leaning_updated: leaning 필드를 마지막으로 검토한 날짜.
 """
 
 RSS_SOURCES = [
-    {"outlet": "연합뉴스", "category": "종합", "url": "https://www.yna.co.kr/rss/news.xml", "confidence": "verified"},
-    {"outlet": "한겨레", "category": "종합", "url": "https://www.hani.co.kr/rss/", "confidence": "verified"},
-    {"outlet": "경향신문", "category": "종합", "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml", "confidence": "verified"},
-    {"outlet": "매일경제", "category": "경제", "url": "https://www.mk.co.kr/rss/30000001/", "confidence": "verified"},
-    {"outlet": "머니투데이", "category": "경제", "url": "https://rss.mt.co.kr/mt_news.xml", "confidence": "verified"},
-    {"outlet": "SBS", "category": "종합", "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01", "confidence": "verified"},
-    {"outlet": "동아일보", "category": "종합", "url": "https://rss.donga.com/total.xml", "confidence": "verified"},
-    {"outlet": "서울신문", "category": "종합", "url": "https://www.seoul.co.kr/xml/rss/rss_politics.xml", "confidence": "verified"},
-    {"outlet": "오마이뉴스", "category": "종합", "url": "https://rss.ohmynews.com/rss/ohmynews.xml", "confidence": "verified"},
+    {
+        "outlet": "연합뉴스", "category": "종합",
+        "url": "https://www.yna.co.kr/rss/news.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "국가기간뉴스통신사, 정부 지분 — 정권별 논조 변동 논란 있음",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "한겨레", "category": "종합",
+        "url": "https://www.hani.co.kr/rss/",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "진보",
+        "leaning_source": "국민주 창간, 대표적 진보지 — 이견 거의 없음",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "경향신문", "category": "종합",
+        "url": "https://www.khan.co.kr/rss/rssdata/total_news.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "중도진보",
+        "leaning_source": "진보 성향, 한겨레보다 소폭 온건하다는 평가",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "매일경제", "category": "경제",
+        "url": "https://www.mk.co.kr/rss/30000001/",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "중도보수",
+        "leaning_source": "경제지 — 친시장/친기업 논조(정치 좌우보다 이 축이 더 강함)",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "머니투데이", "category": "경제",
+        "url": "https://rss.mt.co.kr/mt_news.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "경제 전문지, 정치성향보다 경제 실용 논조",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "SBS", "category": "종합",
+        "url": "https://news.sbs.co.kr/news/SectionRssFeed.do?sectionId=01",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "민영방송, 중도~중도진보로 평가되는 경우가 많음",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "동아일보", "category": "종합",
+        "url": "https://rss.donga.com/total.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "보수",
+        "leaning_source": "'조중동' 중 하나, 종편 채널A 계열",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "서울신문", "category": "종합",
+        "url": "https://www.seoul.co.kr/xml/rss/rss_politics.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "보수",
+        "leaning_source": "2021년 호반건설 편입 이후 보수 논조로 전환(과거엔 준공영·중도)",
+        "leaning_updated": "2026-09-20",
+    },
+    {
+        "outlet": "오마이뉴스", "category": "종합",
+        "url": "https://rss.ohmynews.com/rss/ohmynews.xml",
+        "confidence": "verified", "last_verified": "2026-08-23",
+        "political_leaning": "진보",
+        "leaning_source": "시민기자 모델, 진보 성향 뚜렷",
+        "leaning_updated": "2026-09-20",
+    },
+]
+
+# 2026-08-23에 죽은 걸로 확인됐거나(dead) 아예 시도를 안 해본(untried)
+# 후보들. fetch_all()이 안 도는 목록이라 실제 수집엔 영향 없음 — RSS
+# URL을 다시 찾아서 살리거나(dead), 처음 검증하면(untried) RSS_SOURCES로
+# 승격시키면 됨. "이슈판 매체 지형도" 문서의 커버리지 갭 분석이 이
+# 목록을 그대로 씀.
+CANDIDATE_SOURCES = [
+    {
+        "outlet": "조선일보", "category": "종합", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "보수",
+        "leaning_source": "'조중동' 중 하나, 대표적 보수지 — 이견 거의 없음",
+    },
+    {
+        "outlet": "중앙일보", "category": "종합", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "보수",
+        "leaning_source": "전통적 보수, 최근 논조 다소 중도화 평가도 있음",
+    },
+    {
+        "outlet": "한국경제", "category": "경제", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "보수",
+        "leaning_source": "친기업·시장주의 논조, 정치면도 보수 성향 평가",
+    },
+    {
+        "outlet": "KBS", "category": "방송", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "공영방송, 정권 교체마다 논조 변동 비판이 양쪽에서 나옴",
+    },
+    {
+        "outlet": "MBC", "category": "방송", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도진보",
+        "leaning_source": "공영방송, 중도진보로 평가되는 경우가 많음(보수 진영에선 비판)",
+    },
+    {
+        "outlet": "국민일보", "category": "종합", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도보수",
+        "leaning_source": "개신교(여의도순복음교회) 배경",
+    },
+    {
+        "outlet": "노컷뉴스", "category": "종합", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도진보",
+        "leaning_source": "CBS(기독교방송) 계열",
+    },
+    {
+        "outlet": "이데일리", "category": "경제", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "경제 전문지",
+    },
+    {
+        "outlet": "헤럴드경제", "category": "경제", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "경제 전문지",
+    },
+    {
+        "outlet": "파이낸셜뉴스", "category": "경제", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "중도",
+        "leaning_source": "경제 전문지",
+    },
+    {
+        "outlet": "프레시안", "category": "종합", "url": None,
+        "status": "dead", "last_checked": "2026-08-23",
+        "political_leaning": "진보",
+        "leaning_source": "진보 성향 인터넷신문",
+    },
+    # 2026-09-20 추가: 20개 후보에 아예 없었던 방송사들 — "매체 지형도"
+    # 문서를 만들며 전체 그림을 위해 참고로 넣음, 시도 자체를 안 해봄.
+    {
+        "outlet": "TV조선", "category": "방송", "url": None,
+        "status": "untried", "last_checked": None,
+        "political_leaning": "보수",
+        "leaning_source": "조선일보 계열 종편, 보수 성향 뚜렷",
+    },
+    {
+        "outlet": "채널A", "category": "방송", "url": None,
+        "status": "untried", "last_checked": None,
+        "political_leaning": "보수",
+        "leaning_source": "동아일보 계열 종편, TV조선보다 다소 온건",
+    },
+    {
+        "outlet": "MBN", "category": "방송", "url": None,
+        "status": "untried", "last_checked": None,
+        "political_leaning": "중도보수",
+        "leaning_source": "매일경제 계열 종편",
+    },
+    {
+        "outlet": "YTN", "category": "방송", "url": None,
+        "status": "untried", "last_checked": None,
+        "political_leaning": "중도",
+        "leaning_source": "2024년 민영화로 지형 변화 진행 중",
+    },
+    {
+        "outlet": "JTBC", "category": "방송", "url": None,
+        "status": "untried", "last_checked": None,
+        "political_leaning": "중도진보",
+        "leaning_source": "중앙일보 계열이지만 방송은 중도진보 평가(손석희 앵커 시절 영향)",
+    },
 ]
