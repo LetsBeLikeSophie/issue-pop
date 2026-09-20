@@ -34,6 +34,7 @@ class ExpandableIssueCard extends StatefulWidget {
     this.maxOutletCount = 1,
     this.subtitle,
     this.archiveMode = false,
+    this.activeLeaning,
   });
 
   final IssueSummary issue;
@@ -43,6 +44,12 @@ class ExpandableIssueCard extends StatefulWidget {
   /// 카드(홈 기본 목록 등)에서는 필요 없음.
   final ApiClient? api;
   final int? rank;
+
+  /// 2026-09-20: 정치성향 필터가 켜져있을 때(홈 화면 상단 순환 필터) 이
+  /// 카드 안에서 그 성향에 안 맞는 매체/기사를 실제로 숨김. null이면
+  /// 필터 없음(기본). 홈 화면 밖(즐겨찾기·워치 등)에서는 안 넘겨서 항상
+  /// null — 그 화면들은 이 필터 개념이 없음.
+  final String? activeLeaning;
 
   /// 매체 도달 도트를 몇 칸까지 그릴지 — 현재 목록 전체에서 가장 많이
   /// 보도된 이슈의 outlet_count(이슈판의 N_OUTLETS와 동일한 개념).
@@ -104,8 +111,23 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
   @override
   Widget build(BuildContext context) {
     final issue = widget.issue;
+    final activeLeaning = widget.activeLeaning;
     final keywords = issue.keywords.isEmpty ? [issue.keyword] : issue.keywords;
-    final isSingle = issue.outletCount <= 1;
+
+    // 2026-09-20: 성향 필터가 켜져있고 이 카드가 이미 매체별 내역을 들고
+    // 있으면(IssueDetail — 홈 "전체" 목록은 항상 이 경우) 그 성향 매체만
+    // 남기고 매체수/기사수/아바타를 다시 계산함. 요약만 있는 카드(검색·
+    // 카테고리 탭)는 collapsed 상태에선 이 내역이 없어서 원래 총합을
+    // 그대로 보여주고, 펼치면(_ExpandedBody가 상세를 새로 받아옴) 그때
+    // 정확히 걸러짐 — 아예 안 걸러지는 것보단 나은 절충.
+    final fullOutlets = issue is IssueDetail ? issue.outlets : null;
+    final visibleOutlets = fullOutlets == null
+        ? null
+        : (activeLeaning == null ? fullOutlets : fullOutlets.where((o) => o.leaning == activeLeaning).toList());
+    final displayOutletCount = visibleOutlets?.length ?? issue.outletCount;
+    final displayArticleCount =
+        visibleOutlets == null ? issue.articleCount : visibleOutlets.fold<int>(0, (sum, o) => sum + o.count);
+    final isSingle = displayOutletCount <= 1;
 
     return ListenableBuilder(
       listenable: FavoritesStore.instance,
@@ -258,13 +280,13 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   Expanded(
-                                    child: issue is IssueDetail
-                                        ? _ReachAvatars(outlets: issue.outlets, totalCount: issue.outletCount)
+                                    child: visibleOutlets != null
+                                        ? _ReachAvatars(outlets: visibleOutlets, totalCount: visibleOutlets.length)
                                         : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    '${issue.articleCount}건',
+                                    '$displayArticleCount건',
                                     style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
                                   ),
                                   const SizedBox(width: 4),
@@ -285,7 +307,9 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                 AnimatedSize(
                   duration: const Duration(milliseconds: 160),
                   curve: Curves.easeOut,
-                  child: _expanded ? _ExpandedBody(detail: _detail!) : const SizedBox(width: double.infinity),
+                  child: _expanded
+                      ? _ExpandedBody(detail: _detail!, activeLeaning: activeLeaning)
+                      : const SizedBox(width: double.infinity),
                 ),
               ],
             ),
@@ -449,9 +473,15 @@ class _ReachAvatars extends StatelessWidget {
 }
 
 class _ExpandedBody extends StatelessWidget {
-  const _ExpandedBody({required this.detail});
+  const _ExpandedBody({required this.detail, this.activeLeaning});
 
   final Future<IssueDetail> detail;
+
+  /// 2026-09-20: 성향 필터가 켜져있으면 그 성향 매체가 아닌 기사는 목록
+  /// 자체에서 뺌(그룹 헤더까지 통째로 안 보임) — collapsed 상태에서
+  /// 요약 카드라 못 걸렀던 것도(ExpandableIssueCard 주석 참고) 여기서는
+  /// 항상 상세(outlets에 leaning 포함)를 새로 받아오므로 빠짐없이 걸러짐.
+  final String? activeLeaning;
 
   @override
   Widget build(BuildContext context) {
@@ -474,11 +504,20 @@ class _ExpandedBody extends StatelessWidget {
               child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
             );
           }
-          final articles = snapshot.data!.articles;
+          final detail = snapshot.data!;
+          final articles = activeLeaning == null
+              ? detail.articles
+              : () {
+                  final outletLeaning = {for (final o in detail.outlets) o.outlet: o.leaning};
+                  return detail.articles.where((a) => outletLeaning[a.outlet] == activeLeaning).toList();
+                }();
           if (articles.isEmpty) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text('관련 기사가 없어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+              child: Text(
+                activeLeaning == null ? '관련 기사가 없어요' : '$activeLeaning 매체의 기사가 없어요',
+                style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint),
+              ),
             );
           }
           final grouped = <String, List<ArticleOut>>{};

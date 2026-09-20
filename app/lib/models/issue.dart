@@ -60,12 +60,19 @@ class OutletBreakdown {
   final String outlet;
   final int count;
 
-  OutletBreakdown({required this.outlet, required this.count});
+  /// 2026-09-20: 이 매체의 정치성향(sources.py OUTLET_LEANING 기준).
+  /// 미분류 매체는 null — 성향 필터에서 이 매체는 제외됨.
+  final String? leaning;
 
-  factory OutletBreakdown.fromJson(Map<String, dynamic> json) =>
-      OutletBreakdown(outlet: json['outlet'] as String, count: json['count'] as int);
+  OutletBreakdown({required this.outlet, required this.count, this.leaning});
 
-  Map<String, dynamic> toJson() => {'outlet': outlet, 'count': count};
+  factory OutletBreakdown.fromJson(Map<String, dynamic> json) => OutletBreakdown(
+        outlet: json['outlet'] as String,
+        count: json['count'] as int,
+        leaning: json['leaning'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {'outlet': outlet, 'count': count, 'leaning': leaning};
 }
 
 class ArticleOut {

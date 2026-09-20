@@ -438,6 +438,10 @@ app.add_middleware(
 class OutletBreakdown(BaseModel):
     outlet: str
     count: int
+    # 2026-09-20: 정치성향 필터가 "이 이슈를 성향 X 매체가 다뤘는가"뿐
+    # 아니라 "성향 X 매체가 쓴 기사만 보여달라"는 요청으로 확장되면서
+    # 추가 — 프론트가 이슈 하나 안에서 매체별로 다시 걸러낼 수 있게 함.
+    leaning: str | None = None
 
 
 class ArticleOut(BaseModel):
@@ -496,7 +500,10 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
 def _to_detail(issue_id: str, c: dict) -> IssueDetail:
     return IssueDetail(
         **_to_summary(issue_id, c).model_dump(),
-        outlets=[OutletBreakdown(outlet=o, count=n) for o, n in c["outlets"].items()],
+        outlets=[
+            OutletBreakdown(outlet=o, count=n, leaning=sources.OUTLET_LEANING.get(o))
+            for o, n in c["outlets"].items()
+        ],
         articles=[
             ArticleOut(
                 outlet=a["outlet"],

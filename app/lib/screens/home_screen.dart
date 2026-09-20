@@ -162,6 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
               onSettings: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => SettingsScreen(api: widget.api)),
               ),
+              leaningFilter: _leaningFilter,
+              onLeaningChanged: (l) => setState(() => _leaningFilter = l),
             ),
             if (!isSearching)
               Padding(
@@ -192,13 +194,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onQueryChanged: (q) => setState(() => _query = q),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: _LeaningFilterBar(
-                active: _leaningFilter,
-                onSelected: (l) => setState(() => _leaningFilter = l),
-              ),
-            ),
             if (isSearching)
               Expanded(
                 key: const ValueKey('searchResults'),
@@ -221,6 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             api: widget.api,
                             showRank: false,
                             emptyText: '검색 결과가 없어요',
+                            activeLeaning: _leaningFilter,
                           ),
                         ],
                       );
@@ -244,6 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         api: widget.api,
                         sorter: _sorted,
                         leaningFilter: _filterByLeaning,
+                        activeLeaning: _leaningFilter,
                         onRefresh: _refresh,
                       ),
                   ],
@@ -270,6 +267,7 @@ class _CategoryPage extends StatelessWidget {
     required this.api,
     required this.sorter,
     required this.leaningFilter,
+    required this.activeLeaning,
     required this.onRefresh,
   });
 
@@ -279,6 +277,7 @@ class _CategoryPage extends StatelessWidget {
   final ApiClient api;
   final List<T> Function<T extends IssueSummary>(List<T>) sorter;
   final List<T> Function<T extends IssueSummary>(List<T>) leaningFilter;
+  final String? activeLeaning;
   final Future<void> Function() onRefresh;
 
   @override
@@ -310,6 +309,7 @@ class _CategoryPage extends StatelessWidget {
                   api: null,
                   showRank: true,
                   emptyText: '아직 집계된 이슈가 없어요',
+                  activeLeaning: activeLeaning,
                 );
               },
             )
@@ -333,6 +333,7 @@ class _CategoryPage extends StatelessWidget {
                   api: api,
                   showRank: false,
                   emptyText: '이 페이지엔 아직 이슈가 없어요',
+                  activeLeaning: activeLeaning,
                 );
               },
             ),
@@ -350,12 +351,14 @@ class _IssueList extends StatelessWidget {
     required this.api,
     required this.showRank,
     required this.emptyText,
+    this.activeLeaning,
   });
 
   final List<IssueSummary> issues;
   final ApiClient? api;
   final bool showRank;
   final String emptyText;
+  final String? activeLeaning;
 
   @override
   Widget build(BuildContext context) {
@@ -375,6 +378,7 @@ class _IssueList extends StatelessWidget {
             issue: issues[i],
             api: api,
             maxOutletCount: maxOutlet,
+            activeLeaning: activeLeaning,
           ),
           if (i != issues.length - 1) const SizedBox(height: 8),
         ],
@@ -407,6 +411,8 @@ class _TopBar extends StatelessWidget {
     required this.onShare,
     required this.onArchive,
     required this.onSettings,
+    required this.leaningFilter,
+    required this.onLeaningChanged,
   });
 
   final VoidCallback onStocks;
@@ -414,6 +420,8 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onArchive;
   final VoidCallback onSettings;
+  final String? leaningFilter;
+  final ValueChanged<String?> onLeaningChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -436,47 +444,125 @@ class _TopBar extends StatelessWidget {
               style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
             ),
           ),
-          // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
-          // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
-          // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
-          // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
-          IconButton(
-            icon: Icon(Icons.show_chart, color: AppColors.ink),
-            onPressed: onStocks,
-            tooltip: '관심 종목',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: Icon(Icons.person_search, color: AppColors.ink),
-            onPressed: onKeywords,
-            tooltip: '관심 워치',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: Icon(Icons.ios_share, color: AppColors.ink),
-            onPressed: onShare,
-            tooltip: '오늘의 트렌드 공유',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: Icon(Icons.bookmark_border, color: AppColors.ink),
-            onPressed: onArchive,
-            tooltip: '저장한 이슈',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
-          ),
-          IconButton(
-            icon: Icon(Icons.person_outline, color: AppColors.ink),
-            onPressed: onSettings,
-            tooltip: '설정',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
+          // 2026-09-20: 정치성향 필터 칩 줄을 목록 위에 항상 띄워두는 대신,
+          // 타이틀(2줄까지 허용)과 아이콘 줄 높이 차이로 원래 비어있던
+          // 우측 상단 공간에 얹음 — "화면 자리 차지 안 하면서 늘 접근
+          // 가능하게" 해달라는 피드백. 좌우 화살표로 순환(전체→진보→…→
+          // 보수→전체), 라벨 색은 선택된 성향에 따라 포인트 컬러 농도가
+          // 달라져서(전체=무채색, 그 외엔 진할수록 스펙트럼 우측) 목록을
+          // 안 봐도 "필터가 걸려있다"는 게 눈에 띄게 함.
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _LeaningCycler(active: leaningFilter, onChanged: onLeaningChanged),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
+                // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
+                // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
+                // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.show_chart, color: AppColors.ink),
+                    onPressed: onStocks,
+                    tooltip: '관심 종목',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.person_search, color: AppColors.ink),
+                    onPressed: onKeywords,
+                    tooltip: '관심 워치',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.ios_share, color: AppColors.ink),
+                    onPressed: onShare,
+                    tooltip: '오늘의 트렌드 공유',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.bookmark_border, color: AppColors.ink),
+                    onPressed: onArchive,
+                    tooltip: '저장한 이슈',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.person_outline, color: AppColors.ink),
+                    onPressed: onSettings,
+                    tooltip: '설정',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 2026-09-20: 정치성향 필터 — 화살표로 _leaningOptions를 순환 선택.
+/// 라벨 색은 accent 색의 농도를 성향 스펙트럼 위치에 따라 다르게 줘서
+/// (전체=무채색, 진보 쪽일수록 옅게 → 보수 쪽일수록 진하게) 목록을 안
+/// 보고도 "지금 필터가 걸려있다"가 한눈에 들어오게 함 — 다만 색 자체는
+/// 우리 accent 하나뿐이라("클린 뉴스룸" 톤에서 무지개 배지를 없앤 결정과
+/// 안 부딪힘) 정치 진영을 실제 색(빨강/파랑)으로 연상시키진 않음.
+class _LeaningCycler extends StatelessWidget {
+  const _LeaningCycler({required this.active, required this.onChanged});
+
+  final String? active;
+  final ValueChanged<String?> onChanged;
+
+  void _step(int delta) {
+    final i = _leaningOptions.indexOf(active);
+    final next = (i + delta) % _leaningOptions.length;
+    onChanged(_leaningOptions[next < 0 ? next + _leaningOptions.length : next]);
+  }
+
+  Color _tint() {
+    if (active == null) return AppColors.inkFaint;
+    final i = _leaningOptions.indexOf(active) - 1; // 0..4 (전체 제외)
+    final steps = _leaningOptions.length - 1;
+    final t = 0.45 + 0.55 * (i / (steps - 1));
+    return Color.lerp(AppColors.inkFaint, AppColors.accent, t)!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(Icons.chevron_left, size: 18, color: AppColors.inkFaint),
+          onPressed: () => _step(-1),
+          tooltip: '이전 성향',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+        SizedBox(
+          width: 52,
+          child: Text(
+            active ?? '전체',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _tint()),
+          ),
+        ),
+        IconButton(
+          icon: Icon(Icons.chevron_right, size: 18, color: AppColors.inkFaint),
+          onPressed: () => _step(1),
+          tooltip: '다음 성향',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+      ],
     );
   }
 }
@@ -646,68 +732,6 @@ class _PageTabChip extends StatelessWidget {
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? AppColors.ink : AppColors.inkFaint,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 2026-09-20: 정치성향 필터 — sources.py의 10개 매체 성향 분포가 보수/
-/// 중도/진보 3:4:3 정도로 균형 잡혀서 실제로 노출하기로 함. 이슈 목록
-/// 상단 툴바 바로 아래, 다른 탭/정렬과 같은 "텍스트+밑줄" 톤으로 맞춤.
-class _LeaningFilterBar extends StatelessWidget {
-  const _LeaningFilterBar({required this.active, required this.onSelected});
-
-  final String? active;
-  final ValueChanged<String?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < _leaningOptions.length; i++) ...[
-            if (i != 0) const SizedBox(width: 4),
-            _LeaningChip(
-              label: _leaningOptions[i] ?? '전체',
-              selected: active == _leaningOptions[i],
-              onTap: () => onSelected(_leaningOptions[i]),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _LeaningChip extends StatelessWidget {
-  const _LeaningChip({required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      customBorder: const StadiumBorder(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Container(
-          padding: const EdgeInsets.only(bottom: 1),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: selected ? AppColors.ink : Colors.transparent, width: 1.5)),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? AppColors.ink : AppColors.inkFaint,
-            ),
           ),
         ),
       ),
