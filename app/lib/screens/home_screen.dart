@@ -435,27 +435,21 @@ class _TopBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: AnimatedDefaultTextStyle(
-              // 2026-09-20: 로고 색도 성향 필터 색과 같이 바뀌게 함 —
-              // 우측 상단의 작은 라벨만으로는 필터가 걸려있다는 게 잘
-              // 안 보인다는 피드백. 화살표로 넘길 때마다 로고까지 같이
-              // 물들어서 훨씬 눈에 띔.
-              duration: const Duration(milliseconds: 200),
-              style: AppTypography.serif(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: _LeaningCycler.tintFor(leaningFilter),
-              ),
-              child: const Text(
-                'Issue Pop',
-                // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
-                // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
-                // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
-                // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
-                // 들어가면 잘라서 절대 넘치지 않게 함.
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+            child: Text(
+              'Issue Pop',
+              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
+              // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
+              // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
+              // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
+              // 들어가면 잘라서 절대 넘치지 않게 함.
+              //
+              // 2026-09-20: 성향 필터 색을 로고에도 입혀봤는데("업데이트:
+              // 성향 필터 색을 로고에도 적용" 커밋) 실제로 보니 이상하다는
+              // 피드백으로 되돌림 — 로고는 항상 ink 고정, 필터 색은
+              // 우측 상단 작은 라벨(_LeaningCycler)에만 남김.
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
             ),
           ),
           // 2026-09-20: 정치성향 필터 칩 줄을 목록 위에 항상 띄워두는 대신,
