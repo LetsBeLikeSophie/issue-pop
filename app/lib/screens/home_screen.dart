@@ -543,17 +543,21 @@ class _SortButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 1),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: selected ? AppColors.ink : Colors.transparent, width: 1.5)),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.ink : AppColors.inkFaint,
+      customBorder: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Container(
+          padding: const EdgeInsets.only(bottom: 1),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: selected ? AppColors.ink : Colors.transparent, width: 1.5)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? AppColors.ink : AppColors.inkFaint,
+            ),
           ),
         ),
       ),
