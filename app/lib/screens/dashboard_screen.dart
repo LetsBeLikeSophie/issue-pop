@@ -16,9 +16,15 @@ import 'stock_watch_screen.dart';
 /// 각 섹션은 "더보기"로 해당 전체 화면(등록/삭제 등 관리 기능이 있는
 /// 원래 화면)으로 넘어감, 여기서는 관리 기능 없이 훑어보기만.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.api});
+  const DashboardScreen({super.key, required this.api, this.leaningFilter});
 
   final ApiClient api;
+
+  /// 2026-09-21: 홈 화면 우측 상단 성향 필터가 걸려있는 상태로 여기
+  /// 들어오면 "관심 워치"·"오늘의 트렌드" 둘 다 그 성향 매체 기준으로
+  /// 다시 걸러서 보여줌 — 필터를 걸어놓고 대시보드로 넘어와도 결과가
+  /// 그대로 안 반영되던 문제("이거 무슨 필터야" 피드백) 수정.
+  final String? leaningFilter;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -38,7 +44,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _watches = _devices.listWatches();
     _stocks = _devices.listStockWatches();
     _index = widget.api.getIndex();
-    _trending = widget.api.getTrending(limit: 5);
+    // 40건을 받아서 성향으로 거른 다음 상위 5건만 보여줌 — 처음부터
+    // 5건만 받으면 필터링 후 5건이 안 남을 수 있어서(홈 화면과 같은 이유).
+    _trending = widget.api.getTrending(limit: 40);
+  }
+
+  List<T> _filterByLeaning<T extends IssueSummary>(List<T> issues) {
+    final f = widget.leaningFilter;
+    if (f == null) return issues;
+    return issues.where((i) => i.leanings.contains(f)).toList();
   }
 
   Future<void> _refresh() async {
@@ -82,7 +96,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
                     ),
                   ),
-                  const SizedBox(width: 40),
+                  // 2026-09-21: 홈 화면에서 성향 필터를 걸어놓고 넘어왔으면
+                  // 여기서도 그 필터가 실제로 반영되고 있다는 걸 눈에 보이게
+                  // 표시함 — "무슨 필터가 반영된다는 거냐"는 피드백으로 추가.
+                  if (widget.leaningFilter != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: leaningTint(widget.leaningFilter).withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          '${widget.leaningFilter} 반영 중',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: leaningTint(widget.leaningFilter),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 40),
                 ],
               ),
             ),
@@ -128,9 +166,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 for (final w in watches) ...[
                                   _WatchSummaryRow(
                                     keyword: w.keyword,
-                                    top: _matches(index, w.keyword).take(1).toList(),
+                                    top: _filterByLeaning(_matches(index, w.keyword)).take(1).toList(),
                                     api: widget.api,
                                     maxOutletCount: maxOutlet,
+                                    activeLeaning: widget.leaningFilter,
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -180,11 +219,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         if (snapshot.connectionState != ConnectionState.done) {
                           return const _SectionLoading();
                         }
-                        final issues = snapshot.data ?? const [];
+                        final issues = _filterByLeaning(snapshot.data ?? const <IssueDetail>[]).take(5).toList();
                         if (issues.isEmpty) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Text('아직 집계된 이슈가 없어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                            child: Text(
+                              widget.leaningFilter == null ? '아직 집계된 이슈가 없어요' : '${widget.leaningFilter} 매체의 이슈가 없어요',
+                              style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint),
+                            ),
                           );
                         }
                         final maxOutlet = issues.map((i) => i.outletCount).reduce((a, b) => a > b ? a : b);
@@ -196,6 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 rank: i + 1,
                                 issue: issues[i],
                                 maxOutletCount: maxOutlet,
+                                activeLeaning: widget.leaningFilter,
                               ),
                               if (i != issues.length - 1) const SizedBox(height: 8),
                             ],
@@ -289,12 +332,14 @@ class _WatchSummaryRow extends StatelessWidget {
     required this.top,
     required this.api,
     required this.maxOutletCount,
+    this.activeLeaning,
   });
 
   final String keyword;
   final List<IssueSummary> top;
   final ApiClient api;
   final int maxOutletCount;
+  final String? activeLeaning;
 
   @override
   Widget build(BuildContext context) {
@@ -315,10 +360,19 @@ class _WatchSummaryRow extends StatelessWidget {
         if (top.isEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 2, bottom: 4),
-            child: Text('아직 관련 이슈가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
+            child: Text(
+              activeLeaning == null ? '아직 관련 이슈가 없어요' : '$activeLeaning 매체의 관련 이슈가 없어요',
+              style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint),
+            ),
           )
         else
-          ExpandableIssueCard(key: ValueKey(top.first.id), issue: top.first, api: api, maxOutletCount: maxOutletCount),
+          ExpandableIssueCard(
+            key: ValueKey(top.first.id),
+            issue: top.first,
+            api: api,
+            maxOutletCount: maxOutletCount,
+            activeLeaning: activeLeaning,
+          ),
       ],
     );
   }

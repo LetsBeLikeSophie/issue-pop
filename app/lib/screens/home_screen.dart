@@ -13,11 +13,13 @@ import 'stock_watch_screen.dart';
 
 enum _SortMode { outlet, count }
 
-/// 2026-09-20: 정치성향 필터 — sources.py의 political_leaning 5분류 그대로.
-/// null은 "전체"(필터 없음). 매체 지형도 문서 기준으로 지금 확보한
-/// 10개 매체의 성향 분포가 보수/중도/진보 3:4:3 정도로 균형 잡혀있어서
-/// 필터를 실제로 노출해도 특정 성향만 텅 비어 보이진 않는다고 판단해 추가함.
-const List<String?> _leaningOptions = [null, '진보', '중도진보', '중도', '중도보수', '보수'];
+// 2026-09-20: 정치성향 필터 — sources.py의 political_leaning 5분류 그대로.
+// null은 "전체"(필터 없음). 매체 지형도 문서 기준으로 지금 확보한 10개
+// 매체의 성향 분포가 보수/중도/진보 3:4:3 정도로 균형 잡혀있어서 필터를
+// 실제로 노출해도 특정 성향만 텅 비어 보이진 않는다고 판단해 추가함.
+// 옵션 목록 자체(kLeaningOptions)는 models/issue.dart로 옮김 —
+// dashboard_screen.dart도 같은 스펙트럼 순서를 써야 해서(더보기 화면이
+// 서로 다른 순서를 쓰면 안 됨).
 
 /// 2026-09-02: 카테고리 필터(같은 목록을 다시 걸러 보여주기)에서
 /// 실제 "페이지"(제스처로 옆으로 넘기면 완전히 다른 화면)로 바꿈 —
@@ -147,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _TopBar(
               onDashboard: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api)),
+                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api, leaningFilter: _leaningFilter)),
               ),
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
@@ -535,13 +537,12 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// 2026-09-20: 정치성향 필터 — 화살표로 _leaningOptions를 순환 선택.
+/// 2026-09-20: 정치성향 필터 — 화살표로 kLeaningOptions를 순환 선택.
 /// 라벨 색은 실제 진영 색(빨강=보수/파랑=진보, 중도는 검정에 가까운
-/// ink)을 스펙트럼 위치에 따라 섞어서 보여줌 — "그냥 우리 포인트 컬러
-/// 농도만 바뀌는 건 티가 안 난다"는 피드백으로, 이 컨트롤 하나만
-/// "클린 뉴스룸"의 무채색 원칙에서 의도적으로 벗어남(정치 성향을
-/// 나타내는 게 이 컨트롤의 목적 자체라서). 라벨을 누르면 지금 확보한
-/// 매체 현황 + 분류 근거를 모달로 보여줌.
+/// ink)을 스펙트럼 위치에 따라 섞어서 보여줌(theme.dart의 leaningTint —
+/// "그냥 우리 포인트 컬러 농도만 바뀌는 건 티가 안 난다"는 피드백으로,
+/// 이 컨트롤 하나만 "클린 뉴스룸"의 무채색 원칙에서 의도적으로 벗어남).
+/// 라벨을 누르면 지금 확보한 매체 현황 + 분류 근거를 모달로 보여줌.
 class _LeaningCycler extends StatelessWidget {
   const _LeaningCycler({required this.active, required this.onChanged, required this.api});
 
@@ -549,20 +550,10 @@ class _LeaningCycler extends StatelessWidget {
   final ValueChanged<String?> onChanged;
   final ApiClient api;
 
-  static const _red = Color(0xFF9C3B3B);
-  static const _blue = Color(0xFF2E4C82);
-
   void _step(int delta) {
-    final i = _leaningOptions.indexOf(active);
-    final next = (i + delta) % _leaningOptions.length;
-    onChanged(_leaningOptions[next < 0 ? next + _leaningOptions.length : next]);
-  }
-
-  static Color tintFor(String? leaning) {
-    if (leaning == null) return AppColors.inkFaint;
-    final i = _leaningOptions.indexOf(leaning) - 1; // 0(진보)..4(보수)
-    if (i <= 2) return Color.lerp(_blue, AppColors.ink, i / 2)!;
-    return Color.lerp(AppColors.ink, _red, (i - 2) / 2)!;
+    final i = kLeaningOptions.indexOf(active);
+    final next = (i + delta) % kLeaningOptions.length;
+    onChanged(kLeaningOptions[next < 0 ? next + kLeaningOptions.length : next]);
   }
 
   void _showInfo(BuildContext context) {
@@ -595,7 +586,7 @@ class _LeaningCycler extends StatelessWidget {
             child: Center(
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tintFor(active)),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: leaningTint(active)),
                 child: Text(active ?? '전체', textAlign: TextAlign.center),
               ),
             ),
@@ -662,8 +653,8 @@ class _LeaningInfoSheet extends StatelessWidget {
                     );
                   }
                   final outlets = [...snapshot.data!]..sort(
-                      (a, b) => _leaningOptions.indexOf(a.politicalLeaning).compareTo(
-                            _leaningOptions.indexOf(b.politicalLeaning),
+                      (a, b) => kLeaningOptions.indexOf(a.politicalLeaning).compareTo(
+                            kLeaningOptions.indexOf(b.politicalLeaning),
                           ),
                     );
                   return ListView.separated(
@@ -689,7 +680,7 @@ class _LeaningInfoSheet extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w700,
-                                color: _LeaningCycler.tintFor(o.politicalLeaning),
+                                color: leaningTint(o.politicalLeaning),
                               ),
                             ),
                           ),

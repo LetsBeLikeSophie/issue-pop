@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'models/issue.dart';
 import 'theme_store.dart';
 
 /// 디자인 토큰. "이슈판" 프로토타입 아티팩트(클러스터링 검증용으로 먼저
@@ -141,6 +142,22 @@ class AppColors {
     final p = _palettes[preset] ?? _currentPalette;
     return (p.bg, p.accent, p.accent2);
   }
+}
+
+/// 2026-09-20: 정치성향 필터 색 — 실제 진영 색(빨강=보수/파랑=진보,
+/// 중도는 ink에 가까운 검정)을 스펙트럼 위치에 따라 섞어서 줌. 홈 화면의
+/// 성향 필터 라벨/로고와 대시보드의 필터 반영 표시가 같은 색을 쓰도록
+/// 공유 함수로 뺌(원래 home_screen.dart의 private _LeaningCycler.tintFor
+/// 였음). 이 컨트롤 하나만 "클린 뉴스룸"의 무채색 원칙에서 의도적으로
+/// 벗어남(정치 성향을 나타내는 게 목적 자체라서).
+const _leaningRed = Color(0xFF9C3B3B);
+const _leaningBlue = Color(0xFF2E4C82);
+
+Color leaningTint(String? leaning) {
+  if (leaning == null) return AppColors.inkFaint;
+  final i = kLeaningOptions.indexOf(leaning) - 1; // 0(진보)..4(보수)
+  if (i <= 2) return Color.lerp(_leaningBlue, AppColors.ink, i / 2)!;
+  return Color.lerp(AppColors.ink, _leaningRed, (i - 2) / 2)!;
 }
 
 /// 카테고리별 배지 색. backend/category.py의 CATEGORY_COLORS와 짝을

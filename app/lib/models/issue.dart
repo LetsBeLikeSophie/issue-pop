@@ -1,3 +1,11 @@
+/// 정치성향 스펙트럼 순서(진보→중도진보→중도→중도보수→보수). 맨 앞
+/// null은 "전체"(필터 없음). backend sources.py의 political_leaning
+/// 값과 1:1 대응하며, home_screen.dart(성향 필터 순환 컨트롤)와
+/// dashboard_screen.dart(그 필터를 반영한 요약) 양쪽이 같은 순서/색을
+/// 쓰기 위해 여기(모델 레이어)에 둠 — 화면마다 따로 정의하면 스펙트럼
+/// 순서가 어긋날 위험이 있음.
+const List<String?> kLeaningOptions = [null, '진보', '중도진보', '중도', '중도보수', '보수'];
+
 /// backend/api.py의 IssueSummary와 1:1로 맞춘 모델.
 class IssueSummary {
   final String id;
