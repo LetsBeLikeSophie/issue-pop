@@ -102,9 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _devices.setDigestHour(picked);
   }
 
-  /// 2026-09-10: 실제 발송은 아직 안 붙었지만(서비스 계정 키 필요),
-  /// "그럼 뭐가 발송되는데?"를 바로 확인할 수 있게 지금 이 순간의
-  /// 다이제스트 텍스트를 바텀시트로 보여줌 — 부수효과 없는 조회만.
+  /// 2026-09-10: "그럼 뭐가 발송되는데?"를 바로 확인할 수 있게 지금
+  /// 이 순간의 다이제스트 텍스트를 바텀시트로 보여줌 — 부수효과 없는
+  /// 조회만. 2026-09-20: 실제 발송(FCM)도 서버에 연동 완료됨.
   Future<void> _showDigestPreview() async {
     final preview = widget.api.getDigestPreview();
     await showModalBottomSheet<void>(
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      '실제 발송(푸시)은 아직 준비 중이에요 — 위 미리보기는 지금 보낸다면 어떤 내용이 나갈지만 보여줘요.',
+                      '설정한 시각에 위 미리보기와 같은 내용이 실제로 푸시로 나가요.',
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
@@ -844,7 +844,7 @@ class _DigestPreviewSheet extends StatelessWidget {
           Text('발송 내용 미리보기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
           const SizedBox(height: 4),
           Text(
-            '실제로 지금 보낸다면 이런 내용이 나가요. 발송 자체는 아직 준비 중이에요.',
+            '실제로 지금 보낸다면 이런 내용이 나가요.',
             style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
           ),
           const SizedBox(height: 16),
