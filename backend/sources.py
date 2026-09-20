@@ -107,25 +107,6 @@ RSS_SOURCES = [
         "leaning_source": "시민기자 모델, 진보 성향 뚜렷",
         "leaning_updated": "2026-09-20",
     },
-    {
-        # 2026-09-20: 2026-08-23엔 죽은 걸로 판정됐었는데, 홈페이지에
-        # <link rel="alternate" rss+xml> 태그로 새 주소가 있는 걸 발견해서
-        # 살림(CANDIDATE_SOURCES에서 승격) — 보수 매체 커버리지 공백을
-        # 메우는 첫 번째.
-        #
-        # 주의: 이 서버가 request_headers에 브라우저 User-Agent가 없으면
-        # 깨진 XML을 내려줌(fetcher.py의 _REQUEST_HEADERS로 대응함).
-        # 그리고 짧은 시간에 반복 요청하면 403으로 막힘(실측: 수동으로
-        # 여러 번 연달아 테스트하다가 겪음) — 정상적인 30분 주기 수집
-        # 한 번씩이면 문제없을 걸로 예상되지만, 만약 라이브에서 이 매체만
-        # 유독 자주 0건으로 나오면 이 rate-limit이 원인일 수 있음.
-        "outlet": "한국경제", "category": "경제",
-        "url": "https://www.hankyung.com/feed/all-news",
-        "confidence": "verified", "last_verified": "2026-09-20",
-        "political_leaning": "보수",
-        "leaning_source": "친기업·시장주의 논조, 정치면도 보수 성향 평가",
-        "leaning_updated": "2026-09-20",
-    },
 ]
 
 # 2026-08-23에 죽은 걸로 확인됐거나(dead) 아예 시도를 안 해본(untried)
@@ -134,6 +115,23 @@ RSS_SOURCES = [
 # 승격시키면 됨. "이슈판 매체 지형도" 문서의 커버리지 갭 분석이 이
 # 목록을 그대로 씀.
 CANDIDATE_SOURCES = [
+    {
+        # 2026-09-20: 홈페이지 <link rel="alternate" rss+xml>로 새 주소를
+        # 찾아서 한 번은 RSS_SOURCES로 승격시켜봤는데(정상 fetch 1회 확인,
+        # 50건), 그 뒤로는 개발 PC에서도 오라클 서버(전혀 다른 IP)에서도
+        # 매번 "line 2:1326 not well-formed" 파싱 에러로 실패함 — User-Agent
+        # 문제는 fetcher.py에서 고쳤는데도 안 됨. 최초 성공이 우연이었고,
+        # 실제로는 (아마 데이터센터 IP 대역을 걸러내는 안티봇 정책으로)
+        # 거의 항상 깨진 XML을 내려주는 것으로 보임 — "확보됨"으로
+        # 표시했다가 실제론 매번 0건이면 오히려 더 나쁨. 다시 후보로
+        # 내림. URL 자체는 유효하니, 만약 클라우드 IP 우회(주거용 프록시
+        # 등)나 다른 접근 방식을 시도한다면 이 URL부터 다시 써보면 됨.
+        "outlet": "한국경제", "category": "경제",
+        "url": "https://www.hankyung.com/feed/all-news",
+        "status": "dead", "last_checked": "2026-09-20",
+        "political_leaning": "보수",
+        "leaning_source": "친기업·시장주의 논조, 정치면도 보수 성향 평가",
+    },
     {
         # 2026-09-20 재확인: 홈페이지에 <link rel="alternate" rss+xml>
         # 자체가 없고, 예전에 쓰이던 site/data/rss/*.xml, myhome.chosun.com
