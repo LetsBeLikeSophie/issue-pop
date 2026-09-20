@@ -107,6 +107,25 @@ RSS_SOURCES = [
         "leaning_source": "시민기자 모델, 진보 성향 뚜렷",
         "leaning_updated": "2026-09-20",
     },
+    {
+        # 2026-09-20: 2026-08-23엔 죽은 걸로 판정됐었는데, 홈페이지에
+        # <link rel="alternate" rss+xml> 태그로 새 주소가 있는 걸 발견해서
+        # 살림(CANDIDATE_SOURCES에서 승격) — 보수 매체 커버리지 공백을
+        # 메우는 첫 번째.
+        #
+        # 주의: 이 서버가 request_headers에 브라우저 User-Agent가 없으면
+        # 깨진 XML을 내려줌(fetcher.py의 _REQUEST_HEADERS로 대응함).
+        # 그리고 짧은 시간에 반복 요청하면 403으로 막힘(실측: 수동으로
+        # 여러 번 연달아 테스트하다가 겪음) — 정상적인 30분 주기 수집
+        # 한 번씩이면 문제없을 걸로 예상되지만, 만약 라이브에서 이 매체만
+        # 유독 자주 0건으로 나오면 이 rate-limit이 원인일 수 있음.
+        "outlet": "한국경제", "category": "경제",
+        "url": "https://www.hankyung.com/feed/all-news",
+        "confidence": "verified", "last_verified": "2026-09-20",
+        "political_leaning": "보수",
+        "leaning_source": "친기업·시장주의 논조, 정치면도 보수 성향 평가",
+        "leaning_updated": "2026-09-20",
+    },
 ]
 
 # 2026-08-23에 죽은 걸로 확인됐거나(dead) 아예 시도를 안 해본(untried)
@@ -116,22 +135,22 @@ RSS_SOURCES = [
 # 목록을 그대로 씀.
 CANDIDATE_SOURCES = [
     {
+        # 2026-09-20 재확인: 홈페이지에 <link rel="alternate" rss+xml>
+        # 자체가 없고, 예전에 쓰이던 site/data/rss/*.xml, myhome.chosun.com
+        # 경로도 전부 404 — 공개 RSS를 아예 접은 것으로 보임.
         "outlet": "조선일보", "category": "종합", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "보수",
         "leaning_source": "'조중동' 중 하나, 대표적 보수지 — 이견 거의 없음",
     },
     {
+        # 2026-09-20 재확인: 홈페이지에 RSS 링크 태그 없음, 예전 도메인
+        # rss.joins.com은 완전히 다른(무관한) 서비스로 넘어감 — 공개 RSS
+        # 접은 것으로 보임.
         "outlet": "중앙일보", "category": "종합", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
+        "status": "dead", "last_checked": "2026-09-20",
         "political_leaning": "보수",
         "leaning_source": "전통적 보수, 최근 논조 다소 중도화 평가도 있음",
-    },
-    {
-        "outlet": "한국경제", "category": "경제", "url": None,
-        "status": "dead", "last_checked": "2026-08-23",
-        "political_leaning": "보수",
-        "leaning_source": "친기업·시장주의 논조, 정치면도 보수 성향 평가",
     },
     {
         "outlet": "KBS", "category": "방송", "url": None,

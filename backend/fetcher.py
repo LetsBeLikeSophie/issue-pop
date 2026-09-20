@@ -65,6 +65,18 @@ def _to_iso(entry: Any) -> str | None:
     return datetime.fromtimestamp(time.mktime(struct), tz=timezone.utc).isoformat()
 
 
+_REQUEST_HEADERS = {
+    # 2026-09-20: 한국경제(hankyung.com) RSS가 feedparser 기본 요청(브라우저
+    # UA 없음)에는 매번 깨진 XML을 내려주는 걸 발견함("undefined entity"로
+    # 파싱 자체가 실패, entries=0) — 반면 일반 브라우저 UA를 붙이면 항상
+    # 정상 파싱됨(직접 여러 번 재현 확인). 다른 매체엔 부작용 없어서(추가
+    # 헤더를 무시하거나 그냥 받아들임) 전체 요청에 공통으로 붙임 — 앞으로도
+    # 비슷한 봇 차단성 이슈를 예방하는 효과도 있음.
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+}
+
+
 def fetch_outlet(source: dict) -> list[dict]:
     """피드 하나를 가져와 기사 리스트로 변환. 실패해도 예외를 던지지 않고 빈 리스트를 반환해요.
 
@@ -72,7 +84,7 @@ def fetch_outlet(source: dict) -> list[dict]:
     여기서 에러를 흡수하고 로그만 남기는 방어적인 구조로 짰어요.
     """
     try:
-        parsed = feedparser.parse(source["url"])
+        parsed = feedparser.parse(source["url"], request_headers=_REQUEST_HEADERS)
     except Exception as e:  # noqa: BLE001 - 수집 단계는 매체 하나 실패로 전체를 멈추면 안 됨
         print(f"[fetch] {source['outlet']} 실패: {e}")
         return []
