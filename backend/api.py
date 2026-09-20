@@ -37,7 +37,9 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import bcrypt
+import firebase_admin
 import requests
+from firebase_admin import messaging
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
@@ -83,6 +85,23 @@ _weather_cache: dict | None = None
 _stock_news_cache: dict[str, list[dict]] = {}  # 티커 → 최신 뉴스(stocks.py 참고)
 _stock_quote_cache: dict[str, dict] = {}  # 티커 → 가격/변동(quotes.py 참고)
 _usd_krw_rate: float | None = None  # "$ 탭하면 원화로" 토글용, 하루 단위 갱신으로 충분
+
+# 2026-09-20: 실제 푸시 발송(FCM) — 날씨 API 키처럼 사용자가 직접 발급
+# 받아야 하는 자격증명이라(Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 >
+# 새 비공개 키 생성), 서버 환경변수 GOOGLE_APPLICATION_CREDENTIALS로 키
+# 파일 경로를 주면 그걸로 인증함. firebase_admin.initialize_app()은
+# 인자 없이 부르면 이 환경변수를 자동으로 읽지만(Application Default
+# Credentials), **실제 인증은 미룸** — 키가 없거나 잘못돼도 여기선 항상
+# 성공한 것처럼 보임(실측 확인). 그래서 _firebase_ready는 "초기화
+# 자체가 안 됐는지"만 걸러주고, 진짜 방어선은 _send_digest()의
+# try/except임 — 키가 없으면 messaging.send() 시점에 ValueError로
+# 실패하고, 그건 거기서 로그만 찍고 조용히 넘어감(서버는 안 죽음).
+_firebase_ready = False
+try:
+    firebase_admin.initialize_app()
+    _firebase_ready = True
+except Exception as e:  # noqa: BLE001 — 초기화 자체가 실패하는 경우는 드물지만 방어
+    print(f"[firebase] 초기화 실패 — 다이제스트는 로그만 찍는 스텁으로 동작함: {e}")
 
 
 def _make_id(cluster: dict) -> str:
@@ -253,11 +272,35 @@ def _build_digest_text(limit: int = 5) -> str:
     return "오늘의 트렌드\n" + "\n".join(lines)
 
 
-def _send_digest_stub(device: db.Device, text: str) -> None:
-    """실제 푸시 발송 자리 — FCM 등 연동 전까지는 로그만 찍음. 나중에
-    이 함수 안쪽만 실제 발송 호출로 바꿔 끼우면 됨(device.push_token,
-    text만 있으면 됨)."""
-    print(f"[digest] (발송 안 함, 로그만) device={device.id} token={device.push_token[:8]}...\n{text}")
+def _send_digest(device: db.Device, text: str, session) -> bool:
+    """실제 발송. Firebase 자격증명이 없으면(로컬 개발 등) 예전처럼 로그만
+    찍는 스텁으로 동작함. 토큰이 만료/무효면(재설치, 알림 권한 취소,
+    앱 삭제 등) FCM이 UnregisteredError로 알려주는데, 그 기기는 앞으로도
+    계속 실패할 뿐이라 아예 지워서 다음 확인부터 안 걸리게 함 — 안 지우면
+    5분마다 영원히 실패하는 발송을 계속 시도하게 됨. 이 기기를 삭제했으면
+    True를 돌려줌(호출하는 쪽이 그 뒤 last_digest_sent_at 갱신 등을
+    건너뛰게)."""
+    if not _firebase_ready:
+        print(f"[digest] (Firebase 미설정, 로그만) device={device.id} token={device.push_token[:8]}...\n{text}")
+        return False
+    # firebase-admin 7.x에서 Message.token이 deprecated(Message.fid로
+    # 대체 예정)로 경고가 뜨지만 아직 동작은 함 — fid의 정확한 의미가
+    # 문서화가 안 돼 있어서 섣불리 안 바꿈. SDK가 token을 실제로 없애면
+    # 그때 다시 확인.
+    message = messaging.Message(
+        notification=messaging.Notification(title="오늘의 트렌드", body=text),
+        token=device.push_token,
+    )
+    try:
+        messaging.send(message)
+        print(f"[digest] device={device.id} 발송 완료")
+    except messaging.UnregisteredError:
+        print(f"[digest] device={device.id} 토큰 만료 — 기기 삭제")
+        session.delete(device)
+        return True
+    except Exception as e:  # noqa: BLE001 — FCM 쪽 일시 오류 등 다양하게 옴
+        print(f"[digest] device={device.id} 발송 실패: {e}")
+    return False
 
 
 def _digest_check() -> list[int]:
@@ -284,7 +327,8 @@ def _digest_check() -> list[int]:
                     last_sent = last_sent.replace(tzinfo=timezone.utc)
                 if (now_utc - last_sent).total_seconds() < DIGEST_DEDUPE_WINDOW_SECONDS:
                     continue
-            _send_digest_stub(device, _build_digest_text())
+            if _send_digest(device, _build_digest_text(), session):
+                continue  # 토큰 만료로 기기 자체가 삭제됨 — last_digest_sent_at 갱신 대상 아님
             device.last_digest_sent_at = now_utc
             session.add(device)
             sent_to.append(device.id)
@@ -923,9 +967,11 @@ class DigestIn(BaseModel):
 
 @app.put("/devices/{device_id}/digest")
 async def set_digest(device_id: int, body: DigestIn):
-    """매일 정해진 시간에 오늘의 트렌드 요약을 푸시(배너)로 보내는 기능의
-    "설정 저장"까지만 함 — 실제 발송(FCM 등 푸시 서비스 연동)은 아직
-    없음, 나중에 붙일 자리만 미리 만들어둠. 기기당 하루 1회."""
+    """매일 정해진 시간에 오늘의 트렌드 요약을 푸시로 보내는 기능의 설정
+    저장. 2026-09-20부터 실제 발송(FCM)도 됨 — 서버에
+    GOOGLE_APPLICATION_CREDENTIALS(Firebase 서비스 계정 키)가 설정돼
+    있으면 진짜로 나가고, 없으면 로그만 찍는 스텁으로 조용히 동작함
+    (_send_digest 참고). 기기당 하루 1회."""
     if body.hour is not None and not (0 <= body.hour <= 23):
         raise HTTPException(status_code=422, detail="hour must be 0-23")
     with db.get_session() as session:
@@ -1079,8 +1125,9 @@ async def get_word_of_day_alert(device_id: int):
 @app.post("/digest/run")
 async def run_digest_check():
     """개발/테스트용 — 지금 KST 시각이 되길 기다리지 않고 다이제스트
-    스케줄러를 즉시 한 번 실행함(5분마다 자동으로도 돌긴 함). 실제
-    발송은 안 하고 로그만 찍음(_send_digest_stub 참고, FCM 연동 전)."""
+    스케줄러를 즉시 한 번 실행함(5분마다 자동으로도 돌긴 함). Firebase
+    자격증명이 서버에 설정돼 있으면 실제로 발송되고, 없으면 로그만
+    찍는 스텁으로 동작함(_send_digest 참고)."""
     sent_to = await asyncio.to_thread(_digest_check)
     return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
 
