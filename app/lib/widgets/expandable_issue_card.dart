@@ -164,9 +164,10 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
           child: Container(
             decoration: BoxDecoration(
               color: AppColors.surface,
+              // 2026-09-20: "클린 뉴스룸" 톤 — 카드 구분을 그림자 대신
+              // 얇은 라인으로만 함(F안 레퍼런스). 색은 그대로 유지.
               border: Border.all(color: AppColors.line),
               borderRadius: BorderRadius.circular(10),
-              boxShadow: AppColors.cardShadow,
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(

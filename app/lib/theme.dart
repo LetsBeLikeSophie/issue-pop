@@ -60,21 +60,26 @@ const _currentPalette = _Palette(
   brightness: Brightness.light,
 );
 
-// "흰색(회색 정도)" 요청 — 채도를 거의 빼고 명암 대비로만 위계를 줌.
-// accent/accent2는 완전히 같은 회색이면 (관심종목 등가/음가처럼) 색으로
-// 구분하던 곳이 안 보이니, 미세하게 톤만 다르게(중성 차콜 vs 따뜻한 톤).
+// "흰색(회색 정도)" 요청으로 시작한 프리셋 — 2026-09-20: 디자인 캔버스
+// Direction F("클린 뉴스룸", BBC/Reuters류 레퍼런스)의 네이비 액센트를
+// 이 프리셋에 반영함(기본 프리셋의 세이지그린은 그대로 두고, "화이트"
+// 프리셋을 고르면 이 톤이 나오게). bg/surface를 거의 같은 흰색으로
+// 맞추고 카드는 그림자 대신 라인(line)으로만 구분되게 하는 게 이 톤의
+// 핵심이라, 카드 쪽 그림자도 같이 뺐음(expandable_issue_card.dart 참고).
+// accent2(따뜻한 브라운)는 원래 의도(차가운 액센트와 대비되는 따뜻한
+// 톤)가 네이비로 바뀐 뒤에도 여전히 유효해서 그대로 둠.
 const _neutralPalette = _Palette(
-  bg: Color(0xFFF6F6F4),
+  bg: Color(0xFFFAFAF9),
   surface: Color(0xFFFFFFFF),
-  surfaceAlt: Color(0xFFEBEBE7),
-  ink: Color(0xFF242422),
-  inkSoft: Color(0xFF5F5F5B),
-  inkFaint: Color(0xFF8F8F8A),
-  accent: Color(0xFF33332F),
-  accentSoft: Color(0xFFE7E7E3),
+  surfaceAlt: Color(0xFFF5F5F3),
+  ink: Color(0xFF14161C),
+  inkSoft: Color(0xFF4B4D55),
+  inkFaint: Color(0xFF9A9CA3),
+  accent: Color(0xFF17356B),
+  accentSoft: Color(0xFFEEF1F6),
   accent2: Color(0xFF8A6F5C),
   accent2Soft: Color(0xFFEFE7E1),
-  line: Color(0xFFDDDDD8),
+  line: Color(0xFFE7E8EB),
   brightness: Brightness.light,
 );
 
