@@ -435,16 +435,27 @@ class _TopBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Text(
-              'Issue Pop',
-              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
-              // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
-              // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
-              // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
-              // 들어가면 잘라서 절대 넘치지 않게 함.
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
+            child: AnimatedDefaultTextStyle(
+              // 2026-09-20: 로고 색도 성향 필터 색과 같이 바뀌게 함 —
+              // 우측 상단의 작은 라벨만으로는 필터가 걸려있다는 게 잘
+              // 안 보인다는 피드백. 화살표로 넘길 때마다 로고까지 같이
+              // 물들어서 훨씬 눈에 띔.
+              duration: const Duration(milliseconds: 200),
+              style: AppTypography.serif(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: _LeaningCycler.tintFor(leaningFilter),
+              ),
+              child: const Text(
+                'Issue Pop',
+                // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
+                // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
+                // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
+                // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
+                // 들어가면 잘라서 절대 넘치지 않게 함.
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           // 2026-09-20: 정치성향 필터 칩 줄을 목록 위에 항상 띄워두는 대신,
@@ -570,10 +581,10 @@ class _LeaningCycler extends StatelessWidget {
             width: 52,
             height: 36,
             child: Center(
-              child: Text(
-                active ?? '전체',
-                textAlign: TextAlign.center,
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tintFor(active)),
+                child: Text(active ?? '전체', textAlign: TextAlign.center),
               ),
             ),
           ),
