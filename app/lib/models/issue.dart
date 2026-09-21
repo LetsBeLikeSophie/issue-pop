@@ -1,11 +1,3 @@
-/// 정치성향 스펙트럼 순서(진보→중도진보→중도→중도보수→보수). 맨 앞
-/// null은 "전체"(필터 없음). backend sources.py의 political_leaning
-/// 값과 1:1 대응하며, home_screen.dart(성향 필터 순환 컨트롤)와
-/// dashboard_screen.dart(그 필터를 반영한 요약) 양쪽이 같은 순서/색을
-/// 쓰기 위해 여기(모델 레이어)에 둠 — 화면마다 따로 정의하면 스펙트럼
-/// 순서가 어긋날 위험이 있음.
-const List<String?> kLeaningOptions = [null, '진보', '중도진보', '중도', '중도보수', '보수'];
-
 /// backend/api.py의 IssueSummary와 1:1로 맞춘 모델.
 class IssueSummary {
   final String id;
@@ -21,12 +13,6 @@ class IssueSummary {
   /// 씀) 진짜 "추이"는 아니고 지속 기간만 보여줌.
   final DateTime? firstSeenAt;
 
-  /// 2026-09-20: 정치성향 필터용 — 이 이슈에 기여한 매체들의 성향을 중복
-  /// 제거해서 모은 목록(예: ["보수","진보"]). 즐겨찾기/아카이브처럼 DB에서
-  /// 바로 읽어오는 경로는 매체별 breakdown이 없어서 빈 배열로 옴 — 그
-  /// 경로는 애초에 이 필터를 쓰는 화면이 아님.
-  final List<String> leanings;
-
   IssueSummary({
     required this.id,
     required this.keyword,
@@ -36,7 +22,6 @@ class IssueSummary {
     required this.articleCount,
     required this.outletCount,
     this.firstSeenAt,
-    this.leanings = const [],
   });
 
   factory IssueSummary.fromJson(Map<String, dynamic> json) => IssueSummary(
@@ -48,7 +33,6 @@ class IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
-        leanings: json['leanings'] == null ? const [] : (json['leanings'] as List).cast<String>(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,54 +44,19 @@ class IssueSummary {
         'article_count': articleCount,
         'outlet_count': outletCount,
         'first_seen_at': firstSeenAt?.toIso8601String(),
-        'leanings': leanings,
       };
-}
-
-/// backend/api.py의 OutletLeaningInfo — 정치성향 필터 안내 모달용.
-/// sources.py RSS_SOURCES를 그대로 노출하는 것이라 매체가 늘거나
-/// leaning_source가 갱신되면 이 모델도 별도 변경 없이 그대로 반영됨.
-class OutletLeaningInfo {
-  final String outlet;
-  final String category;
-  final String? politicalLeaning;
-  final String? leaningSource;
-  final String? leaningUpdated;
-
-  OutletLeaningInfo({
-    required this.outlet,
-    required this.category,
-    this.politicalLeaning,
-    this.leaningSource,
-    this.leaningUpdated,
-  });
-
-  factory OutletLeaningInfo.fromJson(Map<String, dynamic> json) => OutletLeaningInfo(
-        outlet: json['outlet'] as String,
-        category: json['category'] as String,
-        politicalLeaning: json['political_leaning'] as String?,
-        leaningSource: json['leaning_source'] as String?,
-        leaningUpdated: json['leaning_updated'] as String?,
-      );
 }
 
 class OutletBreakdown {
   final String outlet;
   final int count;
 
-  /// 2026-09-20: 이 매체의 정치성향(sources.py OUTLET_LEANING 기준).
-  /// 미분류 매체는 null — 성향 필터에서 이 매체는 제외됨.
-  final String? leaning;
+  OutletBreakdown({required this.outlet, required this.count});
 
-  OutletBreakdown({required this.outlet, required this.count, this.leaning});
+  factory OutletBreakdown.fromJson(Map<String, dynamic> json) =>
+      OutletBreakdown(outlet: json['outlet'] as String, count: json['count'] as int);
 
-  factory OutletBreakdown.fromJson(Map<String, dynamic> json) => OutletBreakdown(
-        outlet: json['outlet'] as String,
-        count: json['count'] as int,
-        leaning: json['leaning'] as String?,
-      );
-
-  Map<String, dynamic> toJson() => {'outlet': outlet, 'count': count, 'leaning': leaning};
+  Map<String, dynamic> toJson() => {'outlet': outlet, 'count': count};
 }
 
 class ArticleOut {
@@ -154,7 +103,6 @@ class IssueDetail extends IssueSummary {
     required super.articleCount,
     required super.outletCount,
     super.firstSeenAt,
-    super.leanings,
     required this.outlets,
     required this.articles,
   });
@@ -168,7 +116,6 @@ class IssueDetail extends IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
-        leanings: json['leanings'] == null ? const [] : (json['leanings'] as List).cast<String>(),
         outlets: (json['outlets'] as List)
             .map((e) => OutletBreakdown.fromJson(e as Map<String, dynamic>))
             .toList(),

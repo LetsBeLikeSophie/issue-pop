@@ -60,17 +60,6 @@ class ApiClient {
     return map.map((k, v) => MapEntry(k, v as int));
   }
 
-  /// 2026-09-20: 홈 화면 성향 필터의 안내 모달("지금 우리 현황 + 분류
-  /// 근거")용 — sources.py RSS_SOURCES를 그대로 내려주는 가벼운
-  /// 엔드포인트라 앱 시작 때마다 부르지 않고 모달을 열 때만 호출함.
-  Future<List<OutletLeaningInfo>> getOutletLeanings() async {
-    final uri = Uri.parse('$baseUrl/outlets/leanings');
-    final res = await http.get(uri);
-    _checkOk(res);
-    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
-    return list.map((e) => OutletLeaningInfo.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
   /// 홈 마스트헤드 통계용 — 이슈/기사 개수만 가볍게 집계해서 받음(전체
   /// 이슈를 기사까지 통째로 받던 예전 방식보다 훨씬 가벼움).
   Future<({int issueCount, int articleCount})> getStats() async {

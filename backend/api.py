@@ -51,7 +51,6 @@ from slowapi.util import get_remote_address
 import cluster_audit
 import db
 import quotes
-import sources
 import stocks
 import word_of_day
 from pipeline import run
@@ -482,10 +481,6 @@ app.add_middleware(
 class OutletBreakdown(BaseModel):
     outlet: str
     count: int
-    # 2026-09-20: 정치성향 필터가 "이 이슈를 성향 X 매체가 다뤘는가"뿐
-    # 아니라 "성향 X 매체가 쓴 기사만 보여달라"는 요청으로 확장되면서
-    # 추가 — 프론트가 이슈 하나 안에서 매체별로 다시 걸러낼 수 있게 함.
-    leaning: str | None = None
 
 
 class ArticleOut(BaseModel):
@@ -510,21 +505,11 @@ class IssueSummary(BaseModel):
     # 처음 잡힌 시각만 노출. _cache는 재수집마다 새로 만들어지는 딕셔너리라
     # 여기 안 들어있고, refresh_cache()가 DB에서 읽어와 채워줌.
     first_seen_at: str | None = None
-    # 2026-09-20: 정치성향 필터용 — 이 이슈에 기여한 매체들의 성향을
-    # 중복 제거해서 모아둠(예: 보수 매체 1곳 + 진보 매체 2곳이 같이 보도한
-    # 이슈면 ["보수", "진보"]). sources.py의 OUTLET_LEANING이 원천 데이터라
-    # 매체가 늘거나 성향이 재검증되면 자동으로 반영됨. 미분류 매체는 빠짐.
-    leanings: list[str] = []
 
 
 class IssueDetail(IssueSummary):
     outlets: list[OutletBreakdown]
     articles: list[ArticleOut]
-
-
-def _leanings_of(outlets: dict) -> list[str]:
-    found = {sources.OUTLET_LEANING[o] for o in outlets if o in sources.OUTLET_LEANING}
-    return sorted(found)
 
 
 def _to_summary(issue_id: str, c: dict) -> IssueSummary:
@@ -537,17 +522,13 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
         article_count=c["article_count"],
         outlet_count=c["outlet_count"],
         first_seen_at=c.get("first_seen_at"),
-        leanings=_leanings_of(c["outlets"]),
     )
 
 
 def _to_detail(issue_id: str, c: dict) -> IssueDetail:
     return IssueDetail(
         **_to_summary(issue_id, c).model_dump(),
-        outlets=[
-            OutletBreakdown(outlet=o, count=n, leaning=sources.OUTLET_LEANING.get(o))
-            for o, n in c["outlets"].items()
-        ],
+        outlets=[OutletBreakdown(outlet=o, count=n) for o, n in c["outlets"].items()],
         articles=[
             ArticleOut(
                 outlet=a["outlet"],
@@ -604,33 +585,6 @@ async def health():
 @app.get("/categories")
 async def get_categories():
     return Counter(c["category"] for c in _cache.values())
-
-
-class OutletLeaningInfo(BaseModel):
-    outlet: str
-    category: str
-    political_leaning: str | None
-    leaning_source: str | None
-    leaning_updated: str | None
-
-
-@app.get("/outlets/leanings", response_model=list[OutletLeaningInfo])
-async def get_outlet_leanings():
-    """2026-09-20: 홈 화면 성향 필터 컨트롤에서 "지금 우리 현황이 뭔지,
-    분류 근거가 뭔지" 안내 모달을 열 때 씀. sources.py RSS_SOURCES(실제
-    수집 중인 매체)가 유일한 소스라 여기서 새로 만들지 않고 그대로 노출함
-    — 매체가 추가되거나 leaning_source가 갱신되면 이 응답도 자동으로
-    같이 바뀜."""
-    return [
-        OutletLeaningInfo(
-            outlet=s["outlet"],
-            category=s["category"],
-            political_leaning=s.get("political_leaning"),
-            leaning_source=s.get("leaning_source"),
-            leaning_updated=s.get("leaning_updated"),
-        )
-        for s in sources.RSS_SOURCES
-    ]
 
 
 @app.get("/stats")

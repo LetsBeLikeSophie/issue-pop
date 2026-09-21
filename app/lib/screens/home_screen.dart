@@ -6,7 +6,6 @@ import '../theme.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
-import 'dashboard_screen.dart';
 import 'keyword_watch_screen.dart';
 import 'settings_screen.dart';
 import 'stock_watch_screen.dart';
@@ -133,9 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _TopBar(
-              onDashboard: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => DashboardScreen(api: widget.api)),
-              ),
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
               ),
@@ -383,7 +379,6 @@ class _SwipeHint extends StatelessWidget {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.onDashboard,
     required this.onStocks,
     required this.onKeywords,
     required this.onShare,
@@ -391,7 +386,6 @@ class _TopBar extends StatelessWidget {
     required this.onSettings,
   });
 
-  final VoidCallback onDashboard;
   final VoidCallback onStocks;
   final VoidCallback onKeywords;
   final VoidCallback onShare;
@@ -409,7 +403,7 @@ class _TopBar extends StatelessWidget {
           Expanded(
             child: Text(
               'Issue Pop',
-              // 2026-09-09: 좁은 화면 + 아이콘 6개 조합에서 "Issue"가 한
+              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
               // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
               // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
               // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
@@ -421,27 +415,11 @@ class _TopBar extends StatelessWidget {
           ),
           // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
           // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
-          // IconButton은 48px 최소 탭 영역을 잡는데, 이 여러 개를 다 그렇게
+          // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
           // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
-          //
-          // 2026-09-21: 정치성향 필터 컨트롤을 여기(홈 상단바)에 뒀었는데,
-          // "홈 화면엔 안 보이고 다른 데 있어야 한다"는 피드백으로
-          // 관심사 대시보드로 옮김 — 이 자리엔 다시 아이콘 6개만 남음.
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 2026-09-21: 관심 워치·관심 종목·오늘의 트렌드를 한 화면에
-              // 모아 보여주는 "관심사 대시보드" 진입점(정치성향 필터도
-              // 이제 여기 안에 있음) — 기존 두 화면은 이미 이 대시보드의
-              // "더보기"로도 갈 수 있어서 완전히 새로운 동선은 아님(빠른
-              // 개별 접근은 그대로 유지).
-              IconButton(
-                icon: Icon(Icons.dashboard_outlined, color: AppColors.ink),
-                onPressed: onDashboard,
-                tooltip: '관심사 대시보드',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
-              ),
               IconButton(
                 icon: Icon(Icons.show_chart, color: AppColors.ink),
                 onPressed: onStocks,
