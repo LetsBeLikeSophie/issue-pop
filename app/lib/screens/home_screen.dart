@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
@@ -73,18 +75,33 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PageController _pageController;
   int _page = 0;
 
+  /// 2026-09-21: 상단바의 "N분 전 업데이트" 표시용. 서버가 30분마다
+  /// 재수집하면서 기록해두는 시각을 한 번 받아온 다음, 1분마다
+  /// setState만 다시 해서(네트워크 재요청 없이) 상대 시간 문구를
+  /// 최신으로 유지함 — 정치성향 필터를 빼면서 비게 된 우측 상단
+  /// 자리에 넣음.
+  DateTime? _lastRefreshAt;
+  Timer? _clockTimer;
+
   @override
   void initState() {
     super.initState();
     _trending = widget.api.getTrending(limit: 40);
     _index = widget.api.getIndex();
     _pageController = PageController();
+    widget.api.getLastRefresh().then((t) {
+      if (mounted) setState(() => _lastRefreshAt = t);
+    });
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _pageController.dispose();
+    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -94,6 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _index = widget.api.getIndex();
     });
     await _trending;
+    final t = await widget.api.getLastRefresh();
+    if (mounted) setState(() => _lastRefreshAt = t);
   }
 
   void _goToPage(int i) {
@@ -132,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _TopBar(
+              lastRefreshAt: _lastRefreshAt,
               onStocks: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => StockWatchScreen(api: widget.api)),
               ),
@@ -379,6 +399,7 @@ class _SwipeHint extends StatelessWidget {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
+    required this.lastRefreshAt,
     required this.onStocks,
     required this.onKeywords,
     required this.onShare,
@@ -386,6 +407,7 @@ class _TopBar extends StatelessWidget {
     required this.onSettings,
   });
 
+  final DateTime? lastRefreshAt;
   final VoidCallback onStocks;
   final VoidCallback onKeywords;
   final VoidCallback onShare;
@@ -417,47 +439,92 @@ class _TopBar extends StatelessWidget {
           // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
           // IconButton은 48px 최소 탭 영역을 잡는데, 이 5개를 다 그렇게
           // 두기엔 자리가 부족해서 각각 살짝 좁힘(터치 자체는 여전히 넉넉함).
-          Row(
+          //
+          // 2026-09-21: 정치성향 필터를 빼면서 비게 된 자리에 "N분 전
+          // 업데이트" 표시를 넣음 — 서버가 30분마다 재수집하는 걸 사용자가
+          // 알 방법이 없었어서.
+          Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              IconButton(
-                icon: Icon(Icons.show_chart, color: AppColors.ink),
-                onPressed: onStocks,
-                tooltip: '관심 종목',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
-              ),
-              IconButton(
-                icon: Icon(Icons.person_search, color: AppColors.ink),
-                onPressed: onKeywords,
-                tooltip: '관심 워치',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
-              ),
-              IconButton(
-                icon: Icon(Icons.ios_share, color: AppColors.ink),
-                onPressed: onShare,
-                tooltip: '오늘의 트렌드 공유',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
-              ),
-              IconButton(
-                icon: Icon(Icons.bookmark_border, color: AppColors.ink),
-                onPressed: onArchive,
-                tooltip: '저장한 이슈',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
-              ),
-              IconButton(
-                icon: Icon(Icons.person_outline, color: AppColors.ink),
-                onPressed: onSettings,
-                tooltip: '설정',
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                constraints: const BoxConstraints(),
+              _LastRefreshLabel(at: lastRefreshAt),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.show_chart, color: AppColors.ink),
+                    onPressed: onStocks,
+                    tooltip: '관심 종목',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.person_search, color: AppColors.ink),
+                    onPressed: onKeywords,
+                    tooltip: '관심 워치',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.ios_share, color: AppColors.ink),
+                    onPressed: onShare,
+                    tooltip: '오늘의 트렌드 공유',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.bookmark_border, color: AppColors.ink),
+                    onPressed: onArchive,
+                    tooltip: '저장한 이슈',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.person_outline, color: AppColors.ink),
+                    onPressed: onSettings,
+                    tooltip: '설정',
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 2026-09-21: "N분 전 업데이트" — 서버가 30분마다 재수집하는 걸 사용자가
+/// 알 방법이 없어서 추가함. 평소엔 무채색으로 조용히 있다가, 갱신
+/// 주기(30분)의 3배(90분)를 넘도록 안 바뀌면 뭔가 잘못됐다는 뜻이라
+/// accent2(경고 톤으로 이미 쓰던 색)로 눈에 띄게 함 — 새 색을 안 만들고
+/// 기존 "삭제/취소" 등에 쓰던 색을 재사용.
+class _LastRefreshLabel extends StatelessWidget {
+  const _LastRefreshLabel({required this.at});
+
+  final DateTime? at;
+
+  static const _staleAfter = Duration(minutes: 90);
+
+  @override
+  Widget build(BuildContext context) {
+    if (at == null) return const SizedBox(height: 14);
+    final elapsed = DateTime.now().difference(at!);
+    final text = elapsed.inMinutes < 1
+        ? '방금 업데이트'
+        : elapsed.inMinutes < 60
+            ? '${elapsed.inMinutes}분 전 업데이트'
+            : '${elapsed.inHours}시간 전 업데이트';
+    final stale = elapsed > _staleAfter;
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w600,
+        color: stale ? AppColors.accent2 : AppColors.inkFaint,
       ),
     );
   }

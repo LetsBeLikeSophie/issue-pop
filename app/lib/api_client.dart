@@ -52,6 +52,19 @@ class ApiClient {
     return list.map((e) => IssueDetail.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 2026-09-21: 상단바의 "N분 전 업데이트" 표시용 — 서버가 30분마다
+  /// 재수집/재클러스터링하면서 기록해두는 시각(_last_refresh)을 그대로
+  /// 씀. 새 엔드포인트 없이 이미 있던 /health를 재사용함.
+  Future<DateTime?> getLastRefresh() async {
+    final uri = Uri.parse('$baseUrl/health');
+    final res = await http.get(uri);
+    _checkOk(res);
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final ts = map['last_refresh'] as num?;
+    if (ts == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch((ts * 1000).round(), isUtc: true).toLocal();
+  }
+
   Future<Map<String, int>> getCategories() async {
     final uri = Uri.parse('$baseUrl/categories');
     final res = await http.get(uri);
