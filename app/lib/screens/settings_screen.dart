@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
 import '../device_registry.dart';
@@ -132,6 +133,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => _WordOfDayPreviewSheet(preview: preview),
     );
+  }
+
+  /// 2026-09-22: 카카오페이 "받기" 링크로 후원 — 결제를 앱 안에서 직접
+  /// 처리하려면 PG 계약/사업자등록이 필요해서, 1인 개발 단계에선 그냥
+  /// 카카오페이 앱으로 넘기는 외부 링크만 엶.
+  Future<void> _openDonationLink() async {
+    await launchUrl(Uri.parse('https://qr.kakaopay.com/FZBmuUqIr'), mode: LaunchMode.externalApplication);
+  }
+
+  /// 2026-09-21: 아직 계정 시스템이 없어서 문의를 받을 방법이 메일뿐임 —
+  /// 전용 지메일(issuepop.support@gmail.com)로 mailto: 링크만 열어줌.
+  Future<void> _openContactEmail() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'issuepop.support@gmail.com',
+      query: 'subject=${Uri.encodeComponent('[이슈판 문의]')}',
+    );
+    await launchUrl(uri);
   }
 
   @override
@@ -459,6 +478,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ],
                             );
                           },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionLabel('지원'),
+                  const SizedBox(height: 8),
+                  AppCard(
+                    padding: EdgeInsets.zero,
+                    radius: 18,
+                    child: Column(
+                      children: [
+                        _PlainRow(
+                          label: '커피 한잔 후원하기',
+                          onTap: _openDonationLink,
+                          showDivider: true,
+                        ),
+                        _PlainRow(
+                          label: '문의하기',
+                          onTap: _openContactEmail,
+                          showDivider: false,
                         ),
                       ],
                     ),
