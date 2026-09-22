@@ -1292,12 +1292,19 @@ async def view_feedback(_: None = Depends(_require_admin)):
 
         items = session.exec(select(db.Feedback).order_by(db.Feedback.created_at.desc())).all()
 
+    # SQLite는 timezone 정보 없이 저장해서 읽어오면 naive datetime이 됨
+    # (db.now()가 항상 UTC로 저장하니 그걸로 tag만 붙여서 KST로 변환).
+    def _kst(dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M")
+
     # 사용자가 직접 입력한 텍스트라 그대로 HTML에 꽂으면 XSS 위험이 있음
     # — 반드시 이스케이프하고 넣음.
     rows = "".join(
         f"""<li class="row">
             <div class="meta">
-                <span class="time">{f.created_at.strftime('%Y-%m-%d %H:%M')}</span>
+                <span class="time">{_kst(f.created_at)}</span>
                 <span class="device">{'기기 #' + str(f.device_id) if f.device_id else '기기 정보 없음'}</span>
             </div>
             <p class="message">{html.escape(f.message)}</p>
