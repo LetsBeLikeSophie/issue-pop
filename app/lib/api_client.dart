@@ -196,6 +196,23 @@ class ApiClient {
     return AlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
+  /// 2026-09-22: 설정 화면 "문의하기" — mailto: 링크 대신 인앱 폼에서
+  /// 바로 서버(POST /feedback)로 보냄. contactEmail은 선택(직접 답장할
+  /// 때만 씀, 자동 답장 기능은 없음).
+  Future<void> submitFeedback({required int? deviceId, required String message, String? contactEmail}) async {
+    final uri = Uri.parse('$baseUrl/feedback');
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'device_id': deviceId,
+        'message': message,
+        if (contactEmail != null && contactEmail.isNotEmpty) 'contact_email': contactEmail,
+      }),
+    );
+    _checkOk(res);
+  }
+
   Future<void> addWatch(int deviceId, String keyword) async {
     final uri = Uri.parse('$baseUrl/watches');
     final res = await http.post(

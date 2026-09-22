@@ -1213,17 +1213,26 @@ async def list_favorites(authorization: str | None = Header(default=None)):
 class FeedbackIn(BaseModel):
     device_id: int | None = None
     message: str
+    contact_email: str | None = None
 
 
 @app.post("/feedback")
-async def submit_feedback(body: FeedbackIn):
+@limiter.limit("5/hour")
+async def submit_feedback(request: Request, body: FeedbackIn):
     """베타 "고객의 소리" — 답장 없는 일방향 제출. 로그인 없이도 보낼 수
-    있음(device_id는 선택, 있으면 어느 기기에서 왔는지 참고용)."""
+    있음(device_id는 선택, 있으면 어느 기기에서 왔는지 참고용).
+    2026-09-22: 설정 화면 "문의하기"가 mailto: 대신 이 엔드포인트를
+    부르는 인앱 폼으로 바뀌면서 무분별 제출 방지용 rate limit(IP당
+    시간당 5건)을 걸고, 선택 입력으로 contact_email을 받음(있으면
+    직접 답장할 때 씀 — 답장 자동화는 아직 없음)."""
     message = body.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="message must not be empty")
+    contact_email = body.contact_email.strip() if body.contact_email else None
+    if contact_email and not _EMAIL_RE.match(contact_email):
+        raise HTTPException(status_code=422, detail="invalid contact_email")
     with db.get_session() as session:
-        fb = db.Feedback(device_id=body.device_id, message=message)
+        fb = db.Feedback(device_id=body.device_id, message=message, contact_email=contact_email or None)
         session.add(fb)
         session.commit()
         session.refresh(fb)
@@ -1239,7 +1248,13 @@ async def list_feedback():
 
         items = session.exec(select(db.Feedback).order_by(db.Feedback.created_at.desc())).all()
         return [
-            {"id": f.id, "device_id": f.device_id, "message": f.message, "created_at": f.created_at}
+            {
+                "id": f.id,
+                "device_id": f.device_id,
+                "message": f.message,
+                "contact_email": f.contact_email,
+                "created_at": f.created_at,
+            }
             for f in items
         ]
 
@@ -1263,6 +1278,7 @@ async def view_feedback():
                 <span class="device">{'기기 #' + str(f.device_id) if f.device_id else '기기 정보 없음'}</span>
             </div>
             <p class="message">{html.escape(f.message)}</p>
+            {f'<p class="contact">답장: {html.escape(f.contact_email)}</p>' if f.contact_email else ''}
         </li>"""
         for f in items
     )
@@ -1284,6 +1300,7 @@ async def view_feedback():
   .meta {{ display: flex; justify-content: space-between; font-size: 11px;
            color: #8B9280; margin-bottom: 6px; }}
   .message {{ font-size: 14px; line-height: 1.5; white-space: pre-wrap; margin: 0; }}
+  .contact {{ font-size: 12px; color: #35503F; margin: 6px 0 0; font-weight: 600; }}
   .empty {{ color: #8B9280; font-size: 13px; }}
 </style>
 </head>

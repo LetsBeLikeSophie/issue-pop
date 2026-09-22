@@ -251,13 +251,17 @@ def prune_old_embedding_cache(session: Session, retention_days: int = 3) -> int:
 class Feedback(SQLModel, table=True):
     """베타 "고객의 소리" — 답장 기능 없는 일방향 제출함(2026-08-27).
     로그인 없이도 보낼 수 있게 device_id는 선택(있으면 어느 기기에서
-    왔는지 참고용, 필수 아님)."""
+    왔는지 참고용, 필수 아님). 2026-09-22: 설정 화면의 "문의하기"를
+    mailto: 링크 대신 인앱 폼으로 바꾸면서 contact_email을 추가함 —
+    답장 기능은 여전히 없지만(수동으로 이 이메일에 직접 답장), 남겨두면
+    필요할 때 연락할 방법이 생김. 선택 입력이라 null 가능."""
 
     __tablename__ = "feedback"
 
     id: int | None = Field(default=None, primary_key=True)
     device_id: int | None = Field(default=None, foreign_key="devices.id")
     message: str
+    contact_email: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=now)
 
 
@@ -358,6 +362,7 @@ def init_db() -> None:
     # 2026-09-11: suggested_fix를 cluster_audit_findings 테이블 첫 배포
     # 이후에 추가함 — 이미 그 테이블이 있는 서버엔 마찬가지로 안 채워짐.
     _migrate_table_columns("cluster_audit_findings", {"suggested_fix": "TEXT NOT NULL DEFAULT ''"})
+    _migrate_table_columns("feedback", {"contact_email": "TEXT"})
 
 
 def get_session() -> Session:

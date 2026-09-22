@@ -93,6 +93,11 @@ class DeviceRegistry {
     await api.setWordOfDayAlert(id, enabled);
   }
 
+  Future<void> submitFeedback(String message, {String? contactEmail}) async {
+    final id = await _deviceId();
+    await api.submitFeedback(deviceId: id, message: message, contactEmail: contactEmail);
+  }
+
   String _randomToken() {
     final rand = Random.secure();
     return List.generate(24, (_) => rand.nextInt(16).toRadixString(16)).join();

@@ -142,15 +142,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await launchUrl(Uri.parse('https://qr.kakaopay.com/FZBmuUqIr'), mode: LaunchMode.externalApplication);
   }
 
-  /// 2026-09-21: 아직 계정 시스템이 없어서 문의를 받을 방법이 메일뿐임 —
-  /// 전용 지메일(issuepop.support@gmail.com)로 mailto: 링크만 열어줌.
-  Future<void> _openContactEmail() async {
-    final uri = Uri(
-      scheme: 'mailto',
-      path: 'issuepop.support@gmail.com',
-      query: 'subject=${Uri.encodeComponent('[이슈판 문의]')}',
+  /// 2026-09-22: mailto: 링크는 메일 클라이언트가 연결 안 된 기기(특히
+  /// 웹)에서 그냥 안 열리는 경우가 많아서, 인앱 폼(POST /feedback)으로
+  /// 바꿈 — 앱을 안 벗어나고 바로 보낼 수 있음.
+  Future<void> _showContactSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _ContactSheet(
+        onSubmit: (message, email) => _devices.submitFeedback(message, contactEmail: email),
+      ),
     );
-    await launchUrl(uri);
   }
 
   @override
@@ -497,7 +501,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         _PlainRow(
                           label: '문의하기',
-                          onTap: _openContactEmail,
+                          onTap: _showContactSheet,
                           showDivider: false,
                         ),
                       ],
@@ -1043,6 +1047,145 @@ class _WordOfDayPreviewSheet extends StatelessWidget {
               );
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2026-09-22: "문의하기" 인앱 폼 — 버그 제보/건의사항을 메시지로 받고,
+/// 답장받을 이메일은 선택 입력(직접 답장할 때만 씀, 자동 답장 없음).
+/// 서버가 IP당 시간당 5건으로 막아둬서(api.py) 429가 오면 그 안내만
+/// 보여줌.
+class _ContactSheet extends StatefulWidget {
+  const _ContactSheet({required this.onSubmit});
+
+  final Future<void> Function(String message, String? contactEmail) onSubmit;
+
+  @override
+  State<_ContactSheet> createState() => _ContactSheetState();
+}
+
+class _ContactSheetState extends State<_ContactSheet> {
+  final _messageController = TextEditingController();
+  final _emailController = TextEditingController();
+  bool _sending = false;
+  bool _sent = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty) {
+      setState(() => _error = '내용을 입력해주세요.');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    final email = _emailController.text.trim();
+    try {
+      await widget.onSubmit(message, email.isEmpty ? null : email);
+      if (mounted) setState(() => _sent = true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.statusCode == 429 ? '너무 자주 보냈어요, 잠시 후 다시 시도해주세요.' : '전송하지 못했어요. 다시 시도해주세요.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = '전송하지 못했어요. 다시 시도해주세요.');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('문의하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text('버그 제보나 하고 싶은 말, 뭐든 남겨주세요.', style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
+          const SizedBox(height: 16),
+          if (_sent)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: AppColors.chipBg, borderRadius: BorderRadius.circular(14)),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: AppColors.accent, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('잘 받았어요, 읽어볼게요!', style: TextStyle(fontSize: 13.5, color: AppColors.ink))),
+                ],
+              ),
+            )
+          else ...[
+            TextField(
+              controller: _messageController,
+              minLines: 3,
+              maxLines: 6,
+              style: TextStyle(fontSize: 13.5, color: AppColors.ink),
+              decoration: InputDecoration(
+                hintText: '예: OO 화면에서 버그가 있어요 / 이런 기능이 있으면 좋겠어요',
+                hintStyle: TextStyle(fontSize: 13, color: AppColors.inkFaint),
+                filled: true,
+                fillColor: AppColors.chipBg,
+                contentPadding: const EdgeInsets.all(12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              style: TextStyle(fontSize: 13.5, color: AppColors.ink),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '답장받을 이메일 (선택)',
+                hintStyle: TextStyle(fontSize: 13, color: AppColors.inkFaint),
+                filled: true,
+                fillColor: AppColors.chipBg,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: TextStyle(fontSize: 12, color: AppColors.accent2)),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _sending ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _sending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('보내기'),
+              ),
+            ),
+          ],
         ],
       ),
     );
