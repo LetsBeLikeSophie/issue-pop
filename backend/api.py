@@ -27,6 +27,7 @@ import asyncio
 import hashlib
 import html
 import json
+import os
 import re
 import secrets
 import time
@@ -40,9 +41,10 @@ import bcrypt
 import firebase_admin
 import requests
 from firebase_admin import messaging
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -1210,6 +1212,27 @@ async def list_favorites(authorization: str | None = Header(default=None)):
         return result
 
 
+# 2026-09-22: /feedback 조회 화면(피드백함)에 걸어두는 관리자 인증.
+# 계정은 하나뿐이라 별도 로그인 화면/세션 없이 HTTP Basic으로 충분함 —
+# 값은 systemd env.conf(ADMIN_USERNAME/ADMIN_PASSWORD)에만 두고 코드에는
+# 안 넣음. 둘 중 하나라도 서버에 설정 안 돼 있으면(로컬 개발 등) 그냥
+# 열어주는 대신 항상 401을 돌려줌 — fail-open으로 두면 설정을 깜빡했을 때
+# 피드백이 그대로 공개돼버림.
+_admin_security = HTTPBasic()
+_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
+_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+
+def _require_admin(credentials: HTTPBasicCredentials = Depends(_admin_security)) -> None:
+    unauthorized = HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Basic"})
+    if _ADMIN_USERNAME is None or _ADMIN_PASSWORD is None:
+        raise unauthorized
+    valid_user = secrets.compare_digest(credentials.username, _ADMIN_USERNAME)
+    valid_pass = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
+    if not (valid_user and valid_pass):
+        raise unauthorized
+
+
 class FeedbackIn(BaseModel):
     device_id: int | None = None
     message: str
@@ -1240,7 +1263,7 @@ async def submit_feedback(request: Request, body: FeedbackIn):
 
 
 @app.get("/feedback")
-async def list_feedback():
+async def list_feedback(_: None = Depends(_require_admin)):
     """개발용 — 제출된 피드백을 최신순으로 확인(관리자 화면이 따로
     없어서 지금은 그냥 API로 직접 조회)."""
     with db.get_session() as session:
@@ -1260,10 +1283,10 @@ async def list_feedback():
 
 
 @app.get("/feedback/view", response_class=HTMLResponse)
-async def view_feedback():
-    """개발용 — 브라우저로 바로 열어서 볼 수 있는 피드백 목록(최신순).
-    로그인 화면 없이 그냥 이 URL만 아는 사람(=나)이 열어보는 용도라서
-    인증은 따로 안 둠 — 배포 후에는 이 경로를 외부에 안 알려주면 됨."""
+async def view_feedback(_: None = Depends(_require_admin)):
+    """브라우저로 바로 열어서 볼 수 있는 피드백 목록(최신순). 2026-09-22:
+    비밀 URL 방식(아는 사람만 열어봄)이던 걸 HTTP Basic 인증으로 바꿈 —
+    URL이 새어나가도 계정 없인 못 봄(_require_admin 참고)."""
     with db.get_session() as session:
         from sqlmodel import select
 
