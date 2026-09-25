@@ -26,7 +26,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
-import json
 import os
 import re
 import secrets
@@ -53,6 +52,7 @@ from slowapi.util import get_remote_address
 import cluster_audit
 import db
 import quotes
+import sources
 import stocks
 import word_of_day
 from pipeline import run
@@ -65,6 +65,10 @@ CLUSTER_AUDIT_HOUR_KST = 4
 CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS = 30 * 60
 DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
 DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
+# 2026-09-26: "오늘의 단어 알림" 발송 시각 — digest_hour처럼 기기마다
+# 고르게 하기엔 무거운 기능은 아니라고 봐서 서버 전체 고정 시각 하나로
+# 감(신문 조간처럼). _digest_loop와 같은 주기/중복방지 방식을 그대로 씀.
+WORD_OF_DAY_ALERT_HOUR_KST = 9
 # 2026-09-14: 오늘의 단어를 유저가 그날 처음 GET /word-of-day를 부를 때
 # 그 자리에서(사전 API 최대 15번 + LLM 1번, 순차 호출) 계산해서 그
 # 첫 요청이 눈에 띄게 느리다는 피드백을 받음("너무 늦게 뜨거든") —
@@ -197,9 +201,16 @@ async def refresh_cache() -> None:
         except Exception as e:  # noqa: BLE001 - 한 번 실패해도 다음 주기에 재시도, 서버는 안 죽음
             _last_error = str(e)
             return
+        # 2026-09-26: "관심 이슈 알림" 대상(새로 생긴 이슈 id)을 구하려고
+        # 갱신 전 id 집합을 남겨둠. 서버 막 시작해서 _cache가 아직 비어
+        # 있을 때(old_ids가 빈 집합)는 사실상 전부가 "새 이슈"로 잡혀서
+        # 재시작할 때마다 쓸데없이 알림이 우르르 나갈 수 있어서, 그 경우엔
+        # 새 이슈 체크 자체를 건너뜀.
+        old_ids = set(_cache.keys())
         _cache = {_make_id(c): c for c in clusters}
         _last_refresh = time.time()
         _last_error = None
+        new_issue_ids = (set(_cache.keys()) - old_ids) if old_ids else set()
 
         weather = await asyncio.to_thread(_fetch_weather)
         if weather is not None:
@@ -234,6 +245,9 @@ async def refresh_cache() -> None:
 
         await asyncio.to_thread(_persist)
 
+        if new_issue_ids:
+            await asyncio.to_thread(_check_keyword_alerts, new_issue_ids)
+
 
 async def _refresh_loop() -> None:
     while True:
@@ -248,60 +262,136 @@ def _truncate(text: str, max_len: int) -> str:
     return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
 
 
-def _build_digest_text(limit: int = 5) -> str:
+def _build_digest_text() -> str:
     """다이제스트 알림 본문. 아직 실제 LLM 요약이 없어서(cluster_summaries는
-    수동 입력만 가능, README 참고) AI 요약이 아니라 매체 커버리지 상위
-    이슈 랭킹을 그대로 씀 — v0로는 이 정도가 정직한 수준.
+    수동 입력만 가능, README 참고) AI 요약이 아니라 매체 커버리지 1위
+    이슈를 그대로 씀 — v0로는 이 정도가 정직한 수준.
 
     2026-09-14: 발송 미리보기로 보다가 "키워드만 있으니 무슨 뉴스인지
     안 와닿는다, 공유 카드(share_card.dart)처럼 대표 기사 미리보기 한
-    줄을 같이 넣으면 좋겠다"는 피드백을 받음. 알림 한 줄에 넣을 공간이
-    빠듯해서 키워드는 보조 키워드 없이 대표 키워드 하나만 쓰고, 그
-    밑에 대표 기사 제목을 한 줄(길면 잘라서) 붙임.
+    줄을 같이 넣으면 좋겠다"는 피드백을 받음.
 
-    2026-09-15: 기사 미리보기 줄이 생기니 "(N개 매체)" 표기가 굳이
-    필요 없다는 피드백으로 뺌 — 랭킹 정렬 기준(outlet_count 우선)은
-    그대로, 화면에 숫자로 노출만 안 함.
+    2026-09-26: 상위 5개를 다 나열했었는데, "어차피 알림 배너엔 한두 줄만
+    보이니 1위만 미리보기로 보여주고 카테고리 태그를 앞에 다는 게
+    낫겠다"는 피드백으로 축소함 — 어차피 배너에서 안 보이던 2~5위는
+    실질적으로 아무도 못 읽고 있었음. 반환값의 첫 줄이 알림 제목으로
+    쓰이는 관례는 그대로 유지(_DigestPreviewSheet가 첫 줄을 title로
+    split해서 씀, _send_digest도 title은 별도로 고정값을 씀).
     """
-    items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))[:limit]
+    items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))
     if not items:
-        return "오늘의 트렌드를 아직 준비 중이에요."
-    lines = []
-    for i, c in enumerate(items):
-        lines.append(f"{i+1}. {c['keyword']}")
-        lines.append(f"   {_truncate(c['representative_title'], _DIGEST_TITLE_MAX_LEN)}")
-    return "오늘의 트렌드\n" + "\n".join(lines)
+        return "오늘의 트렌드\n오늘의 트렌드를 아직 준비 중이에요."
+    top = items[0]
+    headline = f"[{top['category']}] {_truncate(top['representative_title'], _DIGEST_TITLE_MAX_LEN)}"
+    return f"오늘의 트렌드\n{headline}"
 
 
-def _send_digest(device: db.Device, text: str, session) -> bool:
-    """실제 발송. Firebase 자격증명이 없으면(로컬 개발 등) 예전처럼 로그만
+def _send_push(device: db.Device, title: str, body: str, session) -> bool:
+    """실제 FCM 발송 — 다이제스트/관심 이슈 알림/오늘의 단어 알림이
+    공유하는 공용 헬퍼(2026-09-26에 _send_digest에서 뽑아냄, 세 알림이
+    각자 UnregisteredError 처리를 따로 갖고 있으면 하나 고칠 때 나머지를
+    잊어버리기 쉬워서). Firebase 자격증명이 없으면(로컬 개발 등) 로그만
     찍는 스텁으로 동작함. 토큰이 만료/무효면(재설치, 알림 권한 취소,
     앱 삭제 등) FCM이 UnregisteredError로 알려주는데, 그 기기는 앞으로도
     계속 실패할 뿐이라 아예 지워서 다음 확인부터 안 걸리게 함 — 안 지우면
-    5분마다 영원히 실패하는 발송을 계속 시도하게 됨. 이 기기를 삭제했으면
-    True를 돌려줌(호출하는 쪽이 그 뒤 last_digest_sent_at 갱신 등을
-    건너뛰게)."""
+    영원히 실패하는 발송을 계속 시도하게 됨. 이 기기를 삭제했으면 True를
+    돌려줌(호출하는 쪽이 그 뒤 last_*_sent_at 갱신 등을 건너뛰게)."""
     if not _firebase_ready:
-        print(f"[digest] (Firebase 미설정, 로그만) device={device.id} token={device.push_token[:8]}...\n{text}")
+        print(f"[push] (Firebase 미설정, 로그만) device={device.id} title={title!r} body={body!r}")
         return False
     # firebase-admin 7.x에서 Message.token이 deprecated(Message.fid로
     # 대체 예정)로 경고가 뜨지만 아직 동작은 함 — fid의 정확한 의미가
     # 문서화가 안 돼 있어서 섣불리 안 바꿈. SDK가 token을 실제로 없애면
     # 그때 다시 확인.
     message = messaging.Message(
-        notification=messaging.Notification(title="오늘의 트렌드", body=text),
+        notification=messaging.Notification(title=title, body=body),
         token=device.push_token,
     )
     try:
         messaging.send(message)
-        print(f"[digest] device={device.id} 발송 완료")
+        print(f"[push] device={device.id} 발송 완료: {title}")
     except messaging.UnregisteredError:
-        print(f"[digest] device={device.id} 토큰 만료 — 기기 삭제")
+        print(f"[push] device={device.id} 토큰 만료 — 기기 삭제")
         session.delete(device)
         return True
     except Exception as e:  # noqa: BLE001 — FCM 쪽 일시 오류 등 다양하게 옴
-        print(f"[digest] device={device.id} 발송 실패: {e}")
+        print(f"[push] device={device.id} 발송 실패: {e}")
     return False
+
+
+def _send_digest(device: db.Device, text: str, session) -> bool:
+    """다이제스트 텍스트(첫 줄=제목, 나머지=본문 관례 — _build_digest_text
+    참고)를 _send_push용으로 나눠서 보냄."""
+    title, _, body = text.partition("\n")
+    return _send_push(device, title, body or title, session)
+
+
+def _issue_matches_keyword(issue: dict, keyword: str) -> bool:
+    """/search 엔드포인트와 같은 매칭 기준(대표 키워드/보조 키워드/대표
+    헤드라인 중 하나라도 부분 일치)."""
+    kw = keyword.lower()
+    return (
+        kw in issue["keyword"].lower()
+        or any(kw in k.lower() for k in issue["keywords"])
+        or kw in issue["representative_title"].lower()
+    )
+
+
+def _matching_issues(keywords: list[str], issue_ids) -> list[dict]:
+    """주어진 이슈 id들 중 keywords 아무거나와 매칭되는 이슈를 매체
+    커버리지 순으로 정렬해서 돌려줌."""
+    matched = [_cache[iid] for iid in issue_ids if iid in _cache and any(_issue_matches_keyword(_cache[iid], kw) for kw in keywords)]
+    matched.sort(key=lambda c: (-c["outlet_count"], -c["article_count"]))
+    return matched
+
+
+def _keyword_alert_message(matched: list[dict]) -> tuple[str, str]:
+    """관심 이슈 알림의 제목/본문 — 다이제스트와 같은 "[카테고리] 제목"
+    한 줄 포맷. 이번 주기에 여러 이슈가 매칭되면 1위만 보여주고 나머지는
+    건수로만 덧붙임(이슈마다 따로 보내면 스팸처럼 느껴질 수 있어서)."""
+    title = "관심 키워드에 새 소식이 떴어요"
+    top = matched[0]
+    headline = f"[{top['category']}] {_truncate(top['representative_title'], _DIGEST_TITLE_MAX_LEN)}"
+    if len(matched) > 1:
+        headline += f" 외 {len(matched) - 1}건"
+    return title, headline
+
+
+def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
+    """새로 뜬 이슈가 있으면, 관심 이슈 알림을 켠 기기의 관심 키워드와
+    매칭해서 발송함. refresh_cache()가 새 _cache를 만든 직후에 호출됨.
+
+    2026-09-26: 이슈 id는 재클러스터링 때마다 바뀔 수 있다는 알려진
+    한계가 있어서(README 참고) "새 id"가 항상 "진짜 새로운 사건"은
+    아닐 수 있음 — 그래도 그 경우조차 "표현이 크게 바뀐 갱신"인 거라
+    알림이 완전히 틀린 건 아니라고 보고 이 정도로 감."""
+    if not new_issue_ids:
+        return []
+    from sqlmodel import select
+
+    sent_to: list[int] = []
+    with db.get_session() as session:
+        devices = session.exec(select(db.Device).where(db.Device.keyword_alert_enabled)).all()
+        if not devices:
+            return []
+        watches = session.exec(select(db.DeviceKeywordWatch)).all()
+        keywords_by_device: dict[int, list[str]] = {}
+        for w in watches:
+            keywords_by_device.setdefault(w.device_id, []).append(w.keyword)
+
+        for device in devices:
+            keywords = keywords_by_device.get(device.id)
+            if not keywords:
+                continue
+            matched = _matching_issues(keywords, new_issue_ids)
+            if not matched:
+                continue
+            title, body = _keyword_alert_message(matched)
+            if _send_push(device, title, body, session):
+                continue  # 토큰 만료로 기기 삭제됨
+            sent_to.append(device.id)
+        session.commit()
+    return sent_to
 
 
 def _digest_check() -> list[int]:
@@ -337,10 +427,47 @@ def _digest_check() -> list[int]:
     return sent_to
 
 
+def _word_of_day_alert_check(force: bool = False) -> list[int]:
+    """지금 KST 시각이 WORD_OF_DAY_ALERT_HOUR_KST이면(또는 force=True면
+    시각 무관하게), 오늘의 단어 알림을 켠 기기에 발송함. _digest_check와
+    같은 중복방지 방식(last_word_of_day_sent_at). word_of_day는 이미
+    _word_of_day_loop가 하루 한 번만 새로 뽑아서 캐싱해두므로(=idempotent)
+    여기선 그냥 오늘 값을 가져다 쓰기만 함."""
+    if not force and datetime.now(KST).hour != WORD_OF_DAY_ALERT_HOUR_KST:
+        return []
+    row = _get_or_create_word_of_day()
+    if row is None or not row.word:
+        return []
+    title = "오늘의 단어"
+    body = f"{row.word}" + (f" — {row.example}" if row.example else "")
+
+    from sqlmodel import select
+
+    sent_to: list[int] = []
+    now_utc = datetime.now(timezone.utc)
+    with db.get_session() as session:
+        devices = session.exec(select(db.Device).where(db.Device.word_of_day_enabled)).all()
+        for device in devices:
+            if not force and device.last_word_of_day_sent_at is not None:
+                last_sent = device.last_word_of_day_sent_at
+                if last_sent.tzinfo is None:
+                    last_sent = last_sent.replace(tzinfo=timezone.utc)
+                if (now_utc - last_sent).total_seconds() < DIGEST_DEDUPE_WINDOW_SECONDS:
+                    continue
+            if _send_push(device, title, body, session):
+                continue  # 토큰 만료로 기기 자체가 삭제됨
+            device.last_word_of_day_sent_at = now_utc
+            session.add(device)
+            sent_to.append(device.id)
+        session.commit()
+    return sent_to
+
+
 async def _digest_loop() -> None:
     while True:
         await asyncio.sleep(DIGEST_CHECK_INTERVAL_SECONDS)
         await asyncio.to_thread(_digest_check)
+        await asyncio.to_thread(_word_of_day_alert_check)
 
 
 def _run_cluster_audit() -> int:
@@ -582,6 +709,19 @@ async def health():
         "last_refresh": _last_refresh,
         "last_error": _last_error,
     }
+
+
+@app.get("/sources")
+async def get_sources(response: Response):
+    """2026-09-26: 설정 화면 "앱 정보"에 "이 앱이 어떤 매체를 모아 보여주는지"
+    보여주려고 추가 — sources.py(코드테이블)의 실제 수집 중인 매체만
+    노출함(political_leaning 등 내부 참고용 메타데이터는 뺌 — 예전에
+    "매체 성향 필터" UI를 만들었다가 애초에 성향별 채팅방 자체를 안
+    하기로 하면서 제거한 적 있어서, 성향 관련 정보는 일반 사용자
+    화면에 다시 노출하지 않음). 코드 배포로만 바뀌는 정적 목록이라
+    길게 캐싱해도 안전함."""
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return [{"outlet": s["outlet"], "category": s["category"]} for s in sources.RSS_SOURCES]
 
 
 @app.get("/categories")
@@ -967,68 +1107,68 @@ async def get_digest(device_id: int):
         return {"device_id": device_id, "digest_hour": device.digest_hour}
 
 
-def _alert_settings_dict(device: db.Device) -> dict:
-    return {
-        "device_id": device.id,
-        "periodic_alert_enabled": device.periodic_alert_enabled,
-        "periodic_interval_minutes": device.periodic_interval_minutes,
-        "quiet_hours_start": device.quiet_hours_start,
-        "quiet_hours_end": device.quiet_hours_end,
-        "min_outlet_count": device.min_outlet_count,
-        "alert_categories": device.alert_categories,
-        "max_daily_alerts": device.max_daily_alerts,
-    }
+class KeywordAlertIn(BaseModel):
+    enabled: bool
 
 
-class AlertSettingsIn(BaseModel):
-    periodic_alert_enabled: bool
-    periodic_interval_minutes: int
-    quiet_hours_start: int
-    quiet_hours_end: int
-    min_outlet_count: int
-    alert_categories: list[str] | None = None
-    max_daily_alerts: int
-
-
-@app.get("/devices/{device_id}/alert-settings")
-async def get_alert_settings(device_id: int):
-    """새로 뜨거나 급상승한 이슈를 재계산 주기마다 체크해서 알려주는
-    "주기적 알림" 설정 — UI/설정 저장까지만 되어 있고, 실제 감지·발송
-    로직은 아직 없음(digest_hour와 같은 단계)."""
+@app.put("/devices/{device_id}/keyword-alert")
+async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
+    """"관심 이슈 알림" — 이 기기가 등록한 관심 키워드와 매칭되는 새
+    이슈가 뜨면 알림(word_of_day-alert와 같은 단계 구성).
+    2026-09-26: 옵션만 많고 실제 발송이 없던 "실시간 트렌드 알림"(6개
+    설정)을 걷어내고 대신 이걸로 대체함 — 관심 키워드 화면이 이미 있으니
+    새 UI 없이 토글 하나로 "그 키워드에 새 소식 뜨면 알려줘"가 됨."""
     with db.get_session() as session:
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
-        return _alert_settings_dict(device)
-
-
-@app.put("/devices/{device_id}/alert-settings")
-async def set_alert_settings(device_id: int, body: AlertSettingsIn):
-    if not (0 <= body.quiet_hours_start <= 23) or not (0 <= body.quiet_hours_end <= 23):
-        raise HTTPException(status_code=422, detail="quiet hours must be 0-23")
-    if body.periodic_interval_minutes not in (30, 60, 120, 180):
-        raise HTTPException(status_code=422, detail="periodic_interval_minutes must be 30/60/120/180")
-    if body.min_outlet_count < 1:
-        raise HTTPException(status_code=422, detail="min_outlet_count must be >= 1")
-    if body.max_daily_alerts < 1:
-        raise HTTPException(status_code=422, detail="max_daily_alerts must be >= 1")
-    with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
-        device.periodic_alert_enabled = body.periodic_alert_enabled
-        device.periodic_interval_minutes = body.periodic_interval_minutes
-        device.quiet_hours_start = body.quiet_hours_start
-        device.quiet_hours_end = body.quiet_hours_end
-        device.min_outlet_count = body.min_outlet_count
-        device.alert_categories_json = (
-            json.dumps(body.alert_categories, ensure_ascii=False) if body.alert_categories else None
-        )
-        device.max_daily_alerts = body.max_daily_alerts
+        device.keyword_alert_enabled = body.enabled
         session.add(device)
         session.commit()
-        session.refresh(device)
-        return _alert_settings_dict(device)
+        return {"device_id": device_id, "keyword_alert_enabled": device.keyword_alert_enabled}
+
+
+@app.get("/devices/{device_id}/keyword-alert")
+async def get_keyword_alert(device_id: int):
+    with db.get_session() as session:
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not registered")
+        return {"device_id": device_id, "keyword_alert_enabled": device.keyword_alert_enabled}
+
+
+@app.post("/devices/{device_id}/keyword-alert/run")
+async def run_keyword_alert_check(device_id: int):
+    """개발/테스트용 — 새 이슈가 실제로 뜨길 기다리지 않고, 지금 캐시에
+    있는 이슈 전체를 대상으로 이 기기의 관심 키워드와 매칭해서 즉시
+    발송함(운영 로직인 _check_keyword_alerts는 refresh_cache 직후 "새로
+    생긴 이슈"만 대상으로 함 — 매칭 기준은 동일). keyword_alert_enabled
+    여부와 무관하게 테스트 목적으로 보냄."""
+
+    def _run() -> dict:
+        from sqlmodel import select
+
+        with db.get_session() as session:
+            device = session.get(db.Device, device_id)
+            if device is None:
+                raise HTTPException(status_code=404, detail="device not registered")
+            keywords = [
+                w.keyword
+                for w in session.exec(
+                    select(db.DeviceKeywordWatch).where(db.DeviceKeywordWatch.device_id == device_id)
+                ).all()
+            ]
+            if not keywords:
+                return {"sent": False, "reason": "등록된 관심 키워드가 없어요"}
+            matched = _matching_issues(keywords, _cache.keys())
+            if not matched:
+                return {"sent": False, "reason": "지금 캐시에서 매칭되는 이슈가 없어요"}
+            title, body = _keyword_alert_message(matched)
+            _send_push(device, title, body, session)
+            session.commit()
+            return {"sent": True, "title": title, "body": body}
+
+    return await asyncio.to_thread(_run)
 
 
 @app.get("/digest/preview")
@@ -1103,6 +1243,15 @@ async def run_digest_check():
     자격증명이 서버에 설정돼 있으면 실제로 발송되고, 없으면 로그만
     찍는 스텁으로 동작함(_send_digest 참고)."""
     sent_to = await asyncio.to_thread(_digest_check)
+    return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
+
+
+@app.post("/word-of-day/alert-run")
+async def run_word_of_day_alert_check(force: bool = False):
+    """개발/테스트용 — 고정 시각(WORD_OF_DAY_ALERT_HOUR_KST)까지 기다리지
+    않고 즉시 한 번 실행함. force=true면 시각 일치 여부·중복방지 둘 다
+    무시하고 무조건 발송함(그 외엔 /digest/run과 같은 규칙)."""
+    sent_to = await asyncio.to_thread(_word_of_day_alert_check, force)
     return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
 
 

@@ -175,25 +175,29 @@ class ApiClient {
     _checkOk(res);
   }
 
-  /// 2026-09-05: 다이제스트(하루 한 번)와 별개로 새로 뜨거나 급상승한
-  /// 이슈를 재계산 주기마다 체크해서 알려주는 "주기적 알림" 설정 —
-  /// 설정 저장까지만 됨(실제 감지/발송은 다음 단계).
-  Future<AlertSettings> getAlertSettings(int deviceId) async {
-    final uri = Uri.parse('$baseUrl/devices/$deviceId/alert-settings');
+  /// 2026-09-26: "관심 이슈 알림" — 이 기기가 등록한 관심 키워드(관심
+  /// 키워드 화면에서 관리)와 매칭되는 새 이슈가 뜨면 알림. 원래
+  /// "실시간 트렌드 알림"이라는 이름으로 체크주기/조용한시간대/최소매체수
+  /// /하루최대알림/관심카테고리까지 옵션이 6개나 있었는데, 실제 감지·발송
+  /// 로직을 끝내 안 만들어서 설정만 저장되고 아무 것도 안 오는 상태로
+  /// 방치돼 있었음 — 걷어내고 이 토글 하나로 대체함(word_of_day-alert와
+  /// 같은 단계 구성).
+  Future<bool> getKeywordAlert(int deviceId) async {
+    final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
     final res = await http.get(uri);
     _checkOk(res);
-    return AlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return map['keyword_alert_enabled'] as bool;
   }
 
-  Future<AlertSettings> setAlertSettings(int deviceId, AlertSettings settings) async {
-    final uri = Uri.parse('$baseUrl/devices/$deviceId/alert-settings');
+  Future<void> setKeywordAlert(int deviceId, bool enabled) async {
+    final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
     final res = await http.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(settings.toJson()),
+      body: jsonEncode({'enabled': enabled}),
     );
     _checkOk(res);
-    return AlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 2026-09-22: 설정 화면 "문의하기" — mailto: 링크 대신 인앱 폼에서
@@ -235,6 +239,17 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/watches/$watchId');
     final res = await http.delete(uri);
     _checkOk(res);
+  }
+
+  /// 2026-09-26: 설정 화면 "앱 정보"에 서비스 중인 언론사 목록을 보여주려고
+  /// 추가. 정치성향 등은 서버에서부터 안 내려줌(일반 사용자 화면에 다시
+  /// 노출 안 하기로 한 결정, sources.py의 GET /sources 참고).
+  Future<List<SourceOutlet>> getSources() async {
+    final uri = Uri.parse('$baseUrl/sources');
+    final res = await http.get(uri);
+    _checkOk(res);
+    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return list.map((e) => SourceOutlet.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// 2026-09-06: 종목 추가 시 자동완성용 카탈로그 — "티커를 미리 알고
@@ -296,69 +311,6 @@ class ApiClient {
   }
 }
 
-class AlertSettings {
-  const AlertSettings({
-    required this.enabled,
-    required this.intervalMinutes,
-    required this.quietHoursStart,
-    required this.quietHoursEnd,
-    required this.minOutletCount,
-    required this.categories,
-    required this.maxDailyAlerts,
-  });
-
-  final bool enabled;
-  final int intervalMinutes;
-  final int quietHoursStart;
-  final int quietHoursEnd;
-  final int minOutletCount;
-
-  /// null이면 전체 카테고리.
-  final List<String>? categories;
-  final int maxDailyAlerts;
-
-  factory AlertSettings.fromJson(Map<String, dynamic> json) => AlertSettings(
-        enabled: json['periodic_alert_enabled'] as bool,
-        intervalMinutes: json['periodic_interval_minutes'] as int,
-        quietHoursStart: json['quiet_hours_start'] as int,
-        quietHoursEnd: json['quiet_hours_end'] as int,
-        minOutletCount: json['min_outlet_count'] as int,
-        categories: (json['alert_categories'] as List?)?.cast<String>(),
-        maxDailyAlerts: json['max_daily_alerts'] as int,
-      );
-
-  Map<String, dynamic> toJson() => {
-        'periodic_alert_enabled': enabled,
-        'periodic_interval_minutes': intervalMinutes,
-        'quiet_hours_start': quietHoursStart,
-        'quiet_hours_end': quietHoursEnd,
-        'min_outlet_count': minOutletCount,
-        'alert_categories': categories,
-        'max_daily_alerts': maxDailyAlerts,
-      };
-
-  AlertSettings copyWith({
-    bool? enabled,
-    int? intervalMinutes,
-    int? quietHoursStart,
-    int? quietHoursEnd,
-    int? minOutletCount,
-    Object? categories = _unset,
-    int? maxDailyAlerts,
-  }) =>
-      AlertSettings(
-        enabled: enabled ?? this.enabled,
-        intervalMinutes: intervalMinutes ?? this.intervalMinutes,
-        quietHoursStart: quietHoursStart ?? this.quietHoursStart,
-        quietHoursEnd: quietHoursEnd ?? this.quietHoursEnd,
-        minOutletCount: minOutletCount ?? this.minOutletCount,
-        categories: identical(categories, _unset) ? this.categories : categories as List<String>?,
-        maxDailyAlerts: maxDailyAlerts ?? this.maxDailyAlerts,
-      );
-}
-
-const _unset = Object();
-
 class KeywordWatch {
   const KeywordWatch({required this.id, required this.keyword});
 
@@ -408,6 +360,18 @@ class StockNewsItem {
         source: json['source'] as String? ?? 'Yahoo Finance',
         titleKo: json['title_ko'] as String?,
         published: json['published'] as String?,
+      );
+}
+
+class SourceOutlet {
+  const SourceOutlet({required this.outlet, required this.category});
+
+  final String outlet;
+  final String category;
+
+  factory SourceOutlet.fromJson(Map<String, dynamic> json) => SourceOutlet(
+        outlet: json['outlet'] as String,
+        category: json['category'] as String,
       );
 }
 

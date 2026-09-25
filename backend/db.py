@@ -88,10 +88,14 @@ class Device(SQLModel, table=True):
     한계: 기기의 실제 타임존을 모르니 일단 KST 기준 시(0~23)로 저장함 —
     나중에 해외 사용자를 받게 되면 타임존 필드를 따로 받아야 함.
     last_digest_sent_at: 같은 시간대에 중복 발송 안 하려고 스케줄러가
-    기록함(api.py의 _digest_check 참고).
-    **실제 발송(FCM 등)은 아직 연동 안 됨** — 스케줄러는 "누구한테 언제
-    보내야 하는지"만 찾아내고, 실제 발송은 로그만 찍는 스텁으로 남겨둠
-    (backend/README.md 참고).
+    기록함(api.py의 _digest_check 참고). 실제 FCM 발송은 2026-09-20에
+    연동 완료됨(자격증명 없으면 로그만 찍는 스텁으로 폴백).
+
+    2026-09-26: "새로 뜨거나 급상승한 이슈를 재계산 주기마다 체크"하는
+    "실시간 트렌드 알림"(periodic_alert_*, 6개 설정)은 UI만 있고 실제
+    감지/발송 로직을 끝내 안 만들어서(옵션만 많고 아무 것도 안 오는
+    상태로 방치돼 있었음) 통째로 제거함 — 대신 아래 keyword_alert_enabled
+    (관심 키워드 매칭 기반)로 단순화해서 대체.
     """
 
     __tablename__ = "devices"
@@ -102,24 +106,19 @@ class Device(SQLModel, table=True):
     last_digest_sent_at: datetime | None = None  # 같은 시간대에 중복 발송 방지용
     created_at: datetime = Field(default_factory=now)
 
-    # 2026-09-05: 다이제스트(하루 한 번)와 별개로, 새로 뜨거나 급상승한
-    # 이슈를 재계산 주기마다 체크해서 알려주는 "주기적 알림" 설정 —
-    # UI부터 먼저 만들고, 실제 감지/발송 로직은 다음 단계.
-    periodic_alert_enabled: bool = False
-    periodic_interval_minutes: int = 60  # 30분 재계산 주기의 배수만 의미 있음(30/60/120/180)
-    quiet_hours_start: int = 8  # 이 시각부터
-    quiet_hours_end: int = 23  # 이 시각까지만 알림(그 외엔 조용히)
-    min_outlet_count: int = 5  # 이 매체 수 이상인 이슈만 알림
-    alert_categories_json: str | None = None  # null=전체 카테고리, 아니면 ["정치","경제"] 같은 JSON 배열
-    max_daily_alerts: int = 10
+    # 2026-09-26: "관심 이슈 알림" — 이 기기가 등록한 관심 키워드
+    # (DeviceKeywordWatch)와 매칭되는 새 이슈가 뜨면 알림. refresh_cache()
+    # 직후 새로 생긴 이슈 id만 대상으로 검사함(api.py의
+    # _check_keyword_alerts 참고).
+    keyword_alert_enabled: bool = False
 
     # 2026-09-11: "오늘의 단어"(오늘 기사에서 뽑은 어려운 말 + 뜻풀이) 알림
-    # on/off — digest_hour와 마찬가지로 설정 저장까지만, 실제 발송은 아직.
+    # on/off. 2026-09-26: 실제 발송 로직 추가 — digest_hour처럼 기기마다
+    # 시간을 고르게 하기엔 무거운 기능이 아니라고 판단해서, 서버 고정
+    # 시각(WORD_OF_DAY_ALERT_HOUR_KST) 하나로 감(api.py의
+    # _word_of_day_alert_check 참고).
     word_of_day_enabled: bool = False
-
-    @property
-    def alert_categories(self) -> list[str] | None:
-        return json.loads(self.alert_categories_json) if self.alert_categories_json else None
+    last_word_of_day_sent_at: datetime | None = None  # 하루 중복 발송 방지용(last_digest_sent_at과 같은 패턴)
 
 
 class DeviceKeywordWatch(SQLModel, table=True):
@@ -328,15 +327,15 @@ def _migrate_devices_table() -> None:
     """
     with engine.connect() as conn:
         existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(devices)").fetchall()}
+        # 2026-09-26: periodic_alert_* 6개 컬럼(실시간 트렌드 알림, 미구현이라
+        # 제거함)은 마이그레이션 목록에서도 뺐음 — 이미 배포된 서버엔 옛
+        # 컬럼이 그냥 안 쓰이는 채로 남지만(SQLite는 컬럼 삭제가 번거로워서
+        # 굳이 안 건드림), 모델에 없는 컬럼이라 SQLModel이 더 이상 읽거나
+        # 쓰지 않아 무해함.
         additions = {
-            "periodic_alert_enabled": "INTEGER NOT NULL DEFAULT 0",
-            "periodic_interval_minutes": "INTEGER NOT NULL DEFAULT 60",
-            "quiet_hours_start": "INTEGER NOT NULL DEFAULT 8",
-            "quiet_hours_end": "INTEGER NOT NULL DEFAULT 23",
-            "min_outlet_count": "INTEGER NOT NULL DEFAULT 5",
-            "alert_categories_json": "TEXT",
-            "max_daily_alerts": "INTEGER NOT NULL DEFAULT 10",
             "word_of_day_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "keyword_alert_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "last_word_of_day_sent_at": "TIMESTAMP",
         }
         for column, ddl in additions.items():
             if column not in existing:

@@ -6,15 +6,19 @@ import '../device_registry.dart';
 import '../text_scale_store.dart';
 import '../theme.dart';
 import '../theme_store.dart';
+import '../widgets/app_badge.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
-import '../widgets/removable_chip.dart';
 import '../widgets/screen_header.dart';
 
 /// 2026-09-05: 계정/구독/의견보내기/앱정보를 전부 뺌 — 로그인은 붙여도
 /// 실질적으로 쓸 데가 없었음(즐겨찾기가 이미 비회원으로 잘 동작하고,
 /// 서버 동기화도 연결 안 했었음), 구독도 아직 먼 얘기라 화면에서
 /// 지웠음. 이제 이 화면엔 실제로 동작하는 알림 설정 + 글자 크기만 남음.
+/// 2026-09-26: "앱 정보"에 서비스 중인 언론사 목록만 다시 추가함(계정/
+/// 구독처럼 아직 실체 없는 기능이 아니라, 지금 실제로 수집 중인
+/// 매체를 사실 그대로 보여주는 거라 위 이유(실질적으로 쓸 데 없음)에
+/// 안 걸림).
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.api});
 
@@ -25,56 +29,29 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _issueAlerts = true;
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
   Future<int?>? _digestHour;
-  Future<AlertSettings>? _alertSettings;
-  Future<List<KeywordWatch>>? _watches;
+  Future<bool>? _keywordAlertEnabled;
   Future<bool>? _wordOfDayEnabled;
-  final _keywordController = TextEditingController();
+  late final Future<List<SourceOutlet>> _sources;
 
   @override
   void initState() {
     super.initState();
     _digestHour = _devices.getDigestHour();
-    _alertSettings = _devices.getAlertSettings();
-    _watches = _devices.listWatches();
+    _keywordAlertEnabled = _devices.getKeywordAlert();
     _wordOfDayEnabled = _devices.getWordOfDayAlert();
+    _sources = widget.api.getSources();
   }
 
-  @override
-  void dispose() {
-    _keywordController.dispose();
-    super.dispose();
-  }
-
-  /// 설정 하나를 바꿀 때마다 지금까지 알고 있던 값에 그 변경만 얹어서
-  /// 저장함(PUT이 전체 필드를 요구해서). 다이제스트 시간과 같은
-  /// 낙관적 업데이트 패턴 — 화면은 먼저 바뀌고, 저장은 뒤이어 함.
-  Future<void> _updateAlertSettings(AlertSettings Function(AlertSettings) update) async {
-    final current = await (_alertSettings ?? _devices.getAlertSettings());
-    final next = update(current);
+  /// 2026-09-26: "관심 이슈 알림" — 키워드 등록/삭제는 관심 키워드
+  /// 화면에서 이미 하므로, 여기선 그 키워드에 새 이슈가 뜨면 알려줄지
+  /// on/off만 함(오늘의 단어 알림과 같은 패턴).
+  Future<void> _toggleKeywordAlert(bool on) async {
     setState(() {
-      _alertSettings = Future.value(next);
+      _keywordAlertEnabled = Future.value(on);
     });
-    await _devices.setAlertSettings(next);
-  }
-
-  Future<void> _addKeyword() async {
-    final keyword = _keywordController.text.trim();
-    if (keyword.isEmpty) return;
-    _keywordController.clear();
-    await _devices.addWatch(keyword);
-    setState(() {
-      _watches = _devices.listWatches();
-    });
-  }
-
-  Future<void> _removeKeyword(int watchId) async {
-    await _devices.deleteWatch(watchId);
-    setState(() {
-      _watches = _devices.listWatches();
-    });
+    await _devices.setKeywordAlert(on);
   }
 
   Future<void> _toggleDigest(bool on) async {
@@ -181,11 +158,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     radius: 18,
                     child: Column(
                       children: [
-                        _ToggleRow(
-                          label: '관심 이슈 알림',
-                          value: _issueAlerts,
-                          onChanged: (v) => setState(() => _issueAlerts = v),
-                          showDivider: true,
+                        // 2026-09-26: 관심 키워드 화면에 등록해둔 키워드와
+                        // 매칭되는 새 이슈가 뜨면 알림 — 실제 감지/발송이
+                        // 붙은 진짜 기능임(예전엔 저장도 안 되는 로컬
+                        // state였음).
+                        FutureBuilder<bool>(
+                          future: _keywordAlertEnabled,
+                          builder: (context, snapshot) {
+                            return _ToggleRow(
+                              label: '관심 이슈 알림',
+                              value: snapshot.data ?? false,
+                              onChanged: snapshot.connectionState == ConnectionState.waiting
+                                  ? null
+                                  : _toggleKeywordAlert,
+                              showDivider: true,
+                            );
+                          },
                         ),
                         FutureBuilder<int?>(
                           future: _digestHour,
@@ -246,180 +234,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      '설정한 시각에 위 미리보기와 같은 내용이 실제로 푸시로 나가요.',
-                      style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _SectionLabel('실시간 트렌드 알림'),
-                  const SizedBox(height: 8),
-                  FutureBuilder<AlertSettings>(
-                    future: _alertSettings,
-                    builder: (context, snapshot) {
-                      final s = snapshot.data;
-                      if (s == null) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 20),
-                          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        );
-                      }
-                      // 2026-09-25: AppCard 기본 padding(14) 위에 _ToggleRow
-                      // 자체 padding(14, 6)이 또 더해져서 "알림" 카드(그쪽은
-                      // padding: zero로 두고 행마다 자기 padding만 씀)보다
-                      // 왼쪽 정렬선/상하 여백이 더 넓어 보이던 버그를 고침 —
-                      // 이 카드도 padding: zero로 맞추고, 토글 아래 나머지
-                      // 내용만 직접 14px 여백을 줌.
-                      return AppCard(
-                        padding: EdgeInsets.zero,
-                        radius: 18,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _ToggleRow(
-                              label: '새 이슈 · 급상승 알림',
-                              value: s.enabled,
-                              onChanged: (v) => _updateAlertSettings((c) => c.copyWith(enabled: v)),
-                              showDivider: false,
-                            ),
-                            if (s.enabled)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                              const SizedBox(height: 14),
-                              Text('체크 주기', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              _SegmentRow<int>(
-                                options: const [30, 60, 120, 180],
-                                labels: const ['30분', '1시간', '2시간', '3시간'],
-                                selected: s.intervalMinutes,
-                                onSelected: (v) => _updateAlertSettings((c) => c.copyWith(intervalMinutes: v)),
-                              ),
-                              const SizedBox(height: 14),
-                              Text('조용한 시간대 (이 시간에만 알림)', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _QuietHourButton(
-                                      label: '시작',
-                                      hour: s.quietHoursStart,
-                                      onTap: () async {
-                                        final picked = await showAppBottomSheet<int>(
-                                          context,
-                                          builder: (context) => _HourPickerSheet(selected: s.quietHoursStart),
-                                        );
-                                        if (picked != null) {
-                                          _updateAlertSettings((c) => c.copyWith(quietHoursStart: picked));
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: _QuietHourButton(
-                                      label: '종료',
-                                      hour: s.quietHoursEnd,
-                                      onTap: () async {
-                                        final picked = await showAppBottomSheet<int>(
-                                          context,
-                                          builder: (context) => _HourPickerSheet(selected: s.quietHoursEnd),
-                                        );
-                                        if (picked != null) {
-                                          _updateAlertSettings((c) => c.copyWith(quietHoursEnd: picked));
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Text('최소 매체 수 (이 이상 보도된 이슈만)', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              _SegmentRow<int>(
-                                options: const [3, 5, 7, 10],
-                                labels: const ['3개', '5개', '7개', '10개'],
-                                selected: s.minOutletCount,
-                                onSelected: (v) => _updateAlertSettings((c) => c.copyWith(minOutletCount: v)),
-                              ),
-                              const SizedBox(height: 14),
-                              Text('하루 최대 알림', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              _SegmentRow<int>(
-                                options: const [5, 10, 20, 999],
-                                labels: const ['5개', '10개', '20개', '무제한'],
-                                selected: s.maxDailyAlerts,
-                                onSelected: (v) => _updateAlertSettings((c) => c.copyWith(maxDailyAlerts: v)),
-                              ),
-                              const SizedBox(height: 14),
-                              Text('관심 카테고리 (안 고르면 전체)', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              _CategoryFilterChips(
-                                selected: s.categories,
-                                onChanged: (cats) => _updateAlertSettings((c) => c.copyWith(categories: cats)),
-                              ),
-                              const SizedBox(height: 14),
-                              Text('관심 키워드', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _keywordController,
-                                      onSubmitted: (_) => _addKeyword(),
-                                      style: TextStyle(fontSize: 13, color: AppColors.ink),
-                                      decoration: InputDecoration(
-                                        isDense: true,
-                                        hintText: '예: 삼성전자',
-                                        hintStyle: TextStyle(fontSize: 13, color: AppColors.inkFaint),
-                                        filled: true,
-                                        fillColor: AppColors.chipBg,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  IconButton(
-                                    onPressed: _addKeyword,
-                                    icon: Icon(Icons.add_circle, color: AppColors.accent),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              FutureBuilder<List<KeywordWatch>>(
-                                future: _watches,
-                                builder: (context, wsnap) {
-                                  final watches = wsnap.data ?? [];
-                                  if (watches.isEmpty) {
-                                    return Text('등록된 키워드가 없어요', style: TextStyle(fontSize: 12, color: AppColors.inkFaint));
-                                  }
-                                  return Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: [
-                                      for (final w in watches)
-                                        RemovableChip(label: w.keyword, onRemove: () => _removeKeyword(w.id)),
-                                    ],
-                                  );
-                                },
-                              ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
-                    child: Text(
-                      '설정 저장까지만 준비됐고, 실제 감지/발송은 아직 준비 중이에요.',
+                      '관심 이슈는 새 소식이 뜨는 대로, 매일 트렌드 요약은 설정한 시각에, '
+                      '오늘의 단어는 매일 아침 9시에 나가요.',
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
@@ -507,6 +323,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  _SectionLabel('앱 정보'),
+                  const SizedBox(height: 8),
+                  FutureBuilder<List<SourceOutlet>>(
+                    future: _sources,
+                    builder: (context, snapshot) {
+                      final outlets = snapshot.data ?? const <SourceOutlet>[];
+                      return AppCard(
+                        radius: 18,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              outlets.isEmpty
+                                  ? '여러 언론사의 RSS를 모아 이슈판이 이슈를 정리해요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
+                                  : '${outlets.length}개 매체의 RSS를 모아 이슈판이 이슈를 정리해요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.',
+                              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
+                            ),
+                            if (outlets.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  for (final o in outlets) AppBadge.outline(label: o.outlet, color: AppColors.inkFaint),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -659,132 +508,6 @@ class _ThemePresetButton extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 여러 값 중 하나를 고르는 가로 세그먼트 — 체크 주기/최소 매체 수/
-/// 하루 최대 알림 셋 다 같은 모양이라 제네릭으로 하나만 둠.
-class _SegmentRow<T> extends StatelessWidget {
-  const _SegmentRow({
-    required this.options,
-    required this.labels,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<T> options;
-  final List<String> labels;
-  final T selected;
-  final ValueChanged<T> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 0; i < options.length; i++) ...[
-          if (i != 0) const SizedBox(width: 6),
-          Expanded(
-            child: _TextScaleButton(
-              label: labels[i],
-              selected: selected == options[i],
-              onTap: () => onSelected(options[i]),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _QuietHourButton extends StatelessWidget {
-  const _QuietHourButton({required this.label, required this.hour, required this.onTap});
-
-  final String label;
-  final int hour;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-        decoration: BoxDecoration(color: AppColors.chipBg, borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
-            Text(_formatHour(hour), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 관심 카테고리 다중 선택 — "전체"(null)와 개별 카테고리 칩. 하나라도
-/// 개별 카테고리를 고르면 "전체"는 자동으로 꺼짐(그 반대도 마찬가지).
-class _CategoryFilterChips extends StatelessWidget {
-  const _CategoryFilterChips({required this.selected, required this.onChanged});
-
-  final List<String>? selected;
-  final ValueChanged<List<String>?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final isAll = selected == null;
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        _FilterChip(label: '전체', color: AppColors.accent, selected: isAll, onTap: () => onChanged(null)),
-        for (final c in kCategoryOrder)
-          _FilterChip(
-            label: c,
-            color: CategoryColors.of(c),
-            selected: !isAll && selected!.contains(c),
-            onTap: () {
-              final current = selected ?? [];
-              final next = current.contains(c) ? (current.toList()..remove(c)) : [...current, c];
-              onChanged(next.isEmpty ? null : next);
-            },
-          ),
-      ],
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, required this.color, required this.selected, required this.onTap});
-
-  final String label;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.16) : AppColors.surface,
-          border: Border.all(color: selected ? color : AppColors.line),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? AppColors.ink : AppColors.inkSoft,
-          ),
         ),
       ),
     );
