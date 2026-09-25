@@ -6,6 +6,7 @@ import '../api_client.dart';
 import '../favorites_store.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import 'app_badge.dart';
 
 /// 이슈 하나를 나타내는 카드 — "이슈판" 프로토타입 아티팩트의 카드
 /// 레이아웃을 그대로 앱에 옮긴 것(랭크·카테고리 배지·세리프 키워드·
@@ -288,7 +289,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                         const SizedBox(width: 8),
                         Padding(
                           padding: const EdgeInsets.only(top: 3),
-                          child: _CategoryBadge(category: issue.category),
+                          child: AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
                         ),
                       ],
                     ),
@@ -304,34 +305,6 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
           ),
         );
       },
-    );
-  }
-}
-
-/// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 카테고리별 원색 배지 대신
-/// BBC/Reuters류처럼 색 없는 라벨 텍스트만 씀.
-/// 2026-09-25: 카드 우측 상단으로 옮기면서 다시 CategoryColors를 써서
-/// 둥근 테두리 pill로 바꿈 — 텍스트만 있을 땐 카드 안에서 너무 안
-/// 띄었다는 피드백. 배경은 채우지 않고 테두리+글자색만 카테고리
-/// 색으로(꽉 찬 배지보다 가벼운 느낌 유지).
-class _CategoryBadge extends StatelessWidget {
-  const _CategoryBadge({required this.category});
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = CategoryColors.of(category);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        border: Border.all(color: color),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        category,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.3),
-      ),
     );
   }
 }
@@ -526,13 +499,10 @@ class _OutletGroup extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(4)),
-            child: Text(
-              '$outlet ${articles.length}건',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.accent),
-            ),
+          AppBadge.filled(
+            label: '$outlet ${articles.length}건',
+            background: AppColors.accentSoft,
+            foreground: AppColors.accent,
           ),
           const SizedBox(height: 6),
           // 2026-09-06: 기사가 여러 건일 때 "목록처럼" 안 읽힌다는 피드백으로

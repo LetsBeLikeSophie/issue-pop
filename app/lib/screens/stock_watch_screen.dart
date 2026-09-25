@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api_client.dart';
 import '../device_registry.dart';
 import '../theme.dart';
+import '../widgets/app_badge.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
@@ -281,11 +282,7 @@ class _StockCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(5)),
-                child: Text(watch.ticker, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2)),
-              ),
+              AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
               const SizedBox(width: 7),
               Expanded(
                 child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
@@ -294,20 +291,11 @@ class _StockCard extends StatelessWidget {
               // 한 번 더 보여줌(아래 큰 가격 옆에도 나오지만, 여러 카드를
               // 훑어볼 땐 이 pill 색만으로도 상승/하락이 바로 구분됨).
               if (quote != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _formatPercent(quote.percent),
-                    style: AppTypography.mono(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
-                    ),
-                  ),
+                AppBadge.filled(
+                  label: _formatPercent(quote.percent),
+                  background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
+                  foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                  mono: true,
                 ),
             ],
           ),
@@ -626,15 +614,10 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                             child: Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: AppColors.accent2Soft, borderRadius: BorderRadius.circular(5)),
-                                  child: Text(
-                                    m.ticker,
-                                    style: TextStyle(
-                                        fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.accent2),
-                                  ),
+                                AppBadge.filled(
+                                  label: m.ticker,
+                                  background: AppColors.accent2Soft,
+                                  foreground: AppColors.accent2,
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
