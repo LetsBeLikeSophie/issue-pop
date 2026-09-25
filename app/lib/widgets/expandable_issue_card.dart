@@ -163,13 +163,13 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              // 2026-09-25: 펼친 카드가 접힌 카드들 사이에서 눈에 안 띈다는
-              // 피드백으로, 펼쳐졌을 때만 배경을 surfaceAlt(기존 톤 안에
-              // 이미 있는, surface보다 살짝 진한 토큰)로 바꿔서 표시함.
-              color: _expanded ? AppColors.surfaceAlt : AppColors.surface,
+              color: AppColors.surface,
               // 2026-09-20: "클린 뉴스룸" 톤 — 카드 구분을 그림자 대신
-              // 얇은 라인으로만 함(F안 레퍼런스). 색은 그대로 유지.
-              border: Border.all(color: AppColors.line),
+              // 얇은 라인으로만 함(F안 레퍼런스).
+              // 2026-09-25: 펼친 카드가 접힌 카드들 사이에서 눈에 안 띈다는
+              // 피드백 — 배경이 아니라 테두리 색을 펼쳤을 때만 accent로
+              // 진하게 바꿔서 표시함(패널 안쪽 색은 그대로 유지).
+              border: Border.all(color: _expanded ? AppColors.accent : AppColors.line),
               borderRadius: BorderRadius.circular(10),
             ),
             clipBehavior: Clip.antiAlias,
