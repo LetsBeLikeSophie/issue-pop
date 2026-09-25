@@ -201,8 +201,8 @@ String _formatKrw(double usdPrice, double rate) {
 /// 2026-09-26: 뉴스 목록을 항상 다 펼쳐서 보여주던 걸 홈 화면 이슈
 /// 카드(ExpandableIssueCard)처럼 바꿈 — 최신 기사 1건만 미리보기로
 /// 보여주고, 나머지는 헤더를 눌러야 펼쳐짐. 가격도 헤더 좌측 종목명과
-/// 나란히 두지 않고 우측으로 옮겨서(등락률과 세로로 묶음) 한눈에 훑기
-/// 쉽게 함.
+/// 나란히 두지 않고 우측으로 옮겨서(등락률과 가로로 나란히) 한눈에
+/// 훑기 쉽게 함.
 class _StockCard extends StatefulWidget {
   const _StockCard({
     super.key,
@@ -259,14 +259,17 @@ class _StockCardState extends State<_StockCard> {
                   ),
                   if (quote != null) ...[
                     const SizedBox(width: 8),
-                    // 가격/등락률을 우측에 세로로 묶음 — 가격 탭은 통화
-                    // 토글(카드 펼치기와는 별개 동작)이라 안쪽에 따로
-                    // InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안 겹치게 함.
+                    // 2026-09-26: 가격/등락률을 세로로 쌓았더니 답답해
+                    // 보인다는 피드백으로 가로로 나란히 바꿈. 가격 탭은
+                    // 통화 토글(카드 펼치기와는 별개 동작)이라 안쪽에
+                    // 따로 InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안
+                    // 겹치게 함.
                     InkWell(
                       onTap: widget.usdKrwRate == null ? null : widget.onTapPrice,
                       borderRadius: BorderRadius.circular(6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
                             widget.showKrw && widget.usdKrwRate != null
@@ -274,7 +277,7 @@ class _StockCardState extends State<_StockCard> {
                                 : _formatUsd(quote.price),
                             style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(width: 6),
                           AppBadge.filled(
                             label: _formatPercent(quote.percent),
                             background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
