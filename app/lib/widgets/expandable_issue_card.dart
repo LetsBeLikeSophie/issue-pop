@@ -179,7 +179,9 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                 InkWell(
                   onTap: _toggleExpand,
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    // 2026-09-25: 카테고리 배지가 카드 우측 끝에 너무
+                    // 붙어 보인다는 피드백으로 오른쪽만 살짝 더 띄움.
+                    padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -206,22 +208,12 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 spacing: 7,
                                 runSpacing: 2,
                                 children: [
-                                  // 2026-09-25: 대표 키워드만 배경색 태그로
-                                  // 감싸서 카드 안에서 바로 눈에 띄게 함
-                                  // (보조 키워드·배지는 그대로 텍스트만).
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.accentSoft,
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
-                                    child: Text(
-                                      keywords.first,
-                                      style: AppTypography.serif(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.ink,
-                                      ),
+                                  Text(
+                                    keywords.first,
+                                    style: AppTypography.serif(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ink,
                                     ),
                                   ),
                                   if (keywords.length > 1)
@@ -317,10 +309,11 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
 }
 
 /// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 카테고리별 원색 배지 대신
-/// BBC/Reuters류처럼 색 없는 라벨 텍스트만 씀(구분은 색이 아니라
-/// 자간·크기로). [color]를 안 받게 바꿔서 CategoryColors 의존을 끊음 —
-/// 다른 화면(설정 필터 칩 등)은 계속 색을 쓰니 그쪽 CategoryColors는
-/// 그대로 둠.
+/// BBC/Reuters류처럼 색 없는 라벨 텍스트만 씀.
+/// 2026-09-25: 카드 우측 상단으로 옮기면서 다시 CategoryColors를 써서
+/// 둥근 테두리 pill로 바꿈 — 텍스트만 있을 땐 카드 안에서 너무 안
+/// 띄었다는 피드백. 배경은 채우지 않고 테두리+글자색만 카테고리
+/// 색으로(꽉 찬 배지보다 가벼운 느낌 유지).
 class _CategoryBadge extends StatelessWidget {
   const _CategoryBadge({required this.category});
 
@@ -328,13 +321,16 @@ class _CategoryBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      category,
-      style: TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: AppColors.inkFaint,
-        letterSpacing: 0.5,
+    final color = CategoryColors.of(category);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        category,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.3),
       ),
     );
   }

@@ -255,7 +255,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   _SectionLabel('실시간 트렌드 알림'),
                   const SizedBox(height: 8),
                   FutureBuilder<AlertSettings>(
@@ -422,7 +422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   _SectionLabel('화면'),
                   const SizedBox(height: 8),
                   AppCard(
@@ -486,7 +486,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   _SectionLabel('지원'),
                   const SizedBox(height: 8),
                   AppCard(
@@ -546,7 +546,7 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: showDivider
           ? BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
           : null,
