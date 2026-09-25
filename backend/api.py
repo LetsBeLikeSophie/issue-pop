@@ -585,16 +585,22 @@ async def health():
 
 
 @app.get("/categories")
-async def get_categories():
+async def get_categories(response: Response):
+    # 2026-09-26: 서버가 30분마다만 캐시를 갱신하는데(_cache) 이 엔드포인트는
+    # Cache-Control이 없어서 Cloudflare가 매 요청마다 도쿄 원본까지 왕복시킴
+    # (cf-cache-status: DYNAMIC 실측 확인). 30분 갱신 주기보다 훨씬 짧은
+    # max-age로 안전하게 엣지 캐싱만 열어줌 — 첫 로드 속도 개선.
+    response.headers["Cache-Control"] = "public, max-age=60"
     return Counter(c["category"] for c in _cache.values())
 
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats(response: Response):
     """홈 화면 마스트헤드 통계용("전체기사"/이슈 수). 캐시가 이미 메모리에
     있어서 집계만 하는 거라 가벼움 — /trending?limit=1000처럼 이슈 수백
     개를 기사까지 통째로 내려받을 필요가 없음(2026-08-24: 그렇게 했다가
     첫 화면 로딩이 느려졌다는 피드백을 받고 이 엔드포인트로 분리함)."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     return {
         "issue_count": len(_cache),
         "article_count": sum(c["article_count"] for c in _cache.values()),
@@ -620,7 +626,12 @@ async def get_weather(lat: float | None = None, lon: float | None = None):
 
 
 @app.get("/search", response_model=list[IssueSummary])
-async def search_issues(q: str = "", limit: int = Query(60, ge=1, le=1000), category: str | None = None):
+async def search_issues(
+    response: Response,
+    q: str = "",
+    limit: int = Query(60, ge=1, le=1000),
+    category: str | None = None,
+):
     """대표 키워드/보조 키워드/대표 헤드라인에 부분 일치하는 이슈 요약만
     내려줌(기사 목록 제외 — 넓은 검색어일 때 타이핑마다 무거워지는 걸
     막으려고, 2026-08-24 실측 피드백).
@@ -631,6 +642,7 @@ async def search_issues(q: str = "", limit: int = Query(60, ge=1, le=1000), cate
     검색이 즉각적이지 않다는 피드백. 서버 호출을 매번 하면 로컬 필터보다
     느릴 수밖에 없어서, 데이터를 가볍게 만들고 클라이언트가 들고 있는
     쪽으로 다시 바꿈)."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     ql = q.lower()
     items = [
         (cid, c)
@@ -648,6 +660,7 @@ async def search_issues(q: str = "", limit: int = Query(60, ge=1, le=1000), cate
 
 @app.get("/trending", response_model=list[IssueDetail])
 async def get_trending(
+    response: Response,
     limit: int = Query(40, ge=1, le=1000),
     category: str | None = None,
 ):
@@ -660,6 +673,7 @@ async def get_trending(
     검색도 네트워크 왕복 없이 즉시 됨(이슈판이 원래 그랬던 것처럼).
     이슈 40개 × 기사 몇~십여 건 수준이라 응답 크기 증가는 감당 가능한
     수준으로 판단."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     items = list(_cache.items())
     if category:
         items = [(cid, c) for cid, c in items if c["category"] == category]
@@ -815,10 +829,12 @@ async def delete_watch(watch_id: int):
 
 
 @app.get("/stocks/catalog")
-async def get_stock_catalog():
+async def get_stock_catalog(response: Response):
     """2026-09-06: "티커를 미리 알고 있어야 하는 게 불편하다"는 피드백으로
     추가 — 종목 추가 시 자동완성 검색용. /search와 같은 패턴으로 전체를
     한 번에 내려주고 클라이언트가 타이핑마다 로컬에서 걸러냄."""
+    # 2026-09-26: 코드 배포로만 바뀌는 정적 목록이라 길게 캐싱해도 안전함.
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return stocks.catalog()
 
 
@@ -855,13 +871,15 @@ async def list_stock_watches(device_id: int):
 
 
 @app.get("/fx/usd-krw")
-async def get_usd_krw_rate():
+async def get_usd_krw_rate(response: Response):
     """2026-09-07: 관심 종목 가격을 "탭하면 원화로" 토글하는 기능용 —
     환율은 자주 안 바뀌니까 하루 단위 캐시(quotes.fetch_usd_krw_rate,
     refresh_cache에서 갱신)만 읽음. 아직 한 번도 못 가져왔으면(서버
     막 시작 직후 등) 503."""
     if _usd_krw_rate is None:
         raise HTTPException(status_code=503, detail="exchange rate not available yet")
+    # 2026-09-26: 서버도 하루 단위로만 갱신하니 엣지에서도 그만큼 캐싱 가능.
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return {"usd_krw": _usd_krw_rate}
 
 

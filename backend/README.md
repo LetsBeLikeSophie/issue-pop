@@ -1470,6 +1470,28 @@ Cache Rule을 따로 추가해야 할 수도 있음(계정 접근 권한이 없�
 안 건드림). index.html/main.dart.js 등 앱 셸 파일은 기존대로
 `no-cache`로 유지(배포 직후 새 버전이 바로 반영돼야 하므로).
 
+**후속(2026-09-26, 같은 날)**: 같은 방식으로 API 응답도 실측함 —
+`/trending`에 `Content-Encoding: br`은 이미 붙어있었음(Cloudflare가
+자동으로 압축해줌, 별도 조치 불필요). 근데 `/trending`·`/search`·
+`/categories`·`/stocks/catalog`·`/fx/usd-krw` 전부 `Cache-Control`이
+아예 없어서(`cf-cache-status: DYNAMIC`) 백엔드가 30분에 한 번만
+갱신하는 데이터인데도 요청마다 매번 도쿄 오리진까지 왕복하고 있었음.
+`api.py`에 각 엔드포인트마다 `Response` 의존성 주입으로
+`Cache-Control` 헤더 추가함(서버 갱신 주기보다 훨씬 짧게 잡아서
+안전하게):
+- `/trending`, `/search`, `/categories`, `/stats` → `max-age=60`
+- `/stocks/catalog`(티커 목록, 코드 배포로만 바뀜), `/fx/usd-krw`
+  (환율, 서버도 하루 단위 캐시) → `max-age=3600`
+- `/health`는 그대로 무캐시 유지 — 앱이 이걸로 "N분 전 업데이트"
+  표시를 하기 때문에 항상 최신값을 받아야 함.
+
+배포 후 `curl -D -`로 다섯 엔드포인트 전부 헤더 실제로 뜨는 것 확인함.
+단, 이번에도 `cf-cache-status`는 여전히 `DYNAMIC`으로 남아있음 —
+브라우저/클라이언트 쪽 캐싱(재요청 시 60초~1시간 이내면 네트워크
+왕복 자체를 안 함)은 이걸로 되지만, Cloudflare 엣지 캐싱까지 가려면
+canvaskit 때와 마찬가지로 대시보드 Cache Rule이 필요함(계정 접근 권한
+없어서 이번에도 안 건드림).
+
 ## 다음 단계 제안
 
 1. 로그인 붙였으니 즐겨찾기를 서버 동기화(`user_favorites` 테이블)로
