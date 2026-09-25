@@ -4,6 +4,7 @@ import '../api_client.dart';
 import '../device_registry.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import '../theme_store.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -95,6 +96,17 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-09-26: AppColors.xxx는 static getter라(Theme.of(context) 같은
+    // InheritedWidget이 아님) 색 테마를 바꿔도 이미 push돼서 화면에 떠
+    // 있는 화면(설정 등)은 자동으로 다시 안 그려지던 버그 — 화면
+    // 최상단에서 직접 구독해서 고침(archive_screen.dart와 같은 패턴).
+    return ListenableBuilder(
+      listenable: ThemeStore.instance,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     return Scaffold(
       floatingActionButton: ScrollJumpFab(controller: _spotlight),
       body: SafeArea(

@@ -152,6 +152,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-09-26: AppColors.xxx는 static getter라(Theme.of(context) 같은
+    // InheritedWidget이 아님) 색 테마를 바꿔도 이미 push돼서 화면에 떠
+    // 있는 이 화면은 자동으로 다시 안 그려짐 — main.dart의 루트
+    // MaterialApp만 ThemeStore를 구독해서 홈 화면만 즉시 반영되고,
+    // 설정 화면 자체(타이틀 포함)는 테마를 바꾸는 바로 그 순간엔 색이
+    // 안 바뀐 채로 남아있었음. 화면 최상단에서 직접 구독해서 고침.
+    return ListenableBuilder(
+      listenable: ThemeStore.instance,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Column(

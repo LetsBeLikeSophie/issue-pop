@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../favorites_store.dart';
+import '../theme_store.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/screen_header.dart';
@@ -14,6 +15,21 @@ class ArchiveScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 2026-09-26: AppColors.xxx는 그냥 static getter라(Theme.of(context)
+    // 같은 InheritedWidget이 아님) 색 테마를 바꿔도 이미 Navigator로
+    // 밀어둔(=지금 화면처럼 push된) 화면은 자동으로 다시 안 그려짐 —
+    // main.dart의 루트 MaterialApp만 ThemeStore를 구독하고 있어서 홈
+    // 화면만 즉시 반영되고, 그 위에 push된 화면(저장한 이슈/설정/관심
+    // 종목/관심 워치)은 테마를 바꾸는 그 순간 화면에 떠 있으면 색이 안
+    // 바뀐 채로 남아있었음("설정 타이틀이 안 보인다"는 버그의 원인).
+    // 화면 최상단에서 직접 구독해서 고침.
+    return ListenableBuilder(
+      listenable: ThemeStore.instance,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Column(
