@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
@@ -211,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (snapshot.hasError) {
-                        return _ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
+                        return ErrorRetry(error: snapshot.error.toString(), onRetry: _refresh);
                       }
                       final issues = _sorted(_search(snapshot.data ?? []));
                       return ListView(
@@ -299,7 +300,7 @@ class _CategoryPage extends StatelessWidget {
                   );
                 }
                 if (snapshot.hasError) {
-                  return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
+                  return ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
                 final issues = sorter<IssueDetail>(snapshot.data ?? []);
                 return _IssueList(
@@ -321,7 +322,7 @@ class _CategoryPage extends StatelessWidget {
                   );
                 }
                 if (snapshot.hasError) {
-                  return _ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
+                  return ErrorRetry(error: snapshot.error.toString(), onRetry: onRefresh);
                 }
                 final filtered = (snapshot.data ?? []).where((i) => categories.contains(i.category)).toList();
                 final issues = sorter(filtered);
@@ -701,29 +702,3 @@ class _PageTabChip extends StatelessWidget {
   }
 }
 
-class _ErrorRetry extends StatelessWidget {
-  const _ErrorRetry({required this.error, required this.onRetry});
-
-  final String error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Column(
-        children: [
-          Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 6),
-          Text(
-            error,
-            style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onRetry, child: const Text('다시 시도')),
-        ],
-      ),
-    );
-  }
-}

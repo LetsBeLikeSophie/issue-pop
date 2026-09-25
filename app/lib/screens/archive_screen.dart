@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../favorites_store.dart';
 import '../theme.dart';
 import '../widgets/expandable_issue_card.dart';
+import '../widgets/screen_header.dart';
 
 /// 2026-08-28: FavoritesStore가 ChangeNotifier 싱글턴으로 바뀌면서
 /// FutureBuilder+수동 새로고침(_reload) 구조를 걷어냄 — 이제 그냥
@@ -17,21 +18,7 @@ class ArchiveScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  Text(
-                    '저장한 이슈',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
-                  ),
-                ],
-              ),
-            ),
+            const ScreenHeader(title: '저장한 이슈'),
             Expanded(
               child: ListenableBuilder(
                 listenable: FavoritesStore.instance,

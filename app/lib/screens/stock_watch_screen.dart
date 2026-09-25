@@ -5,6 +5,9 @@ import '../api_client.dart';
 import '../device_registry.dart';
 import '../theme.dart';
 import '../widgets/app_card.dart';
+import '../widgets/error_retry.dart';
+import '../widgets/screen_header.dart';
+import '../widgets/scroll_spotlight.dart';
 
 /// 2026-09-06: 관심 종목(브랜드) 뉴스. 저장한 이슈(Archive)와 같은 패턴 —
 /// 홈 화면 피드에는 아무것도 안 섞고, 상단바 아이콘 하나로만 진입함(홈
@@ -22,8 +25,7 @@ class StockWatchScreen extends StatefulWidget {
 class _StockWatchScreenState extends State<StockWatchScreen> {
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
   Future<List<StockWatch>>? _watches;
-  final _scrollController = ScrollController();
-  bool _showScrollTop = false;
+  final _spotlight = ScrollSpotlightController();
 
   /// 2026-09-07: 가격을 탭하면 달러/원화가 화면 전체에서 한 번에 바뀌는
   /// 토글("환율 계산까지는 힘든가... 원으로 보고 싶다"는 피드백으로 추가,
@@ -38,32 +40,10 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     setState(() => _showKrw = !_showKrw);
   }
 
-  /// 티커 칩을 누르면 그 종목 카드로 스크롤 이동시키는 데 씀(칩이 많아지면
-  /// 훑어보기 힘들다는 피드백으로 추가) — 티커별로 하나씩 유지, build()마다
-  /// 새로 만들지 않고 없는 것만 채움(같은 키 인스턴스가 유지돼야
-  /// Scrollable.ensureVisible이 올바른 위치를 찾음).
-  final Map<String, GlobalKey> _cardKeys = {};
-
-  void _scrollToTicker(String ticker) {
-    final ctx = _cardKeys[ticker]?.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), curve: Curves.easeOut, alignment: 0.05);
-  }
-
-  void _scrollToTop() {
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-  }
-
   @override
   void initState() {
     super.initState();
     _watches = _devices.listStockWatches();
-    // 칩 눌러서 아래로 이동한 다음 다시 위로 돌아올 방법이 없다는 피드백으로
-    // 스크롤 위로 버튼 추가 — 어느 정도 내려갔을 때만 보이게.
-    _scrollController.addListener(() {
-      final show = _scrollController.offset > 300;
-      if (show != _showScrollTop) setState(() => _showScrollTop = show);
-    });
     widget.api.getUsdKrwRate().then((rate) {
       if (mounted && rate != null) setState(() => _usdKrwRate = rate);
     });
@@ -71,7 +51,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _spotlight.dispose();
     super.dispose();
   }
 
@@ -108,40 +88,11 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: _showScrollTop
-          ? FloatingActionButton.small(
-              onPressed: _scrollToTop,
-              backgroundColor: AppColors.ink,
-              tooltip: '맨 위로',
-              child: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
-            )
-          : null,
+      floatingActionButton: ScrollTopFab(controller: _spotlight),
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  Expanded(
-                    child: Text('관심 종목', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showAddSheet,
-                    icon: Icon(Icons.add, size: 16, color: AppColors.accent),
-                    label: Text(
-                      '종목 추가',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.accent),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-              ),
-            ),
+            ScreenHeader(title: '관심 종목', trailingLabel: '종목 추가', onTrailingTap: _showAddSheet),
             Expanded(
               child: FutureBuilder<List<StockWatch>>(
                 future: _watches,
@@ -150,25 +101,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                     return const Center(child: CircularProgressIndicator(strokeWidth: 2));
                   }
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${snapshot.error}',
-                              style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton(onPressed: _refresh, child: const Text('다시 시도')),
-                          ],
-                        ),
-                      ),
-                    );
+                    return ErrorRetry(error: '${snapshot.error}', onRetry: _refresh);
                   }
 
                   final watches = snapshot.data ?? [];
@@ -202,7 +135,6 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                   final bySector = <String, List<StockWatch>>{};
                   for (final w in watches) {
                     bySector.putIfAbsent(w.sector, () => []).add(w);
-                    _cardKeys.putIfAbsent(w.ticker, () => GlobalKey());
                   }
 
                   return RefreshIndicator(
@@ -216,7 +148,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                       // 조용히 실패했었음(2026-09-06 발견). 이 화면은 종목이
                       // 많아야 수십 개 수준이라 전부 마운트해둬도 성능에
                       // 문제없어서, 가상화 없는 이 위젯으로 바꿔서 해결함.
-                      controller: _scrollController,
+                      controller: _spotlight.scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                       child: Column(
@@ -232,7 +164,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                                 _TickerChip(
                                   label: w.ticker,
                                   quote: w.quote,
-                                  onTap: () => _scrollToTicker(w.ticker),
+                                  onTap: () => _spotlight.scrollTo(w.ticker),
                                   onRemove: () => _removeTicker(w.id),
                                 ),
                             ],
@@ -243,7 +175,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                             const SizedBox(height: 6),
                             for (final w in entry.value) ...[
                               _StockCard(
-                                key: _cardKeys[w.ticker],
+                                key: _spotlight.keyFor(w.ticker),
                                 watch: w,
                                 showKrw: _showKrw,
                                 usdKrwRate: _usdKrwRate,

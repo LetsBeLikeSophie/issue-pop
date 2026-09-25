@@ -4,7 +4,10 @@ import '../api_client.dart';
 import '../device_registry.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
+import '../widgets/screen_header.dart';
+import '../widgets/scroll_spotlight.dart';
 
 /// 2026-09-08: 관심 인물·키워드 워치. 원래 DeviceKeywordWatch는 다이제스트
 /// 알림 대상을 고르는 용도로만 쓰였는데(설정 화면 안에 묻혀있었음), 관심
@@ -31,34 +34,18 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
   Future<List<KeywordWatch>>? _watches;
   late final Future<List<IssueSummary>> _index;
 
-  final _scrollController = ScrollController();
-  bool _showScrollTop = false;
-  final Map<String, GlobalKey> _cardKeys = {};
-
-  void _scrollToKeyword(String keyword) {
-    final ctx = _cardKeys[keyword]?.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), curve: Curves.easeOut, alignment: 0.05);
-  }
-
-  void _scrollToTop() {
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-  }
+  final _spotlight = ScrollSpotlightController();
 
   @override
   void initState() {
     super.initState();
     _watches = _devices.listWatches();
     _index = widget.api.getIndex();
-    _scrollController.addListener(() {
-      final show = _scrollController.offset > 300;
-      if (show != _showScrollTop) setState(() => _showScrollTop = show);
-    });
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _spotlight.dispose();
     super.dispose();
   }
 
@@ -108,40 +95,11 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: _showScrollTop
-          ? FloatingActionButton.small(
-              onPressed: _scrollToTop,
-              backgroundColor: AppColors.ink,
-              tooltip: '맨 위로',
-              child: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
-            )
-          : null,
+      floatingActionButton: ScrollTopFab(controller: _spotlight),
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  Expanded(
-                    child: Text('관심 워치', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showAddSheet,
-                    icon: Icon(Icons.add, size: 16, color: AppColors.accent),
-                    label: Text(
-                      '키워드 추가',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.accent),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-              ),
-            ),
+            ScreenHeader(title: '관심 워치', trailingLabel: '키워드 추가', onTrailingTap: _showAddSheet),
             Expanded(
               child: FutureBuilder<List<KeywordWatch>>(
                 future: _watches,
@@ -150,25 +108,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                     return const Center(child: CircularProgressIndicator(strokeWidth: 2));
                   }
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${snapshot.error}',
-                              style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton(onPressed: _refresh, child: const Text('다시 시도')),
-                          ],
-                        ),
-                      ),
-                    );
+                    return ErrorRetry(error: '${snapshot.error}', onRetry: _refresh);
                   }
 
                   final watches = snapshot.data ?? [];
@@ -197,10 +137,6 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                     );
                   }
 
-                  for (final w in watches) {
-                    _cardKeys.putIfAbsent(w.keyword, () => GlobalKey());
-                  }
-
                   return FutureBuilder<List<IssueSummary>>(
                     future: _index,
                     builder: (context, indexSnapshot) {
@@ -216,7 +152,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                           // 관심종목 화면과 같은 이유(스크롤로 이동한 항목이
                           // ListView 가상화로 언마운트되며 GlobalKey가 깨지는
                           // 문제)로 여기도 ListView 대신 이 위젯을 씀.
-                          controller: _scrollController,
+                          controller: _spotlight.scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                           child: Column(
@@ -229,7 +165,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                                   for (final w in watches)
                                     _KeywordChip(
                                       label: w.keyword,
-                                      onTap: () => _scrollToKeyword(w.keyword),
+                                      onTap: () => _spotlight.scrollTo(w.keyword),
                                       onRemove: () => _removeKeyword(w.id),
                                     ),
                                 ],
@@ -237,7 +173,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                               const SizedBox(height: 16),
                               for (final w in watches) ...[
                                 _KeywordSection(
-                                  key: _cardKeys[w.keyword],
+                                  key: _spotlight.keyFor(w.keyword),
                                   keyword: w.keyword,
                                   issues: _matches(index, w.keyword),
                                   api: widget.api,

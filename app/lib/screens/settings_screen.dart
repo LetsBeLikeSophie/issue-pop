@@ -7,6 +7,7 @@ import '../text_scale_store.dart';
 import '../theme.dart';
 import '../theme_store.dart';
 import '../widgets/app_card.dart';
+import '../widgets/screen_header.dart';
 
 /// 2026-09-05: 계정/구독/의견보내기/앱정보를 전부 뺌 — 로그인은 붙여도
 /// 실질적으로 쓸 데가 없었음(즐겨찾기가 이미 비회원으로 잘 동작하고,
@@ -163,18 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.ink),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                  Text('설정', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                ],
-              ),
-            ),
+            const ScreenHeader(title: '설정'),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
