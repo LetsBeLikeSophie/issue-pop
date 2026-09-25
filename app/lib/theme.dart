@@ -130,11 +130,6 @@ class AppColors {
   static Color get chipBg => surfaceAlt;
   static Color get divider => line;
 
-  static const cardShadow = [
-    BoxShadow(color: Color(0x0F000000), blurRadius: 2, offset: Offset(0, 1)),
-    BoxShadow(color: Color(0x0D000000), blurRadius: 16, offset: Offset(0, 4)),
-  ];
-
   /// 설정 화면의 테마 선택 스와치용 — 지금 선택된 프리셋이 아니라 [preset]
   /// 자체의 색을 미리보기로 보여줘야 해서, 현재 프리셋과 무관하게 조회함.
   static (Color bg, Color accent, Color accent2) previewColors(ColorPreset preset) {
