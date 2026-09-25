@@ -249,51 +249,70 @@ class _StockCardState extends State<_StockCard> {
             onTap: hasNews ? () => setState(() => _expanded = !_expanded) : null,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                  ),
-                  if (quote != null) ...[
-                    const SizedBox(width: 8),
-                    // 2026-09-26: 가격/등락률을 세로로 쌓았더니 답답해
-                    // 보인다는 피드백으로 가로로 나란히 바꿈. 가격 탭은
-                    // 통화 토글(카드 펼치기와는 별개 동작)이라 안쪽에
-                    // 따로 InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안
-                    // 겹치게 함.
-                    InkWell(
-                      onTap: widget.usdKrwRate == null ? null : widget.onTapPrice,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            widget.showKrw && widget.usdKrwRate != null
-                                ? _formatKrw(quote.price, widget.usdKrwRate!)
-                                : _formatUsd(quote.price),
-                            style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
-                          ),
-                          const SizedBox(width: 6),
-                          AppBadge.filled(
-                            label: _formatPercent(quote.percent),
-                            background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
-                            foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
-                            mono: true,
-                          ),
-                        ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
                       ),
-                    ),
-                  ],
-                  if (hasNews) ...[
-                    const SizedBox(width: 4),
-                    AnimatedRotation(
-                      turns: _expanded ? 0.25 : 0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
+                      if (quote != null) ...[
+                        const SizedBox(width: 8),
+                        // 2026-09-26: 가격/등락률을 세로로 쌓았더니 답답해
+                        // 보인다는 피드백으로 가로로 나란히 바꿈. 가격 탭은
+                        // 통화 토글(카드 펼치기와는 별개 동작)이라 안쪽에
+                        // 따로 InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안
+                        // 겹치게 함.
+                        InkWell(
+                          onTap: widget.usdKrwRate == null ? null : widget.onTapPrice,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                widget.showKrw && widget.usdKrwRate != null
+                                    ? _formatKrw(quote.price, widget.usdKrwRate!)
+                                    : _formatUsd(quote.price),
+                                style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
+                              ),
+                              const SizedBox(width: 6),
+                              AppBadge.filled(
+                                label: _formatPercent(quote.percent),
+                                background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
+                                foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                                mono: true,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (hasNews) ...[
+                        const SizedBox(width: 4),
+                        AnimatedRotation(
+                          turns: _expanded ? 0.25 : 0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
+                        ),
+                      ],
+                    ],
+                  ),
+                  // 2026-09-26: 접혀있을 때 "관련 뉴스 N건"만 보이니 카드가
+                  // 휑하다는 피드백 — 최신 기사 제목을 미리 보여주되, 이번엔
+                  // 헤더 탭 영역 "안"에 그냥 텍스트로 넣어서(별도 링크
+                  // InkWell 아님) 눌러도 펼치기만 되고 실수로 기사 링크로
+                  // 나가는 일은 없게 함. 실제 링크는 펼쳤을 때만 나옴.
+                  if (hasNews && !_expanded) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      news.first.titleKo ?? news.first.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4),
                     ),
                   ],
                 ],
@@ -306,23 +325,20 @@ class _StockCardState extends State<_StockCard> {
               child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
             )
           else
-            // 2026-09-26: 최신 기사를 미리보기로 항상 보여줬는데, 그
-            // 미리보기가 곧바로 외부 링크라서 "펼치려고 눌렀는데 링크로
-            // 나가버린다"는 피드백을 받음 — 접혀있을 땐 건수만 텍스트로
-            // 보여주고(누를 게 없음), 펼쳤을 때만 실제 링크 목록이
-            // 나오게 분리함.
             AnimatedSize(
               duration: const Duration(milliseconds: 160),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
               child: !_expanded
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                      child: Text('관련 뉴스 ${news.length}건', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
-                    )
+                  ? const SizedBox(width: double.infinity)
                   : Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                       child: Column(
+                        // 2026-09-26: 이 Column에 정렬을 안 정해줘서 기본값인
+                        // center가 적용돼 있었음 — 기사마다 제목 길이(=이
+                        // InkWell의 고유 너비)가 달라서 각 줄이 서로 다르게
+                        // 가운데 정렬되며 왼쪽이 들쭉날쭉해 보이던 버그.
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Divider(height: 1, color: AppColors.line),
                           // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은
