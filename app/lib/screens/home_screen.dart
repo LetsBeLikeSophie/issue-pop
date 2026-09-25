@@ -668,7 +668,9 @@ class _PageTabBar extends StatelessWidget {
 }
 
 /// 2026-09-20: "클린 뉴스룸" 톤 리디자인 — 카테고리별 원색 점 대신
-/// BBC/Reuters류 텍스트 탭(선택된 탭만 굵게 + accent 밑줄)으로 바꿈.
+/// BBC/Reuters류 텍스트 탭(선택된 탭만 굵게)으로 바꿈.
+/// 2026-09-25: 밑줄 인디케이터가 굳이 없어도 굵기·색 대비만으로 선택
+/// 상태가 충분히 구분된다는 피드백으로 밑줄을 뺌.
 class _PageTabChip extends StatelessWidget {
   const _PageTabChip({
     required this.label,
@@ -684,11 +686,8 @@ class _PageTabChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 9),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: selected ? AppColors.accent : Colors.transparent, width: 2)),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
         child: Text(
           label,
           style: TextStyle(

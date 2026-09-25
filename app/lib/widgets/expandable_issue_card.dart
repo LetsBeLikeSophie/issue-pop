@@ -163,7 +163,10 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              // 2026-09-25: 펼친 카드가 접힌 카드들 사이에서 눈에 안 띈다는
+              // 피드백으로, 펼쳐졌을 때만 배경을 surfaceAlt(기존 톤 안에
+              // 이미 있는, surface보다 살짝 진한 토큰)로 바꿔서 표시함.
+              color: _expanded ? AppColors.surfaceAlt : AppColors.surface,
               // 2026-09-20: "클린 뉴스룸" 톤 — 카드 구분을 그림자 대신
               // 얇은 라인으로만 함(F안 레퍼런스). 색은 그대로 유지.
               border: Border.all(color: AppColors.line),
@@ -228,7 +231,6 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         ),
                                       ]),
                                     ),
-                                  _CategoryBadge(category: issue.category),
                                   if (isSingle) const _SingleTag(),
                                   if (_daysTracked(issue.firstSeenAt) case final days? when days >= 2)
                                     _DaysTrackedBadge(days: days),
@@ -277,6 +279,14 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                               ),
                             ],
                           ),
+                        ),
+                        // 2026-09-25: 카테고리 배지를 키워드 옆(왼쪽 줄)에서
+                        // 카드 박스 우측 상단으로 옮김 — 제목·키워드와 섞여
+                        // 있던 걸 분리해서 "이 카드의 분류"가 한눈에 보이게.
+                        const SizedBox(width: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: _CategoryBadge(category: issue.category),
                         ),
                       ],
                     ),
