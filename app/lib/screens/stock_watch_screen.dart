@@ -222,6 +222,8 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _StockSummaryBar(watches: watches),
+                          const SizedBox(height: 16),
                           Wrap(
                             spacing: 6,
                             runSpacing: 6,
@@ -409,8 +411,7 @@ class _StockCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -421,40 +422,50 @@ class _StockCard extends StatelessWidget {
               Expanded(
                 child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
               ),
-              if (quote != null) ...[
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: usdKrwRate == null ? null : onTapPrice,
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: showKrw && usdKrwRate != null
-                              ? _formatKrw(quote.price, usdKrwRate!)
-                              : _formatUsd(quote.price),
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
-                        ),
-                        TextSpan(
-                          text: ' ${_formatPercent(quote.percent)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
-                          ),
-                        ),
-                      ],
+              // 2026-09-25: 등락률을 헤더 우측에 색이 있는 배경 pill로
+              // 한 번 더 보여줌(아래 큰 가격 옆에도 나오지만, 여러 카드를
+              // 훑어볼 땐 이 pill 색만으로도 상승/하락이 바로 구분됨).
+              if (quote != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _formatPercent(quote.percent),
+                    style: AppTypography.mono(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
                     ),
                   ),
                 ),
-              ],
             ],
           ),
+          if (quote != null) ...[
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: usdKrwRate == null ? null : onTapPrice,
+              // 2026-09-25: 가격을 카드에서 가장 무게감 있는 숫자로 —
+              // 모노스페이스 + 큰 사이즈로 키움(예전엔 종목명과 비슷한
+              // 크기라 "주식 앱인데 가격이 안 보인다"는 인상이었음).
+              child: Text(
+                showKrw && usdKrwRate != null ? _formatKrw(quote.price, usdKrwRate!) : _formatUsd(quote.price),
+                style: AppTypography.mono(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink),
+              ),
+            ),
+          ],
           if (watch.news.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
             )
-          else
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Divider(height: 1, color: AppColors.line),
+            ),
             // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은 넣지
             // 말아달라던 예전 결정과 안 부딪히면서, 신문 지면에서 기사
             // 사이를 가르는 느낌 — expandable_issue_card.dart와 같은 처리).
@@ -462,8 +473,70 @@ class _StockCard extends StatelessWidget {
               if (i != 0) Divider(height: 1, color: AppColors.divider),
               _NewsRow(item: watch.news[i]),
             ],
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// 2026-09-25: "관심 종목 전체적으로 오늘 어때?"를 카드 하나하나 안
+/// 훑어봐도 바로 알 수 있게 추가한 요약 바 — 상승/하락 개수와 평균
+/// 등락률 전부 이미 받아온 quote만으로 클라이언트에서 계산함(새 API
+/// 없음). quote가 없는 종목(시세 실패)은 계산에서 제외.
+class _StockSummaryBar extends StatelessWidget {
+  const _StockSummaryBar({required this.watches});
+
+  final List<StockWatch> watches;
+
+  @override
+  Widget build(BuildContext context) {
+    final quoted = watches.where((w) => w.quote != null).toList();
+    final rising = quoted.where((w) => w.quote!.percent >= 0).length;
+    final falling = quoted.length - rising;
+    final avg = quoted.isEmpty ? null : quoted.map((w) => w.quote!.percent).reduce((a, b) => a + b) / quoted.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _SummaryStat(value: '$rising개', label: '상승', color: AppColors.accent)),
+          Container(width: 1, height: 26, color: AppColors.line),
+          Expanded(child: _SummaryStat(value: '$falling개', label: '하락', color: AppColors.accent2)),
+          Container(width: 1, height: 26, color: AppColors.line),
+          Expanded(
+            child: _SummaryStat(
+              value: avg == null ? '—' : _formatPercent(avg),
+              label: '평균 등락',
+              color: avg == null ? AppColors.inkFaint : (avg >= 0 ? AppColors.accent : AppColors.accent2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({required this.value, required this.label, required this.color});
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: AppTypography.mono(fontSize: 17, fontWeight: FontWeight.w700, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }

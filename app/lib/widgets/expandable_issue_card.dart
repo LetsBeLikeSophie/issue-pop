@@ -206,12 +206,22 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 spacing: 7,
                                 runSpacing: 2,
                                 children: [
-                                  Text(
-                                    keywords.first,
-                                    style: AppTypography.serif(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.ink,
+                                  // 2026-09-25: 대표 키워드만 배경색 태그로
+                                  // 감싸서 카드 안에서 바로 눈에 띄게 함
+                                  // (보조 키워드·배지는 그대로 텍스트만).
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.accentSoft,
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Text(
+                                      keywords.first,
+                                      style: AppTypography.serif(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.ink,
+                                      ),
                                     ),
                                   ),
                                   if (keywords.length > 1)

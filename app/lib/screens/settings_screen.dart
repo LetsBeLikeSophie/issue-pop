@@ -525,7 +525,7 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(left: 2),
-      child: Text(text, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.inkMuted)),
+      child: Text(text, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.inkSoft)),
     );
   }
 }
@@ -546,7 +546,7 @@ class _ToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: showDivider
           ? BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.divider)))
           : null,
