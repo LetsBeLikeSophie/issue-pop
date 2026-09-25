@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api_client.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/share_card.dart';
@@ -287,7 +288,7 @@ class _CategoryPage extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
-          const _SwipeHint(),
+          const SwipeHintRow('카드를 왼쪽으로 밀면 저장할 수 있어요'),
           const SizedBox(height: 6),
           if (categories == null)
             FutureBuilder<List<IssueDetail>>(
@@ -376,23 +377,6 @@ class _IssueList extends StatelessWidget {
           ),
           if (i != issues.length - 1) const SizedBox(height: 8),
         ],
-      ],
-    );
-  }
-}
-
-/// 카드를 옆으로 밀면 저장할 수 있다는 걸 몰라보는 사람이 있다는
-/// 피드백을 받고 추가한 짧은 안내 문구.
-class _SwipeHint extends StatelessWidget {
-  const _SwipeHint();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(Icons.swipe_left_outlined, size: 12, color: AppColors.inkFaint),
-        const SizedBox(width: 4),
-        Text('카드를 왼쪽으로 밀면 저장할 수 있어요', style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
       ],
     );
   }

@@ -4,8 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api_client.dart';
 import '../device_registry.dart';
 import '../theme.dart';
+import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
+import '../widgets/removable_chip.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/scroll_spotlight.dart';
 
@@ -73,10 +76,8 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     // 새 네트워크 요청은 안 일어남.
     final currentTickers = (await _watches)?.map((w) => w.ticker).toSet() ?? <String>{};
     if (!mounted) return;
-    final ticker = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    final ticker = await showAppBottomSheet<String>(
+      context,
       isScrollControlled: true,
       builder: (_) => _TickerSearchSheet(api: widget.api, currentTickers: currentTickers),
     );
@@ -106,27 +107,10 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
 
                   final watches = snapshot.data ?? [];
                   if (watches.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.show_chart, size: 28, color: AppColors.inkFaint),
-                            const SizedBox(height: 10),
-                            Text(
-                              '아직 등록된 종목이 없어요',
-                              style: TextStyle(color: AppColors.inkMuted, fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '위 "종목 추가"로 관심 있는 티커를 등록해보세요',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppColors.inkFaint, fontSize: 11.5, height: 1.4),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return const EmptyState(
+                      icon: Icons.show_chart,
+                      title: '아직 등록된 종목이 없어요',
+                      subtitle: '위 "종목 추가"로 관심 있는 티커를 등록해보세요',
                     );
                   }
 
@@ -161,9 +145,18 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                             runSpacing: 6,
                             children: [
                               for (final w in watches)
-                                _TickerChip(
+                                RemovableChip(
                                   label: w.ticker,
-                                  quote: w.quote,
+                                  trailing: w.quote == null
+                                      ? null
+                                      : Text(
+                                          _formatPercent(w.quote!.percent),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: w.quote!.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                                          ),
+                                        ),
                                   onTap: () => _spotlight.scrollTo(w.ticker),
                                   onRemove: () => _removeTicker(w.id),
                                 ),
@@ -194,63 +187,6 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _TickerChip extends StatelessWidget {
-  const _TickerChip({required this.label, required this.onTap, required this.onRemove, this.quote});
-
-  final String label;
-  final StockQuote? quote;
-
-  /// 라벨 부분을 누르면 그 종목 카드로 스크롤 이동(x 버튼과는 별도 영역).
-  final VoidCallback onTap;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(2, 5, 6, 5),
-      decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(999)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
-                  if (quote != null) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatPercent(quote!.percent),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: quote!.percent >= 0 ? AppColors.accent : AppColors.accent2,
-                      ),
-                    ),
-                  ],
-                  // 이 칩이 눌러서 이동 가능하다는 걸 보여주는 힌트 아이콘
-                  // ("눌러도 되는지 잘 모르겠다"는 피드백으로 추가).
-                  const SizedBox(width: 2),
-                  Icon(Icons.arrow_downward, size: 10, color: AppColors.accent.withValues(alpha: 0.6)),
-                ],
-              ),
-            ),
-          ),
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: onRemove,
-            child: Icon(Icons.close, size: 14, color: AppColors.accent),
-          ),
-        ],
       ),
     );
   }
@@ -607,16 +543,10 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('종목 추가', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          Text('회사 이름이나 티커로 검색하세요 (예: 애플, AAPL)', style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
-          const SizedBox(height: 14),
+    return AppSheetBody(
+      title: '종목 추가',
+      subtitle: '회사 이름이나 티커로 검색하세요 (예: 애플, AAPL)',
+      children: [
           Row(
             children: [
               Expanded(
@@ -721,8 +651,7 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
               );
             },
           ),
-        ],
-      ),
+      ],
     );
   }
 }

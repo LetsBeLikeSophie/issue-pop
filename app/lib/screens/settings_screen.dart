@@ -6,7 +6,9 @@ import '../device_registry.dart';
 import '../text_scale_store.dart';
 import '../theme.dart';
 import '../theme_store.dart';
+import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
+import '../widgets/removable_chip.dart';
 import '../widgets/screen_header.dart';
 
 /// 2026-09-05: 계정/구독/의견보내기/앱정보를 전부 뺌 — 로그인은 붙여도
@@ -89,12 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickDigestHour(int current) async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+    final picked = await showAppBottomSheet<int>(
+      context,
       builder: (context) => _HourPickerSheet(selected: current),
     );
     if (picked == null) return;
@@ -109,10 +107,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 조회만. 2026-09-20: 실제 발송(FCM)도 서버에 연동 완료됨.
   Future<void> _showDigestPreview() async {
     final preview = widget.api.getDigestPreview();
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    await showAppBottomSheet<void>(
+      context,
       builder: (_) => _DigestPreviewSheet(preview: preview),
     );
   }
@@ -128,10 +124,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 사전 API 연동 전이라 definition은 null일 수 있음(시트에서 안내).
   Future<void> _showWordOfDayPreview() async {
     final preview = widget.api.getWordOfDay();
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    await showAppBottomSheet<void>(
+      context,
       builder: (_) => _WordOfDayPreviewSheet(preview: preview),
     );
   }
@@ -147,11 +141,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 웹)에서 그냥 안 열리는 경우가 많아서, 인앱 폼(POST /feedback)으로
   /// 바꿈 — 앱을 안 벗어나고 바로 보낼 수 있음.
   Future<void> _showContactSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
+    await showAppBottomSheet<void>(
+      context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => _ContactSheet(
         onSubmit: (message, email) => _devices.submitFeedback(message, contactEmail: email),
       ),
@@ -301,12 +293,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       label: '시작',
                                       hour: s.quietHoursStart,
                                       onTap: () async {
-                                        final picked = await showModalBottomSheet<int>(
-                                          context: context,
-                                          backgroundColor: AppColors.surface,
-                                          shape: const RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                                          ),
+                                        final picked = await showAppBottomSheet<int>(
+                                          context,
                                           builder: (context) => _HourPickerSheet(selected: s.quietHoursStart),
                                         );
                                         if (picked != null) {
@@ -321,12 +309,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       label: '종료',
                                       hour: s.quietHoursEnd,
                                       onTap: () async {
-                                        final picked = await showModalBottomSheet<int>(
-                                          context: context,
-                                          backgroundColor: AppColors.surface,
-                                          shape: const RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                                          ),
+                                        final picked = await showAppBottomSheet<int>(
+                                          context,
                                           builder: (context) => _HourPickerSheet(selected: s.quietHoursEnd),
                                         );
                                         if (picked != null) {
@@ -406,7 +390,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     runSpacing: 6,
                                     children: [
                                       for (final w in watches)
-                                        _KeywordChip(label: w.keyword, onRemove: () => _removeKeyword(w.id)),
+                                        RemovableChip(label: w.keyword, onRemove: () => _removeKeyword(w.id)),
                                     ],
                                   );
                                 },
@@ -794,33 +778,6 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _KeywordChip extends StatelessWidget {
-  const _KeywordChip({required this.label, required this.onRemove});
-
-  final String label;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
-      decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(999)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accent)),
-          const SizedBox(width: 2),
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: onRemove,
-            child: Icon(Icons.close, size: 14, color: AppColors.accent),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PlainRow extends StatelessWidget {
   const _PlainRow({
     required this.label,
@@ -883,19 +840,10 @@ class _DigestPreviewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('발송 내용 미리보기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          Text(
-            '실제로 지금 보낸다면 이런 내용이 나가요.',
-            style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
-          ),
-          const SizedBox(height: 16),
+    return AppSheetBody(
+      title: '발송 내용 미리보기',
+      subtitle: '실제로 지금 보낸다면 이런 내용이 나가요.',
+      children: [
           FutureBuilder<String>(
             future: preview,
             builder: (context, snapshot) {
@@ -961,8 +909,7 @@ class _DigestPreviewSheet extends StatelessWidget {
               );
             },
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -977,19 +924,10 @@ class _WordOfDayPreviewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('오늘의 단어 미리보기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          Text(
-            '오늘 기사 제목에서 뽑은 단어예요. 뜻풀이는 아직 준비 중이에요.',
-            style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
-          ),
-          const SizedBox(height: 16),
+    return AppSheetBody(
+      title: '오늘의 단어 미리보기',
+      subtitle: '오늘 기사 제목에서 뽑은 단어예요. 뜻풀이는 아직 준비 중이에요.',
+      children: [
           FutureBuilder<WordOfDay>(
             future: preview,
             builder: (context, snapshot) {
@@ -1051,8 +989,7 @@ class _WordOfDayPreviewSheet extends StatelessWidget {
               );
             },
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1113,16 +1050,10 @@ class _ContactSheetState extends State<_ContactSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('문의하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          Text('버그 제보나 하고 싶은 말, 뭐든 남겨주세요.', style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
-          const SizedBox(height: 16),
+    return AppSheetBody(
+      title: '문의하기',
+      subtitle: '버그 제보나 하고 싶은 말, 뭐든 남겨주세요.',
+      children: [
           if (_sent)
             Container(
               padding: const EdgeInsets.all(14),
@@ -1190,8 +1121,7 @@ class _ContactSheetState extends State<_ContactSheet> {
               ),
             ),
           ],
-        ],
-      ),
+      ],
     );
   }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../favorites_store.dart';
-import '../theme.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/screen_header.dart';
 
@@ -25,27 +25,10 @@ class ArchiveScreen extends StatelessWidget {
                 builder: (context, _) {
                   final items = FavoritesStore.instance.all;
                   if (items.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.swipe_left_outlined, size: 28, color: AppColors.inkFaint),
-                            const SizedBox(height: 10),
-                            Text(
-                              '아직 저장한 이슈가 없어요',
-                              style: TextStyle(color: AppColors.inkMuted, fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '홈 화면에서 이슈 카드를 왼쪽으로 밀면 저장할 수 있어요',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppColors.inkFaint, fontSize: 11.5, height: 1.4),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return const EmptyState(
+                      icon: Icons.swipe_left_outlined,
+                      title: '아직 저장한 이슈가 없어요',
+                      subtitle: '홈 화면에서 이슈 카드를 왼쪽으로 밀면 저장할 수 있어요',
                     );
                   }
                   final maxOutlet =
@@ -53,15 +36,9 @@ class ArchiveScreen extends StatelessWidget {
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          children: [
-                            Icon(Icons.swipe_left_outlined, size: 12, color: AppColors.inkFaint),
-                            const SizedBox(width: 4),
-                            Text('카드를 왼쪽으로 밀면 삭제할 수 있어요', style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
-                          ],
-                        ),
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: SwipeHintRow('카드를 왼쪽으로 밀면 삭제할 수 있어요'),
                       ),
                       for (var i = 0; i < items.length; i++) ...[
                         ExpandableIssueCard(

@@ -4,7 +4,10 @@ import '../api_client.dart';
 import '../device_registry.dart';
 import '../models/issue.dart';
 import '../theme.dart';
+import '../widgets/app_bottom_sheet.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
+import '../widgets/removable_chip.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/scroll_spotlight.dart';
@@ -66,10 +69,8 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
     if (!mounted) return;
     final index = await _index;
     if (!mounted) return;
-    final keyword = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    final keyword = await showAppBottomSheet<String>(
+      context,
       isScrollControlled: true,
       builder: (_) => _KeywordAddSheet(index: index, currentKeywords: current),
     );
@@ -113,27 +114,10 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
 
                   final watches = snapshot.data ?? [];
                   if (watches.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_search, size: 28, color: AppColors.inkFaint),
-                            const SizedBox(height: 10),
-                            Text(
-                              '아직 등록된 워치가 없어요',
-                              style: TextStyle(color: AppColors.inkMuted, fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '위 "키워드 추가"로 관심 있는 인물이나 키워드를 등록해보세요',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppColors.inkFaint, fontSize: 11.5, height: 1.4),
-                            ),
-                          ],
-                        ),
-                      ),
+                    return const EmptyState(
+                      icon: Icons.person_search,
+                      title: '아직 등록된 워치가 없어요',
+                      subtitle: '위 "키워드 추가"로 관심 있는 인물이나 키워드를 등록해보세요',
                     );
                   }
 
@@ -163,7 +147,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                                 runSpacing: 6,
                                 children: [
                                   for (final w in watches)
-                                    _KeywordChip(
+                                    RemovableChip(
                                       label: w.keyword,
                                       onTap: () => _spotlight.scrollTo(w.keyword),
                                       onRemove: () => _removeKeyword(w.id),
@@ -192,47 +176,6 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _KeywordChip extends StatelessWidget {
-  const _KeywordChip({required this.label, required this.onTap, required this.onRemove});
-
-  final String label;
-  final VoidCallback onTap;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(2, 5, 6, 5),
-      decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(999)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.accent)),
-                  const SizedBox(width: 2),
-                  Icon(Icons.arrow_downward, size: 10, color: AppColors.accent.withValues(alpha: 0.6)),
-                ],
-              ),
-            ),
-          ),
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: onRemove,
-            child: Icon(Icons.close, size: 14, color: AppColors.accent),
-          ),
-        ],
       ),
     );
   }
@@ -339,17 +282,10 @@ class _KeywordAddSheetState extends State<_KeywordAddSheet> {
   @override
   Widget build(BuildContext context) {
     final matches = _visible();
-    return Padding(
-      padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('키워드 추가', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          Text('인물, 기관, 키워드 등 무엇이든 등록할 수 있어요 (예: 이재명, 삼성전자)',
-              style: TextStyle(fontSize: 12, color: AppColors.inkFaint)),
-          const SizedBox(height: 14),
+    return AppSheetBody(
+      title: '키워드 추가',
+      subtitle: '인물, 기관, 키워드 등 무엇이든 등록할 수 있어요 (예: 이재명, 삼성전자)',
+      children: [
           Row(
             children: [
               Expanded(
@@ -402,8 +338,7 @@ class _KeywordAddSheetState extends State<_KeywordAddSheet> {
               ),
             ),
           ],
-        ],
-      ),
+      ],
     );
   }
 }
