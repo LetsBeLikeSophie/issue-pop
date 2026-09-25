@@ -268,7 +268,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         );
                       }
+                      // 2026-09-25: AppCard 기본 padding(14) 위에 _ToggleRow
+                      // 자체 padding(14, 6)이 또 더해져서 "알림" 카드(그쪽은
+                      // padding: zero로 두고 행마다 자기 padding만 씀)보다
+                      // 왼쪽 정렬선/상하 여백이 더 넓어 보이던 버그를 고침 —
+                      // 이 카드도 padding: zero로 맞추고, 토글 아래 나머지
+                      // 내용만 직접 14px 여백을 줌.
                       return AppCard(
+                        padding: EdgeInsets.zero,
                         radius: 18,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,7 +286,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onChanged: (v) => _updateAlertSettings((c) => c.copyWith(enabled: v)),
                               showDivider: false,
                             ),
-                            if (s.enabled) ...[
+                            if (s.enabled)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                               const SizedBox(height: 14),
                               Text('체크 주기', style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
                               const SizedBox(height: 6),
@@ -409,7 +421,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   );
                                 },
                               ),
-                            ],
+                                  ],
+                                ),
+                              ),
                           ],
                         ),
                       );
