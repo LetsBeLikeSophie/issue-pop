@@ -44,16 +44,11 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     setState(() => _showKrw = !_showKrw);
   }
 
-  /// 2026-09-26: "섹터 구분이 꼭 필요한가" 싶다는 피드백으로, 없애는
-  /// 대신 접고 펼 수 있게 함 — 안 쓰는 섹터는 접어두면 되고, 기본은
-  /// 펼친 상태(map에 없으면 true).
-  final Map<String, bool> _sectorExpanded = {};
-
-  bool _isSectorExpanded(String sector) => _sectorExpanded[sector] ?? true;
-
-  void _toggleSector(String sector) {
-    setState(() => _sectorExpanded[sector] = !_isSectorExpanded(sector));
-  }
+  /// 2026-09-26: 처음엔 섹터별로 항상 묶어서 보여줬는데("기술" 등
+  /// 섹터 라벨이 카드 사이마다 계속 나옴), "굳이 카테고리가 다 보일
+  /// 필요는 없다"는 피드백으로 기본은 평평한 목록으로 바꾸고, 특정
+  /// 섹터만 보고 싶을 때 고르는 드롭다운으로 옮김. null이면 전체.
+  String? _sectorFilter;
 
   @override
   void initState() {
@@ -126,12 +121,21 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                     );
                   }
 
-                  // 섹터별로 묶되, 서버가 내려준 순서(첫 등장 순)를 그대로 섹터
-                  // 순서로 씀 — 별도로 정렬하지 않음.
-                  final bySector = <String, List<StockWatch>>{};
+                  // 섹터 목록(중복 제거, 서버가 내려준 첫 등장 순서 유지) —
+                  // 더는 목록을 섹터로 나누지 않고, 드롭다운 필터 옵션으로만 씀.
+                  final sectors = <String>[];
                   for (final w in watches) {
-                    bySector.putIfAbsent(w.sector, () => []).add(w);
+                    if (!sectors.contains(w.sector)) sectors.add(w.sector);
                   }
+                  // 필터로 고른 섹터의 종목을 전부 지워버리면 DropdownButton이
+                  // 더는 목록에 없는 value를 들고 있게 돼서 깨짐 — 그 경우
+                  // "전체 업종"으로 취급함(상태 자체는 다음 상호작용 전까지
+                  // 그대로 둠, build 도중 setState 없이 조용히 보정).
+                  final effectiveFilter = (_sectorFilter != null && sectors.contains(_sectorFilter))
+                      ? _sectorFilter
+                      : null;
+                  final filtered =
+                      effectiveFilter == null ? watches : watches.where((w) => w.sector == effectiveFilter).toList();
 
                   return RefreshIndicator(
                     onRefresh: _refresh,
@@ -175,33 +179,21 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          for (final entry in bySector.entries) ...[
-                            _SectorLabel(
-                              entry.key,
-                              expanded: _isSectorExpanded(entry.key),
-                              onTap: () => _toggleSector(entry.key),
+                          if (sectors.length > 1) ...[
+                            _SectorFilterDropdown(
+                              sectors: sectors,
+                              value: effectiveFilter,
+                              onChanged: (v) => setState(() => _sectorFilter = v),
                             ),
-                            const SizedBox(height: 6),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 160),
-                              curve: Curves.easeOut,
-                              alignment: Alignment.topCenter,
-                              child: !_isSectorExpanded(entry.key)
-                                  ? const SizedBox(width: double.infinity)
-                                  : Column(
-                                      children: [
-                                        for (final w in entry.value) ...[
-                                          _StockCard(
-                                            key: _spotlight.keyFor(w.ticker),
-                                            watch: w,
-                                            showKrw: _showKrw,
-                                            usdKrwRate: _usdKrwRate,
-                                            onTapPrice: _toggleCurrency,
-                                          ),
-                                          const SizedBox(height: 8),
-                                        ],
-                                      ],
-                                    ),
+                            const SizedBox(height: 10),
+                          ],
+                          for (final w in filtered) ...[
+                            _StockCard(
+                              key: _spotlight.keyFor(w.ticker),
+                              watch: w,
+                              showKrw: _showKrw,
+                              usdKrwRate: _usdKrwRate,
+                              onTapPrice: _toggleCurrency,
                             ),
                             const SizedBox(height: 8),
                           ],
@@ -256,34 +248,44 @@ Color _sectorColor(String sector) => _sectorColors[sector] ?? AppColors.inkFaint
 
 /// 2026-09-26: 접고 펼 수 있게 바꿈 — 안 쓰는 섹터는 접어서 화면을
 /// 덜 차지하게 할 수 있음(기본은 펼침).
-class _SectorLabel extends StatelessWidget {
-  const _SectorLabel(this.sector, {required this.expanded, required this.onTap});
+/// 2026-09-26: 섹터별로 항상 나눠서 보여주던 걸(기술/금융/… 라벨이
+/// 카드 사이마다 반복) 없애고, 필요할 때만 고르는 드롭다운으로 옮김 —
+/// 평소엔 전체 목록이 그냥 평평하게 보임.
+class _SectorFilterDropdown extends StatelessWidget {
+  const _SectorFilterDropdown({required this.sectors, required this.value, required this.onChanged});
 
-  final String sector;
-  final bool expanded;
-  final VoidCallback onTap;
+  final List<String> sectors;
+  final String? value;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Row(
-          children: [
-            Container(width: 3, height: 12, decoration: BoxDecoration(color: _sectorColor(sector), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 7),
-            Text(
-              sector,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkSoft, letterSpacing: 0.3),
-            ),
-            const SizedBox(width: 4),
-            AnimatedRotation(
-              turns: expanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 150),
-              child: Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.inkFaint),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: AppColors.chipBg, borderRadius: BorderRadius.circular(8)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: value,
+          isDense: true,
+          icon: Icon(Icons.expand_more, size: 16, color: AppColors.inkFaint),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.ink),
+          dropdownColor: AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          onChanged: onChanged,
+          items: [
+            const DropdownMenuItem(value: null, child: Text('전체 업종')),
+            for (final s in sectors)
+              DropdownMenuItem(
+                value: s,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: _sectorColor(s), shape: BoxShape.circle)),
+                    const SizedBox(width: 6),
+                    Text(s),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

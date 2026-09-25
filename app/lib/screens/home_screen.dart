@@ -463,7 +463,7 @@ class _TopBar extends StatelessWidget {
                   IconButton(
                     icon: Icon(Icons.person_search, color: AppColors.ink),
                     onPressed: onKeywords,
-                    tooltip: '관심 워치',
+                    tooltip: '관심 키워드',
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     constraints: const BoxConstraints(),
                   ),

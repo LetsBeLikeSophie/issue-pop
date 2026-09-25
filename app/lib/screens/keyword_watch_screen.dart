@@ -100,7 +100,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            ScreenHeader(title: '관심 워치', trailingLabel: '키워드 추가', onTrailingTap: _showAddSheet),
+            ScreenHeader(title: '관심 키워드', trailingLabel: '키워드 추가', onTrailingTap: _showAddSheet),
             Expanded(
               child: FutureBuilder<List<KeywordWatch>>(
                 future: _watches,
@@ -116,7 +116,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                   if (watches.isEmpty) {
                     return const EmptyState(
                       icon: Icons.person_search,
-                      title: '아직 등록된 워치가 없어요',
+                      title: '아직 등록된 키워드가 없어요',
                       subtitle: '위 "키워드 추가"로 관심 있는 인물이나 키워드를 등록해보세요',
                     );
                   }
