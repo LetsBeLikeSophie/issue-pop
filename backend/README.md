@@ -1439,6 +1439,37 @@ Firebase 콘솔에서 직접 발급받아야 하는 자격증명이라, 서버 �
 `OUTLET_LEANING` 조회 테이블은 지금은 쓰는 곳이 없어서 죽은 코드지만,
 데이터 자체가 작고(10개 매체) 관리 비용이 없어서 그냥 둠.
 
+## 업데이트: 첫 로드가 느린 문제 — nginx 캐시 헤더 누락 (2026-09-26)
+
+"첫 로드가 왜 이렇게 오래 걸리지"라는 질문을 받고 실측함(`curl -w`로
+접속 시간 직접 측정). 원인은 백엔드가 아니었음 — `/trending`·`/search`
+는 각각 0.8~1.2초로 정상. 진짜 원인은 프론트 정적 파일:
+
+- `main.dart.js` 2.9MB, `canvaskit.wasm` 7.3MB — Flutter가 이번
+  버전(3.47.1)부터 HTML 렌더러를 완전히 뺐고 CanvasKit만 남아서
+  피할 수 없는 크기임(`flutter build web --help`로 확인, `--web-renderer`
+  옵션 자체가 사라짐).
+- 근데 `canvaskit.wasm`이 `Cache-Control` 헤더가 아예 없이 나가고
+  있었음 — nginx 설정에 `/app/canvaskit/`, `/app/assets/`용 규칙이
+  없어서 기본 `location /app/`(무헤더)로 떨어졌던 것. 그 결과
+  Cloudflare 엣지도 `cf-cache-status: DYNAMIC`(캐싱 안 함)이었고,
+  방문할 때마다 이 7.3MB 파일을 매번 도쿄 오리진까지 왕복해서
+  받아오고 있었음 — "첫 로드"뿐 아니라 사실상 매번 느렸던 것.
+
+**고침**: `/etc/nginx/sites-available/newstrend-api`에 두 위치 블록
+추가.
+- `/app/canvaskit/` → `Cache-Control: public, max-age=31536000, immutable`
+  (Flutter SDK에 번들로 딸려오는 파일이라 배포와 무관하게 내용 고정)
+- `/app/assets/` → `Cache-Control: public, max-age=2592000`(폰트 등,
+  내용이 바뀔 여지를 감안해 30일로 보수적으로)
+
+브라우저에서 재방문 시 `canvaskit.wasm`이 아예 네트워크 요청 없이
+캐시에서 바로 쓰이는 것 확인함. Cloudflare 엣지 캐싱(`cf-cache-status:
+HIT`)까지는 이 nginx 헤더만으로는 아직 안 됨 — Cloudflare 대시보드에
+Cache Rule을 따로 추가해야 할 수도 있음(계정 접근 권한이 없어서 이번엔
+안 건드림). index.html/main.dart.js 등 앱 셸 파일은 기존대로
+`no-cache`로 유지(배포 직후 새 버전이 바로 반영돼야 하므로).
+
 ## 다음 단계 제안
 
 1. 로그인 붙였으니 즐겨찾기를 서버 동기화(`user_favorites` 테이블)로
