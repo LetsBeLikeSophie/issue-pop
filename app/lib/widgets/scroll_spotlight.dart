@@ -57,9 +57,15 @@ class ScrollSpotlightController extends ChangeNotifier {
     scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
   }
 
+  /// 2026-09-26: 맨 아래로 한 번에 점프하니 중간 내용을 다 건너뛴다는
+  /// 피드백 — 화면 한 장(viewportDimension) 높이만큼씩 눌러서 내려가는
+  /// 방식으로 바꿈("페이지다운"과 같은 느낌). 맨 아래 근처에서 눌러도
+  /// maxScrollExtent를 넘지 않게 clamp.
   void scrollToBottom() {
+    final position = scrollController.position;
+    final target = (position.pixels + position.viewportDimension).clamp(0.0, position.maxScrollExtent);
     scrollController.animateTo(
-      scrollController.position.maxScrollExtent,
+      target,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -94,7 +100,7 @@ class ScrollJumpFab extends StatelessWidget {
               if (controller.showScrollBottom) const SizedBox(height: 8),
             ],
             if (controller.showScrollBottom)
-              _JumpButton(icon: Icons.arrow_downward, tooltip: '맨 아래로', onPressed: controller.scrollToBottom),
+              _JumpButton(icon: Icons.arrow_downward, tooltip: '아래로', onPressed: controller.scrollToBottom),
           ],
         );
       },
