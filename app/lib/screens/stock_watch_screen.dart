@@ -293,7 +293,12 @@ class _SectorFilterDropdown extends StatelessWidget {
   }
 }
 
-class _StockCard extends StatelessWidget {
+/// 2026-09-26: 뉴스 목록을 항상 다 펼쳐서 보여주던 걸 홈 화면 이슈
+/// 카드(ExpandableIssueCard)처럼 바꿈 — 최신 기사 1건만 미리보기로
+/// 보여주고, 나머지는 헤더를 눌러야 펼쳐짐. 가격도 헤더 좌측 종목명과
+/// 나란히 두지 않고 우측으로 옮겨서(등락률과 세로로 묶음) 한눈에 훑기
+/// 쉽게 함.
+class _StockCard extends StatefulWidget {
   const _StockCard({
     super.key,
     required this.watch,
@@ -313,64 +318,114 @@ class _StockCard extends StatelessWidget {
   final VoidCallback onTapPrice;
 
   @override
+  State<_StockCard> createState() => _StockCardState();
+}
+
+class _StockCardState extends State<_StockCard> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final watch = widget.watch;
     final quote = watch.quote;
+    final news = watch.news;
+    final latest = news.isEmpty ? null : news.first;
+    final rest = news.length > 1 ? news.sublist(1) : const <StockNewsItem>[];
+    final hasMore = rest.isNotEmpty;
+
     return AppCard(
       radius: 12,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-              ),
-              // 2026-09-25: 등락률을 헤더 우측에 색이 있는 배경 pill로
-              // 한 번 더 보여줌(아래 큰 가격 옆에도 나오지만, 여러 카드를
-              // 훑어볼 땐 이 pill 색만으로도 상승/하락이 바로 구분됨).
-              if (quote != null)
-                AppBadge.filled(
-                  label: _formatPercent(quote.percent),
-                  background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
-                  foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
-                  mono: true,
-                ),
-            ],
-          ),
-          if (quote != null) ...[
-            const SizedBox(height: 6),
-            InkWell(
-              onTap: usdKrwRate == null ? null : onTapPrice,
-              // 2026-09-25: 가격을 카드에서 가장 무게감 있는 숫자로 —
-              // 모노스페이스 + 큰 사이즈로 키움(예전엔 종목명과 비슷한
-              // 크기라 "주식 앱인데 가격이 안 보인다"는 인상이었음).
-              child: Text(
-                showKrw && usdKrwRate != null ? _formatKrw(quote.price, usdKrwRate!) : _formatUsd(quote.price),
-                style: AppTypography.mono(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: hasMore ? () => setState(() => _expanded = !_expanded) : null,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  ),
+                  if (quote != null) ...[
+                    const SizedBox(width: 8),
+                    // 가격/등락률을 우측에 세로로 묶음 — 가격 탭은 통화
+                    // 토글(카드 펼치기와는 별개 동작)이라 안쪽에 따로
+                    // InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안 겹치게 함.
+                    InkWell(
+                      onTap: widget.usdKrwRate == null ? null : widget.onTapPrice,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            widget.showKrw && widget.usdKrwRate != null
+                                ? _formatKrw(quote.price, widget.usdKrwRate!)
+                                : _formatUsd(quote.price),
+                            style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
+                          ),
+                          const SizedBox(height: 2),
+                          AppBadge.filled(
+                            label: _formatPercent(quote.percent),
+                            background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
+                            foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                            mono: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (hasMore) ...[
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
+                    ),
+                  ],
+                ],
               ),
             ),
-          ],
-          if (watch.news.isEmpty)
+          ),
+          if (latest == null)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
               child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
             )
           else ...[
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Divider(height: 1, color: AppColors.line),
+              padding: EdgeInsets.fromLTRB(14, 0, 14, hasMore ? 8 : 12),
+              child: _NewsRow(item: latest),
             ),
-            // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은 넣지
-            // 말아달라던 예전 결정과 안 부딪히면서, 신문 지면에서 기사
-            // 사이를 가르는 느낌 — expandable_issue_card.dart와 같은 처리).
-            for (var i = 0; i < watch.news.length; i++) ...[
-              if (i != 0) Divider(height: 1, color: AppColors.divider),
-              _NewsRow(item: watch.news[i]),
-            ],
+            if (hasMore)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: !_expanded
+                    ? const SizedBox(width: double.infinity)
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                        child: Column(
+                          children: [
+                            Divider(height: 1, color: AppColors.line),
+                            // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은
+                            // 넣지 말아달라던 예전 결정과 안 부딪히면서, 신문
+                            // 지면에서 기사 사이를 가르는 느낌 —
+                            // expandable_issue_card.dart와 같은 처리).
+                            for (var i = 0; i < rest.length; i++) ...[
+                              if (i != 0) Divider(height: 1, color: AppColors.divider),
+                              _NewsRow(item: rest[i]),
+                            ],
+                          ],
+                        ),
+                      ),
+              ),
           ],
         ],
       ),
