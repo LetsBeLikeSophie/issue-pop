@@ -253,6 +253,11 @@ class _StockCardState extends State<_StockCard> {
     return AppCard(
       radius: 12,
       padding: EdgeInsets.zero,
+      // 2026-09-26: 홈 화면 이슈 카드(ExpandableIssueCard)는 펼치면 테두리가
+      // accent로 진해지는데, 이 카드는 AppCard를 그냥 써서 그 표시가
+      // 빠져 있었음 — 같은 컴포넌트를 쓰게 맞춤.
+      highlighted: _expanded,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -267,7 +272,10 @@ class _StockCardState extends State<_StockCard> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      AppBadge.filled(label: watch.ticker, background: AppColors.accent2Soft, foreground: AppColors.accent2),
+                      // 2026-09-26: accent2(경고/하락 톤)를 쓰고 있어서 위
+                      // 티커 칩(RemovableChip, accent 톤)과 같은 티커인데
+                      // 색이 달라 보였음 — accent로 맞춤.
+                      AppBadge.filled(label: watch.ticker, background: AppColors.accentSoft, foreground: AppColors.accent),
                       const SizedBox(width: 7),
                       Expanded(
                         child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
@@ -651,8 +659,8 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                               children: [
                                 AppBadge.filled(
                                   label: m.ticker,
-                                  background: AppColors.accent2Soft,
-                                  foreground: AppColors.accent2,
+                                  background: AppColors.accentSoft,
+                                  foreground: AppColors.accent,
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(

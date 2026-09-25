@@ -7,6 +7,7 @@ import '../favorites_store.dart';
 import '../models/issue.dart';
 import '../theme.dart';
 import 'app_badge.dart';
+import 'app_card.dart';
 
 /// 이슈 하나를 나타내는 카드 — "이슈판" 프로토타입 아티팩트의 카드
 /// 레이아웃을 그대로 앱에 옮긴 것(랭크·카테고리 배지·세리프 키워드·
@@ -162,17 +163,15 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                 ),
             ],
           ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              // 2026-09-20: "클린 뉴스룸" 톤 — 카드 구분을 그림자 대신
-              // 얇은 라인으로만 함(F안 레퍼런스).
-              // 2026-09-25: 펼친 카드가 접힌 카드들 사이에서 눈에 안 띈다는
-              // 피드백 — 배경이 아니라 테두리 색을 펼쳤을 때만 accent로
-              // 진하게 바꿔서 표시함(패널 안쪽 색은 그대로 유지).
-              border: Border.all(color: _expanded ? AppColors.accent : AppColors.line),
-              borderRadius: BorderRadius.circular(10),
-            ),
+          child: AppCard(
+            padding: EdgeInsets.zero,
+            // 2026-09-25: 펼친 카드가 접힌 카드들 사이에서 눈에 안 띈다는
+            // 피드백 — 배경이 아니라 테두리 색을 펼쳤을 때만 accent로
+            // 진하게 바꿔서 표시함(패널 안쪽 색은 그대로 유지).
+            // 2026-09-26: 관심 종목 카드(_StockCard)와 같은 AppCard를 쓰게
+            // 바꿈 — highlighted를 몰라서 각자 테두리를 손으로 그리고
+            // 있었더니 관심 종목 쪽엔 이 펼침 표시 자체가 빠져 있었음.
+            highlighted: _expanded,
             clipBehavior: Clip.antiAlias,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

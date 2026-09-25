@@ -15,19 +15,30 @@ class AppCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(14),
     this.radius = 10,
+    this.highlighted = false,
+    this.clipBehavior = Clip.none,
   });
 
   final Widget child;
   final EdgeInsets padding;
   final double radius;
 
+  /// 2026-09-26: expandable_issue_card.dart가 이 위젯 대신 똑같은
+  /// 스타일(배경+테두리+radius)을 손으로 다시 그려서 "펼치면 테두리가
+  /// accent로 진해짐"을 표현하고 있었음(관심 종목 카드는 AppCard를
+  /// 그대로 써서 이 상태 표시가 아예 없었음 — 화면마다 카드 톤이 다시
+  /// 갈라진 원인). true면 테두리를 accent로, 아니면 기본 line으로.
+  final bool highlighted;
+  final Clip clipBehavior;
+
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: padding,
+      clipBehavior: clipBehavior,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: highlighted ? AppColors.accent : AppColors.line),
         borderRadius: BorderRadius.circular(radius),
       ),
       child: child,
