@@ -199,10 +199,12 @@ String _formatKrw(double usdPrice, double rate) {
 }
 
 /// 2026-09-26: 뉴스 목록을 항상 다 펼쳐서 보여주던 걸 홈 화면 이슈
-/// 카드(ExpandableIssueCard)처럼 바꿈 — 최신 기사 1건만 미리보기로
-/// 보여주고, 나머지는 헤더를 눌러야 펼쳐짐. 가격도 헤더 좌측 종목명과
-/// 나란히 두지 않고 우측으로 옮겨서(등락률과 가로로 나란히) 한눈에
-/// 훑기 쉽게 함.
+/// 카드(ExpandableIssueCard)처럼 헤더를 눌러야 펼쳐지게 바꿈. 처음엔
+/// 최신 기사 1건을 미리보기로 항상 보여줬는데, 그게 실제로는 외부
+/// 링크라서 "펼치려고 눌렀는데 기사로 나가버린다"는 피드백으로
+/// 없앰 — 접혀있을 땐 건수 텍스트만(누를 게 없음), 펼쳐야만 실제
+/// 링크 목록이 나옴. 가격도 헤더 좌측 종목명과 나란히 두지 않고
+/// 우측으로 옮겨서(등락률과 가로로 나란히) 한눈에 훑기 쉽게 함.
 class _StockCard extends StatefulWidget {
   const _StockCard({
     super.key,
@@ -234,9 +236,7 @@ class _StockCardState extends State<_StockCard> {
     final watch = widget.watch;
     final quote = watch.quote;
     final news = watch.news;
-    final latest = news.isEmpty ? null : news.first;
-    final rest = news.length > 1 ? news.sublist(1) : const <StockNewsItem>[];
-    final hasMore = rest.isNotEmpty;
+    final hasNews = news.isNotEmpty;
 
     return AppCard(
       radius: 12,
@@ -246,7 +246,7 @@ class _StockCardState extends State<_StockCard> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: hasMore ? () => setState(() => _expanded = !_expanded) : null,
+            onTap: hasNews ? () => setState(() => _expanded = !_expanded) : null,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
               child: Row(
@@ -288,7 +288,7 @@ class _StockCardState extends State<_StockCard> {
                       ),
                     ),
                   ],
-                  if (hasMore) ...[
+                  if (hasNews) ...[
                     const SizedBox(width: 4),
                     AnimatedRotation(
                       turns: _expanded ? 0.25 : 0,
@@ -300,41 +300,43 @@ class _StockCardState extends State<_StockCard> {
               ),
             ),
           ),
-          if (latest == null)
+          if (!hasNews)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
               child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
             )
-          else ...[
-            Padding(
-              padding: EdgeInsets.fromLTRB(14, 0, 14, hasMore ? 8 : 12),
-              child: _NewsRow(item: latest),
-            ),
-            if (hasMore)
-              AnimatedSize(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                child: !_expanded
-                    ? const SizedBox(width: double.infinity)
-                    : Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                        child: Column(
-                          children: [
-                            Divider(height: 1, color: AppColors.line),
-                            // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은
-                            // 넣지 말아달라던 예전 결정과 안 부딪히면서, 신문
-                            // 지면에서 기사 사이를 가르는 느낌 —
-                            // expandable_issue_card.dart와 같은 처리).
-                            for (var i = 0; i < rest.length; i++) ...[
-                              if (i != 0) Divider(height: 1, color: AppColors.divider),
-                              _NewsRow(item: rest[i]),
-                            ],
+          else
+            // 2026-09-26: 최신 기사를 미리보기로 항상 보여줬는데, 그
+            // 미리보기가 곧바로 외부 링크라서 "펼치려고 눌렀는데 링크로
+            // 나가버린다"는 피드백을 받음 — 접혀있을 땐 건수만 텍스트로
+            // 보여주고(누를 게 없음), 펼쳤을 때만 실제 링크 목록이
+            // 나오게 분리함.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: !_expanded
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                      child: Text('관련 뉴스 ${news.length}건', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                      child: Column(
+                        children: [
+                          Divider(height: 1, color: AppColors.line),
+                          // 도트 대신 얇은 구분선으로 목록처럼 보이게 함(아이콘은
+                          // 넣지 말아달라던 예전 결정과 안 부딪히면서, 신문
+                          // 지면에서 기사 사이를 가르는 느낌 —
+                          // expandable_issue_card.dart와 같은 처리).
+                          for (var i = 0; i < news.length; i++) ...[
+                            if (i != 0) Divider(height: 1, color: AppColors.divider),
+                            _NewsRow(item: news[i]),
                           ],
-                        ),
+                        ],
                       ),
-              ),
-          ],
+                    ),
+            ),
         ],
       ),
     );
