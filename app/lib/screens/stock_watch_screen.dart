@@ -44,12 +44,6 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     setState(() => _showKrw = !_showKrw);
   }
 
-  /// 2026-09-26: 처음엔 섹터별로 항상 묶어서 보여줬는데("기술" 등
-  /// 섹터 라벨이 카드 사이마다 계속 나옴), "굳이 카테고리가 다 보일
-  /// 필요는 없다"는 피드백으로 기본은 평평한 목록으로 바꾸고, 특정
-  /// 섹터만 보고 싶을 때 고르는 드롭다운으로 옮김. null이면 전체.
-  String? _sectorFilter;
-
   @override
   void initState() {
     super.initState();
@@ -121,22 +115,6 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                     );
                   }
 
-                  // 섹터 목록(중복 제거, 서버가 내려준 첫 등장 순서 유지) —
-                  // 더는 목록을 섹터로 나누지 않고, 드롭다운 필터 옵션으로만 씀.
-                  final sectors = <String>[];
-                  for (final w in watches) {
-                    if (!sectors.contains(w.sector)) sectors.add(w.sector);
-                  }
-                  // 필터로 고른 섹터의 종목을 전부 지워버리면 DropdownButton이
-                  // 더는 목록에 없는 value를 들고 있게 돼서 깨짐 — 그 경우
-                  // "전체 업종"으로 취급함(상태 자체는 다음 상호작용 전까지
-                  // 그대로 둠, build 도중 setState 없이 조용히 보정).
-                  final effectiveFilter = (_sectorFilter != null && sectors.contains(_sectorFilter))
-                      ? _sectorFilter
-                      : null;
-                  final filtered =
-                      effectiveFilter == null ? watches : watches.where((w) => w.sector == effectiveFilter).toList();
-
                   return RefreshIndicator(
                     onRefresh: _refresh,
                     child: SingleChildScrollView(
@@ -179,15 +157,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          if (sectors.length > 1) ...[
-                            _SectorFilterDropdown(
-                              sectors: sectors,
-                              value: effectiveFilter,
-                              onChanged: (v) => setState(() => _sectorFilter = v),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          for (final w in filtered) ...[
+                          for (final w in watches) ...[
                             _StockCard(
                               key: _spotlight.keyFor(w.ticker),
                               watch: w,
@@ -226,71 +196,6 @@ String _formatKrw(double usdPrice, double rate) {
     buffer.write(digits[i]);
   }
   return '$buffer원';
-}
-
-/// 섹터별 색 — 카테고리 색과 겹치지 않게 별도로 둠(백엔드가 색을 안
-/// 내려주고 섹터 이름 문자열만 주므로, 여기서 이름→색 매핑을 유지).
-const Map<String, Color> _sectorColors = {
-  '기술': Color(0xFF3D6FA8),
-  '소비재': Color(0xFFA17A1F),
-  '자동차': Color(0xFF4A8A4F),
-  '금융': Color(0xFF5B6BB0),
-  '헬스케어': Color(0xFFC04F7D),
-  '에너지': Color(0xFFB3623A),
-  '산업재': Color(0xFF7A7F6F),
-  '통신': Color(0xFF3F8F8A),
-  '소재': Color(0xFF8C6B4F),
-  '부동산': Color(0xFF7A5BA0),
-  '유틸리티': Color(0xFF4F7A6B),
-};
-
-Color _sectorColor(String sector) => _sectorColors[sector] ?? AppColors.inkFaint;
-
-/// 2026-09-26: 접고 펼 수 있게 바꿈 — 안 쓰는 섹터는 접어서 화면을
-/// 덜 차지하게 할 수 있음(기본은 펼침).
-/// 2026-09-26: 섹터별로 항상 나눠서 보여주던 걸(기술/금융/… 라벨이
-/// 카드 사이마다 반복) 없애고, 필요할 때만 고르는 드롭다운으로 옮김 —
-/// 평소엔 전체 목록이 그냥 평평하게 보임.
-class _SectorFilterDropdown extends StatelessWidget {
-  const _SectorFilterDropdown({required this.sectors, required this.value, required this.onChanged});
-
-  final List<String> sectors;
-  final String? value;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: AppColors.chipBg, borderRadius: BorderRadius.circular(8)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String?>(
-          value: value,
-          isDense: true,
-          icon: Icon(Icons.expand_more, size: 16, color: AppColors.inkFaint),
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.ink),
-          dropdownColor: AppColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          onChanged: onChanged,
-          items: [
-            const DropdownMenuItem(value: null, child: Text('전체 업종')),
-            for (final s in sectors)
-              DropdownMenuItem(
-                value: s,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(color: _sectorColor(s), shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    Text(s),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// 2026-09-26: 뉴스 목록을 항상 다 펼쳐서 보여주던 걸 홈 화면 이슈
