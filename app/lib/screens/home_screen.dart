@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
+import '../widgets/scroll_spotlight.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
 import 'keyword_watch_screen.dart';
@@ -77,6 +78,12 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PageController _pageController;
   int _page = 0;
 
+  /// 2026-09-26: 관심 종목/워치에 있던 "맨 위로/아래로" 버튼을 홈
+  /// 화면에도 적용 — 페이지(전체/정치/경제/…)마다 스크롤 위치가
+  /// 따로라서 _pageSpecs 개수만큼 컨트롤러를 따로 둠(현재 보이는
+  /// 페이지의 것만 FAB에 씀).
+  late final List<ScrollSpotlightController> _pageSpotlights;
+
   /// 2026-09-21: 상단바의 "N분 전 업데이트" 표시용. 서버가 30분마다
   /// 재수집하면서 기록해두는 시각을 한 번 받아온 다음, 1분마다
   /// setState만 다시 해서(네트워크 재요청 없이) 상대 시간 문구를
@@ -91,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _trending = widget.api.getTrending(limit: 40);
     _index = widget.api.getIndex();
     _pageController = PageController();
+    _pageSpotlights = List.generate(_pageSpecs.length, (_) => ScrollSpotlightController());
     widget.api.getLastRefresh().then((t) {
       if (mounted) setState(() => _lastRefreshAt = t);
     });
@@ -103,6 +111,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _searchController.dispose();
     _pageController.dispose();
+    for (final s in _pageSpotlights) {
+      s.dispose();
+    }
     _clockTimer?.cancel();
     super.dispose();
   }
@@ -149,6 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isSearching = _query.isNotEmpty;
 
     return Scaffold(
+      floatingActionButton: isSearching ? null : ScrollJumpFab(controller: _pageSpotlights[_page]),
       body: SafeArea(
         child: Column(
           children: [
@@ -238,14 +250,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _pageController,
                   onPageChanged: (i) => setState(() => _page = i),
                   children: [
-                    for (final spec in _pageSpecs)
+                    for (var i = 0; i < _pageSpecs.length; i++)
                       _CategoryPage(
-                        spec: spec,
+                        spec: _pageSpecs[i],
                         trending: _trending,
                         index: _index,
                         api: widget.api,
                         sorter: _sorted,
                         onRefresh: _refresh,
+                        spotlight: _pageSpotlights[i],
                       ),
                   ],
                 ),
@@ -271,6 +284,7 @@ class _CategoryPage extends StatelessWidget {
     required this.api,
     required this.sorter,
     required this.onRefresh,
+    required this.spotlight,
   });
 
   final _PageSpec spec;
@@ -279,6 +293,7 @@ class _CategoryPage extends StatelessWidget {
   final ApiClient api;
   final List<T> Function<T extends IssueSummary>(List<T>) sorter;
   final Future<void> Function() onRefresh;
+  final ScrollSpotlightController spotlight;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +301,7 @@ class _CategoryPage extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
+        controller: spotlight.scrollController,
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
           const SwipeHintRow('카드를 왼쪽으로 밀면 저장할 수 있어요'),
@@ -508,7 +524,6 @@ class _LastRefreshLabel extends StatelessWidget {
       text,
       style: TextStyle(
         fontSize: 10.5,
-        fontWeight: FontWeight.w600,
         color: stale ? AppColors.accent2 : AppColors.inkFaint,
       ),
     );

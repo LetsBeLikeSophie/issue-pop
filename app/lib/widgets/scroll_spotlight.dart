@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../theme.dart';
 
@@ -8,6 +9,9 @@ import '../theme.dart';
 /// 갖고 있어서 하나로 뺌 — 같은 로직이 두 곳에 있으면 버그 고칠 때
 /// 한쪽만 고치고 잊어버리기 쉬움.
 ///
+/// 2026-09-26: "위로"뿐 아니라 "아래로" 버튼도 같이 달라는 요청으로
+/// showScrollBottom/scrollToBottom을 추가하고, 홈 화면에도 적용함.
+///
 /// 사용법: State에서 `late final _spotlight = ScrollSpotlightController();`
 /// 로 들고, `_spotlight.scrollController`를 스크롤 위젯에 연결하고,
 /// 항목마다 `key: _spotlight.keyFor(id)`를 달아주면 됨. dispose()에서
@@ -15,16 +19,25 @@ import '../theme.dart';
 class ScrollSpotlightController extends ChangeNotifier {
   ScrollSpotlightController() {
     scrollController.addListener(_onScroll);
+    // 스크롤을 한 번도 안 해도(=콘텐츠가 처음부터 화면보다 길면) "아래로"
+    // 버튼이 바로 보여야 해서, 첫 프레임이 그려진 직후(스크롤 metrics가
+    // 확정된 시점) 한 번 더 계산함 — 리스너는 실제로 스크롤해야만 불림.
+    SchedulerBinding.instance.addPostFrameCallback((_) => _onScroll());
   }
 
   final scrollController = ScrollController();
   final Map<String, GlobalKey> _keys = {};
   bool showScrollTop = false;
+  bool showScrollBottom = false;
 
   void _onScroll() {
-    final show = scrollController.offset > 300;
-    if (show != showScrollTop) {
-      showScrollTop = show;
+    if (!scrollController.hasClients) return;
+    final position = scrollController.position;
+    final top = position.pixels > 300;
+    final bottom = position.maxScrollExtent - position.pixels > 300;
+    if (top != showScrollTop || bottom != showScrollBottom) {
+      showScrollTop = top;
+      showScrollBottom = bottom;
       notifyListeners();
     }
   }
@@ -44,6 +57,14 @@ class ScrollSpotlightController extends ChangeNotifier {
     scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
   }
 
+  void scrollToBottom() {
+    scrollController.animateTo(
+      scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   void dispose() {
     scrollController.dispose();
@@ -51,10 +72,11 @@ class ScrollSpotlightController extends ChangeNotifier {
   }
 }
 
-/// [ScrollSpotlightController.showScrollTop]에 따라 나타났다 사라지는
-/// "맨 위로" FAB. 숨겨져 있을 때는 크기 0이라 탭 영역도 없음.
-class ScrollTopFab extends StatelessWidget {
-  const ScrollTopFab({super.key, required this.controller});
+/// [ScrollSpotlightController]의 위치에 따라 "맨 위로"/"맨 아래로"
+/// 버튼을 필요한 것만 세로로 쌓아서 보여줌. 둘 다 숨겨져 있으면 크기
+/// 0이라 탭 영역도 없음.
+class ScrollJumpFab extends StatelessWidget {
+  const ScrollJumpFab({super.key, required this.controller});
 
   final ScrollSpotlightController controller;
 
@@ -63,14 +85,37 @@ class ScrollTopFab extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        if (!controller.showScrollTop) return const SizedBox.shrink();
-        return FloatingActionButton.small(
-          onPressed: controller.scrollToTop,
-          backgroundColor: AppColors.ink,
-          tooltip: '맨 위로',
-          child: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
+        if (!controller.showScrollTop && !controller.showScrollBottom) return const SizedBox.shrink();
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (controller.showScrollTop) ...[
+              _JumpButton(icon: Icons.arrow_upward, tooltip: '맨 위로', onPressed: controller.scrollToTop),
+              if (controller.showScrollBottom) const SizedBox(height: 8),
+            ],
+            if (controller.showScrollBottom)
+              _JumpButton(icon: Icons.arrow_downward, tooltip: '맨 아래로', onPressed: controller.scrollToBottom),
+          ],
         );
       },
+    );
+  }
+}
+
+class _JumpButton extends StatelessWidget {
+  const _JumpButton({required this.icon, required this.tooltip, required this.onPressed});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.small(
+      onPressed: onPressed,
+      backgroundColor: AppColors.ink,
+      tooltip: tooltip,
+      child: Icon(icon, color: Colors.white, size: 18),
     );
   }
 }

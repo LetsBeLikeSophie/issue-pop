@@ -96,7 +96,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: ScrollTopFab(controller: _spotlight),
+      floatingActionButton: ScrollJumpFab(controller: _spotlight),
       body: SafeArea(
         child: Column(
           children: [

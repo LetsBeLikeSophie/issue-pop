@@ -44,6 +44,17 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     setState(() => _showKrw = !_showKrw);
   }
 
+  /// 2026-09-26: "섹터 구분이 꼭 필요한가" 싶다는 피드백으로, 없애는
+  /// 대신 접고 펼 수 있게 함 — 안 쓰는 섹터는 접어두면 되고, 기본은
+  /// 펼친 상태(map에 없으면 true).
+  final Map<String, bool> _sectorExpanded = {};
+
+  bool _isSectorExpanded(String sector) => _sectorExpanded[sector] ?? true;
+
+  void _toggleSector(String sector) {
+    setState(() => _sectorExpanded[sector] = !_isSectorExpanded(sector));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +101,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: ScrollTopFab(controller: _spotlight),
+      floatingActionButton: ScrollJumpFab(controller: _spotlight),
       body: SafeArea(
         child: Column(
           children: [
@@ -165,18 +176,33 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                           ),
                           const SizedBox(height: 16),
                           for (final entry in bySector.entries) ...[
-                            _SectorLabel(entry.key),
+                            _SectorLabel(
+                              entry.key,
+                              expanded: _isSectorExpanded(entry.key),
+                              onTap: () => _toggleSector(entry.key),
+                            ),
                             const SizedBox(height: 6),
-                            for (final w in entry.value) ...[
-                              _StockCard(
-                                key: _spotlight.keyFor(w.ticker),
-                                watch: w,
-                                showKrw: _showKrw,
-                                usdKrwRate: _usdKrwRate,
-                                onTapPrice: _toggleCurrency,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 160),
+                              curve: Curves.easeOut,
+                              alignment: Alignment.topCenter,
+                              child: !_isSectorExpanded(entry.key)
+                                  ? const SizedBox(width: double.infinity)
+                                  : Column(
+                                      children: [
+                                        for (final w in entry.value) ...[
+                                          _StockCard(
+                                            key: _spotlight.keyFor(w.ticker),
+                                            watch: w,
+                                            showKrw: _showKrw,
+                                            usdKrwRate: _usdKrwRate,
+                                            onTapPrice: _toggleCurrency,
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
+                                      ],
+                                    ),
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ],
@@ -228,24 +254,38 @@ const Map<String, Color> _sectorColors = {
 
 Color _sectorColor(String sector) => _sectorColors[sector] ?? AppColors.inkFaint;
 
+/// 2026-09-26: 접고 펼 수 있게 바꿈 — 안 쓰는 섹터는 접어서 화면을
+/// 덜 차지하게 할 수 있음(기본은 펼침).
 class _SectorLabel extends StatelessWidget {
-  const _SectorLabel(this.sector);
+  const _SectorLabel(this.sector, {required this.expanded, required this.onTap});
 
   final String sector;
+  final bool expanded;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Row(
-        children: [
-          Container(width: 3, height: 12, decoration: BoxDecoration(color: _sectorColor(sector), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(width: 7),
-          Text(
-            sector,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkSoft, letterSpacing: 0.3),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+        child: Row(
+          children: [
+            Container(width: 3, height: 12, decoration: BoxDecoration(color: _sectorColor(sector), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 7),
+            Text(
+              sector,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkSoft, letterSpacing: 0.3),
+            ),
+            const SizedBox(width: 4),
+            AnimatedRotation(
+              turns: expanded ? 0.5 : 0,
+              duration: const Duration(milliseconds: 150),
+              child: Icon(Icons.keyboard_arrow_down, size: 16, color: AppColors.inkFaint),
+            ),
+          ],
+        ),
       ),
     );
   }
