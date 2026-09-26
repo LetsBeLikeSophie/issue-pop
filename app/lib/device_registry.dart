@@ -83,14 +83,14 @@ class DeviceRegistry {
     await api.deleteStockWatch(watchId);
   }
 
-  Future<bool> getWordOfDayAlert() async {
+  Future<WordOfDayAlertSettings> getWordOfDayAlert() async {
     final id = await _deviceId();
     return api.getWordOfDayAlert(id);
   }
 
-  Future<void> setWordOfDayAlert(bool enabled) async {
+  Future<WordOfDayAlertSettings> setWordOfDayAlert(WordOfDayAlertSettings settings) async {
     final id = await _deviceId();
-    await api.setWordOfDayAlert(id, enabled);
+    return api.setWordOfDayAlert(id, settings);
   }
 
   Future<void> submitFeedback(String message, {String? contactEmail}) async {

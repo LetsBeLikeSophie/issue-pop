@@ -119,11 +119,12 @@ class Device(SQLModel, table=True):
     keyword_alert_quiet_end: int = 7
 
     # 2026-09-11: "오늘의 단어"(오늘 기사에서 뽑은 어려운 말 + 뜻풀이) 알림
-    # on/off. 2026-09-26: 실제 발송 로직 추가 — digest_hour처럼 기기마다
-    # 시간을 고르게 하기엔 무거운 기능이 아니라고 판단해서, 서버 고정
-    # 시각(WORD_OF_DAY_ALERT_HOUR_KST) 하나로 감(api.py의
+    # on/off. 2026-09-26: 처음엔 서버 고정 시각(9시) 하나로 감 —
+    # "오늘의 이슈팝이랑 왜 시각을 못 고르냐"는 피드백으로 digest_hour와
+    # 완전히 같은 패턴(기기별 시각 선택)으로 바꿈(api.py의
     # _word_of_day_alert_check 참고).
     word_of_day_enabled: bool = False
+    word_of_day_hour: int = 9
     last_word_of_day_sent_at: datetime | None = None  # 하루 중복 발송 방지용(last_digest_sent_at과 같은 패턴)
 
 
@@ -340,6 +341,7 @@ def _migrate_devices_table() -> None:
         # 쓰지 않아 무해함.
         additions = {
             "word_of_day_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "word_of_day_hour": "INTEGER NOT NULL DEFAULT 9",
             "keyword_alert_enabled": "INTEGER NOT NULL DEFAULT 0",
             "keyword_alert_quiet_start": "INTEGER NOT NULL DEFAULT 23",
             "keyword_alert_quiet_end": "INTEGER NOT NULL DEFAULT 7",

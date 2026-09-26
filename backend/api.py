@@ -65,10 +65,6 @@ CLUSTER_AUDIT_HOUR_KST = 4
 CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS = 30 * 60
 DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
 DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
-# 2026-09-26: "오늘의 단어 알림" 발송 시각 — digest_hour처럼 기기마다
-# 고르게 하기엔 무거운 기능은 아니라고 봐서 서버 전체 고정 시각 하나로
-# 감(신문 조간처럼). _digest_loop와 같은 주기/중복방지 방식을 그대로 씀.
-WORD_OF_DAY_ALERT_HOUR_KST = 9
 # 2026-09-14: 오늘의 단어를 유저가 그날 처음 GET /word-of-day를 부를 때
 # 그 자리에서(사전 API 최대 15번 + LLM 1번, 순차 호출) 계산해서 그
 # 첫 요청이 눈에 띄게 느리다는 피드백을 받음("너무 늦게 뜨거든") —
@@ -459,13 +455,13 @@ def _digest_check() -> list[int]:
 
 
 def _word_of_day_alert_check(force: bool = False) -> list[int]:
-    """지금 KST 시각이 WORD_OF_DAY_ALERT_HOUR_KST이면(또는 force=True면
-    시각 무관하게), 오늘의 단어 알림을 켠 기기에 발송함. _digest_check와
-    같은 중복방지 방식(last_word_of_day_sent_at). word_of_day는 이미
-    _word_of_day_loop가 하루 한 번만 새로 뽑아서 캐싱해두므로(=idempotent)
-    여기선 그냥 오늘 값을 가져다 쓰기만 함."""
-    if not force and datetime.now(KST).hour != WORD_OF_DAY_ALERT_HOUR_KST:
-        return []
+    """지금 KST 시각과 기기별 word_of_day_hour가 일치하면(또는 force=True면
+    시각 무관하게) 오늘의 단어 알림을 켠 기기에 발송함 — digest_hour와
+    같은 패턴으로 2026-09-26에 서버 전체 고정 시각에서 기기별 설정
+    가능하게 바꿈("오늘의 이슈팝이랑 왜 다르게 고정이냐"는 피드백).
+    중복방지도 _digest_check와 동일(last_word_of_day_sent_at). word_of_day는
+    이미 _word_of_day_loop가 하루 한 번만 새로 뽑아서 캐싱해두므로
+    (=idempotent) 여기선 그냥 오늘 값을 가져다 쓰기만 함."""
     row = _get_or_create_word_of_day()
     if row is None or not row.word:
         return []
@@ -474,10 +470,14 @@ def _word_of_day_alert_check(force: bool = False) -> list[int]:
 
     from sqlmodel import select
 
+    now_kst = datetime.now(KST)
     sent_to: list[int] = []
     now_utc = datetime.now(timezone.utc)
     with db.get_session() as session:
-        devices = session.exec(select(db.Device).where(db.Device.word_of_day_enabled)).all()
+        query = select(db.Device).where(db.Device.word_of_day_enabled)
+        if not force:
+            query = query.where(db.Device.word_of_day_hour == now_kst.hour)
+        devices = session.exec(query).all()
         for device in devices:
             if not force and device.last_word_of_day_sent_at is not None:
                 last_sent = device.last_word_of_day_sent_at
@@ -1277,19 +1277,33 @@ async def get_word_of_day():
 
 class WordOfDayAlertIn(BaseModel):
     enabled: bool
+    hour: int
+
+
+def _word_of_day_alert_dict(device: db.Device) -> dict:
+    return {
+        "device_id": device.id,
+        "word_of_day_enabled": device.word_of_day_enabled,
+        "word_of_day_hour": device.word_of_day_hour,
+    }
 
 
 @app.put("/devices/{device_id}/word-of-day-alert")
 async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
-    """digest_hour와 같은 단계 — 설정 저장까지만, 실제 발송은 아직."""
+    """오늘의 단어 알림 — 2026-09-26: "오늘의 이슈팝이랑 왜 시각을 못
+    고르냐"는 피드백으로, 서버 전체 고정 9시에서 digest_hour와 같은
+    기기별 시각 선택으로 바꿈."""
+    if not (0 <= body.hour <= 23):
+        raise HTTPException(status_code=422, detail="hour must be 0-23")
     with db.get_session() as session:
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
         device.word_of_day_enabled = body.enabled
+        device.word_of_day_hour = body.hour
         session.add(device)
         session.commit()
-        return {"device_id": device_id, "word_of_day_enabled": device.word_of_day_enabled}
+        return _word_of_day_alert_dict(device)
 
 
 @app.get("/devices/{device_id}/word-of-day-alert")
@@ -1298,7 +1312,7 @@ async def get_word_of_day_alert(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
-        return {"device_id": device_id, "word_of_day_enabled": device.word_of_day_enabled}
+        return _word_of_day_alert_dict(device)
 
 
 @app.post("/digest/run")
@@ -1313,9 +1327,9 @@ async def run_digest_check():
 
 @app.post("/word-of-day/alert-run")
 async def run_word_of_day_alert_check(force: bool = False):
-    """개발/테스트용 — 고정 시각(WORD_OF_DAY_ALERT_HOUR_KST)까지 기다리지
-    않고 즉시 한 번 실행함. force=true면 시각 일치 여부·중복방지 둘 다
-    무시하고 무조건 발송함(그 외엔 /digest/run과 같은 규칙)."""
+    """개발/테스트용 — 기기별 설정 시각까지 기다리지 않고 즉시 한 번
+    실행함. force=true면 시각 일치 여부·중복방지 둘 다 무시하고
+    무조건 발송함(그 외엔 /digest/run과 같은 규칙)."""
     sent_to = await asyncio.to_thread(_word_of_day_alert_check, force)
     return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
 

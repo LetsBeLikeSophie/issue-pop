@@ -33,7 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
   Future<int?>? _digestHour;
   Future<KeywordAlertSettings>? _keywordAlert;
-  Future<bool>? _wordOfDayEnabled;
+  Future<WordOfDayAlertSettings>? _wordOfDayAlert;
   late final Future<List<SourceOutlet>> _sources;
 
   @override
@@ -41,7 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _digestHour = _devices.getDigestHour();
     _keywordAlert = _devices.getKeywordAlert();
-    _wordOfDayEnabled = _devices.getWordOfDayAlert();
+    _wordOfDayAlert = _devices.getWordOfDayAlert();
     _sources = widget.api.getSources();
   }
 
@@ -103,11 +103,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _toggleWordOfDay(bool on) async {
+  /// 2026-09-26: 오늘의 단어도 오늘의 이슈팝처럼 기기별 발송 시각을
+  /// 고를 수 있게 함(서버 고정 9시에서 변경) — _updateKeywordAlert와
+  /// 같은 낙관적 업데이트 패턴.
+  Future<void> _updateWordOfDayAlert(WordOfDayAlertSettings Function(WordOfDayAlertSettings) update) async {
+    final current = await (_wordOfDayAlert ?? _devices.getWordOfDayAlert());
+    final next = update(current);
     setState(() {
-      _wordOfDayEnabled = Future.value(on);
+      _wordOfDayAlert = Future.value(next);
     });
-    await _devices.setWordOfDayAlert(on);
+    await _devices.setWordOfDayAlert(next);
+  }
+
+  Future<void> _pickWordOfDayHour(int current) async {
+    final picked = await showAppBottomSheet<int>(
+      context,
+      builder: (context) => _HourPickerSheet(selected: current),
+    );
+    if (picked == null) return;
+    await _updateWordOfDayAlert((c) => c.copyWith(hour: picked));
   }
 
   /// 2026-09-11: 오늘의 단어도 다이제스트와 같은 이유로 미리보기 제공 —
@@ -174,16 +188,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // 2026-09-26: 세 알림을 카드 하나에 다 몰아넣었더니 "다
                   // 붙어있어서 헷갈린다"는 피드백 — 서로 발송 시점도
                   // 성격도 다른 별개 기능이라, 카드를 셋으로 나눠서 각자의
-                  // 경계를 눈으로 바로 구분할 수 있게 함. 이름/순서/캡션도
-                  // 다시 정리함:
+                  // 경계를 눈으로 바로 구분할 수 있게 함. 이름/순서도
+                  // 정리함:
                   //   1. 오늘의 이슈팝(구 매일 트렌드 요약 알림)
                   //   2. 오늘의 단어(구 오늘의 단어 알림)
                   //   3. 관심 키워드(구 관심 이슈 알림)
                   // "오늘의 OO" 두 개(정해진 시각에 하루 한 번)를 먼저
                   // 묶고, 성격이 다른 실시간 알림(관심 키워드)을 맨
-                  // 뒤로 뺌. 캡션도 전부 "[무엇을] [언제] 보내드려요"
-                  // 하나의 형식으로 통일해서, 뭘 보내는 알림인지 바로
-                  // 알 수 있게 함.
+                  // 뒤로 뺌.
+                  //
+                  // 2026-09-26 추가: 캡션 문구는 뺐음 — 오늘의 이슈팝/
+                  // 오늘의 단어는 이제 둘 다 "알림 시간" 행이 바로 아래
+                  // 보이니 그걸로 "언제"가 충분히 전달되고, 토글 이름
+                  // 자체가 "뭘" 보내는지도 어느 정도 설명됨(궁금하면
+                  // 아래 "미리보기"도 있음). 관심 키워드만 "뜨는 즉시"
+                  // 오는 실시간 알림이라 캡션 없이는 그 성격이 안
+                  // 드러나서 유일하게 캡션을 남겨둠.
                   //
                   // 오늘의 이슈팝 — 지정한 시각에 하루 한 번.
                   FutureBuilder<int?>(
@@ -197,7 +217,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             _ToggleRow(
                               label: '오늘의 이슈팝',
-                              caption: '오늘 가장 화제인 이슈를 설정한 시각에 보내드려요',
                               value: hour != null,
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
@@ -219,22 +238,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은 어려운
                   // 말 + 예문 + 뜻풀이(국립국어원 API)를 다이제스트와
-                  // 별개로 켜고 끌 수 있게 함. 서버 고정 시각(매일 아침
-                  // 9시)에 발송.
-                  FutureBuilder<bool>(
-                    future: _wordOfDayEnabled,
+                  // 별개로 켜고 끌 수 있게 함. 2026-09-26: 서버 고정
+                  // 9시에서 오늘의 이슈팝과 같은 기기별 시각 선택으로 바꿈.
+                  FutureBuilder<WordOfDayAlertSettings>(
+                    future: _wordOfDayAlert,
                     builder: (context, snapshot) {
+                      final s = snapshot.data;
                       return AppCard(
                         padding: EdgeInsets.zero,
                         radius: 18,
-                        child: _ToggleRow(
-                          label: '오늘의 단어',
-                          caption: '오늘의 어려운 단어를 매일 아침 9시에 보내드려요',
-                          value: snapshot.data ?? false,
-                          onChanged: snapshot.connectionState == ConnectionState.waiting
-                              ? null
-                              : _toggleWordOfDay,
-                          showDivider: false,
+                        child: Column(
+                          children: [
+                            _ToggleRow(
+                              label: '오늘의 단어',
+                              value: s?.enabled ?? false,
+                              onChanged: s == null
+                                  ? null
+                                  : (v) => _updateWordOfDayAlert((c) => c.copyWith(enabled: v)),
+                              showDivider: s?.enabled ?? false,
+                            ),
+                            if (s != null && s.enabled)
+                              _PlainRow(
+                                label: '알림 시간',
+                                trailing: _formatHour(s.hour),
+                                onTap: () => _pickWordOfDayHour(s.hour),
+                                showDivider: false,
+                              ),
+                          ],
                         ),
                       );
                     },
@@ -248,6 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     future: _keywordAlert,
                     builder: (context, snapshot) {
                       final s = snapshot.data;
+                      final quietOff = s != null && s.quietStart == s.quietEnd;
                       return AppCard(
                         padding: EdgeInsets.zero,
                         radius: 18,
@@ -273,20 +304,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 label: '조용한 시간대 종료',
                                 trailing: _formatHour(s.quietEnd),
                                 onTap: () => _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
-                                showDivider: false,
+                                showDivider: quietOff,
                               ),
+                              // 2026-09-26: 시작=종료로 맞추면 "조용한
+                              // 시간대 없음(항상 허용)"으로 동작하는데,
+                              // 직관과 반대라("같은 시각이면 오히려 하루
+                              // 종일 안 옴" 아니냐는 질문을 받음) 그
+                              // 상태일 때만 바로 알려줌.
+                              if (quietOff)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                                  child: Text(
+                                    '시작·종료가 같아서 조용한 시간대가 꺼져있어요 — 언제든 알림이 와요.',
+                                    style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
+                                  ),
+                                ),
                             ],
                           ],
                         ),
                       );
                     },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
-                    child: Text(
-                      '관심 키워드만 조용한 시간대엔 쉬고, 나머지 둘은 정해진 시각에 나가요.',
-                      style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
-                    ),
                   ),
                   const SizedBox(height: 16),
                   _SectionLabel('화면'),

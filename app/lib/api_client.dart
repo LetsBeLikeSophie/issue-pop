@@ -170,22 +170,25 @@ class ApiClient {
     return WordOfDay.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<bool> getWordOfDayAlert(int deviceId) async {
+  /// 2026-09-26: "오늘의 이슈팝이랑 왜 시각을 못 고르냐"는 피드백으로
+  /// bool 하나에서 [WordOfDayAlertSettings](enabled+hour)로 확장함 —
+  /// digest_hour와 완전히 같은 패턴(서버 고정 9시 → 기기별 선택).
+  Future<WordOfDayAlertSettings> getWordOfDayAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
     final res = await _client.get(uri);
     _checkOk(res);
-    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    return map['word_of_day_enabled'] as bool;
+    return WordOfDayAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<void> setWordOfDayAlert(int deviceId, bool enabled) async {
+  Future<WordOfDayAlertSettings> setWordOfDayAlert(int deviceId, WordOfDayAlertSettings settings) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
     final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'enabled': enabled}),
+      body: jsonEncode({'enabled': settings.enabled, 'hour': settings.hour}),
     );
     _checkOk(res);
+    return WordOfDayAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 2026-09-26: "관심 이슈 알림" — 이 기기가 등록한 관심 키워드(관심
@@ -380,6 +383,23 @@ class StockNewsItem {
         source: json['source'] as String? ?? 'Yahoo Finance',
         titleKo: json['title_ko'] as String?,
         published: json['published'] as String?,
+      );
+}
+
+class WordOfDayAlertSettings {
+  const WordOfDayAlertSettings({required this.enabled, required this.hour});
+
+  final bool enabled;
+  final int hour;
+
+  factory WordOfDayAlertSettings.fromJson(Map<String, dynamic> json) => WordOfDayAlertSettings(
+        enabled: json['word_of_day_enabled'] as bool,
+        hour: json['word_of_day_hour'] as int,
+      );
+
+  WordOfDayAlertSettings copyWith({bool? enabled, int? hour}) => WordOfDayAlertSettings(
+        enabled: enabled ?? this.enabled,
+        hour: hour ?? this.hour,
       );
 }
 
