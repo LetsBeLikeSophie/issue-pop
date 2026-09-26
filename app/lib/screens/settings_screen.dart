@@ -123,11 +123,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 2026-09-22: 카카오페이 "받기" 링크로 후원 — 결제를 앱 안에서 직접
-  /// 처리하려면 PG 계약/사업자등록이 필요해서, 1인 개발 단계에선 그냥
-  /// 카카오페이 앱으로 넘기는 외부 링크만 엶.
+  /// 2026-09-22: 카카오페이 "받기" 링크로 후원 시작 — 결제를 앱 안에서
+  /// 직접 처리하려면 PG 계약/사업자등록이 필요해서, 1인 개발 단계에선
+  /// 외부 링크로 넘기는 방식만 씀.
+  /// 2026-09-26: 카카오페이는 송금 화면에 개발자 본명이 그대로 노출돼서
+  /// Buy Me a Coffee로 교체함 — 후원자에게는 페이지 닉네임만 보임.
   Future<void> _openDonationLink() async {
-    await launchUrl(Uri.parse('https://qr.kakaopay.com/FZBmuUqIr'), mode: LaunchMode.externalApplication);
+    await launchUrl(Uri.parse('https://buymeacoffee.com/itssophie'), mode: LaunchMode.externalApplication);
   }
 
   /// 2026-09-22: mailto: 링크는 메일 클라이언트가 연결 안 된 기기(특히
@@ -350,8 +352,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     radius: 18,
                     child: Column(
                       children: [
+                        // 2026-09-26: "후원하기"보다 Buy Me a Coffee 자체
+                        // 브랜딩(커피 이모지 + 서비스명)을 그대로 쓰는 게
+                        // 낫다는 피드백.
                         _PlainRow(
-                          label: '커피 한잔 후원하기',
+                          label: '☕ Buy Me a Coffee',
                           onTap: _openDonationLink,
                           showDivider: true,
                         ),
