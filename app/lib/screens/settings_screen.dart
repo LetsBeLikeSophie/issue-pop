@@ -169,110 +169,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SectionLabel('알림'),
                   const SizedBox(height: 8),
-                  AppCard(
-                    padding: EdgeInsets.zero,
-                    radius: 18,
-                    child: Column(
-                      children: [
-                        // 2026-09-26: 관심 키워드 화면에 등록해둔 키워드와
-                        // 매칭되는 새 이슈가 뜨면 알림 — 실제 감지/발송이
-                        // 붙은 진짜 기능임(예전엔 저장도 안 되는 로컬
-                        // state였음). 다이제스트처럼 "정해진 시각"이 아니라
-                        // 뜨는 즉시 오는 알림이라, 그 성격이 헷갈리지 않게
-                        // caption으로 바로 밝힘.
-                        FutureBuilder<KeywordAlertSettings>(
-                          future: _keywordAlert,
-                          builder: (context, snapshot) {
-                            final s = snapshot.data;
-                            return _ToggleRow(
+                  // 2026-09-26: 세 알림(관심 이슈/매일 트렌드 요약/오늘의
+                  // 단어)을 카드 하나에 다 몰아넣었더니 "다 붙어있어서
+                  // 헷갈린다"는 피드백 — 서로 발송 시점도 성격도 다른
+                  // 별개 기능이라, 카드를 셋으로 나눠서 각자의 경계를
+                  // 눈으로 바로 구분할 수 있게 함.
+                  //
+                  // 관심 이슈 알림 — 관심 키워드 화면에 등록해둔 키워드와
+                  // 매칭되는 새 이슈가 뜨면 알림. 다이제스트처럼 "정해진
+                  // 시각"이 아니라 뜨는 즉시 오는 알림이라, caption으로
+                  // 그 성격을 바로 밝힘.
+                  FutureBuilder<KeywordAlertSettings>(
+                    future: _keywordAlert,
+                    builder: (context, snapshot) {
+                      final s = snapshot.data;
+                      return AppCard(
+                        padding: EdgeInsets.zero,
+                        radius: 18,
+                        child: Column(
+                          children: [
+                            _ToggleRow(
                               label: '관심 이슈 알림',
                               caption: '새 소식이 뜨면 바로 알려드려요',
                               value: s?.enabled ?? false,
                               onChanged: s == null
                                   ? null
                                   : (v) => _updateKeywordAlert((c) => c.copyWith(enabled: v)),
-                              showDivider: true,
-                            );
-                          },
+                              showDivider: s?.enabled ?? false,
+                            ),
+                            if (s != null && s.enabled) ...[
+                              _PlainRow(
+                                label: '조용한 시간대 시작',
+                                trailing: _formatHour(s.quietStart),
+                                onTap: () => _pickKeywordAlertQuietHour(isStart: true, current: s.quietStart),
+                                showDivider: true,
+                              ),
+                              _PlainRow(
+                                label: '조용한 시간대 종료',
+                                trailing: _formatHour(s.quietEnd),
+                                onTap: () => _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
+                                showDivider: false,
+                              ),
+                            ],
+                          ],
                         ),
-                        FutureBuilder<KeywordAlertSettings>(
-                          future: _keywordAlert,
-                          builder: (context, snapshot) {
-                            final s = snapshot.data;
-                            if (s == null || !s.enabled) return const SizedBox.shrink();
-                            return Column(
-                              children: [
-                                _PlainRow(
-                                  label: '조용한 시간대 시작',
-                                  trailing: _formatHour(s.quietStart),
-                                  onTap: () => _pickKeywordAlertQuietHour(isStart: true, current: s.quietStart),
-                                  showDivider: true,
-                                ),
-                                _PlainRow(
-                                  label: '조용한 시간대 종료',
-                                  trailing: _formatHour(s.quietEnd),
-                                  onTap: () => _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
-                                  showDivider: true,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                        FutureBuilder<int?>(
-                          future: _digestHour,
-                          builder: (context, snapshot) {
-                            final hour = snapshot.data;
-                            return _ToggleRow(
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // 매일 트렌드 요약 알림 — 지정한 시각에 하루 한 번.
+                  FutureBuilder<int?>(
+                    future: _digestHour,
+                    builder: (context, snapshot) {
+                      final hour = snapshot.data;
+                      return AppCard(
+                        padding: EdgeInsets.zero,
+                        radius: 18,
+                        child: Column(
+                          children: [
+                            _ToggleRow(
                               label: '매일 트렌드 요약 알림',
-                              // 2026-09-26: 껐을 때만 캡션을 보여줬더니 켜는
-                              // 순간 사라져서 "설명이 없어졌다"는 피드백 —
-                              // 다른 두 토글처럼 상태와 무관하게 항상 보이게 함.
                               caption: '설정한 시각에 하루 한 번',
                               value: hour != null,
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
                                   : _toggleDigest,
-                              showDivider: true,
-                            );
-                          },
+                              showDivider: hour != null,
+                            ),
+                            if (hour != null)
+                              _PlainRow(
+                                label: '알림 시간',
+                                trailing: _formatHour(hour),
+                                onTap: () => _pickDigestHour(hour),
+                                showDivider: false,
+                              ),
+                          ],
                         ),
-                        FutureBuilder<int?>(
-                          future: _digestHour,
-                          builder: (context, snapshot) {
-                            final hour = snapshot.data;
-                            if (hour == null) return const SizedBox.shrink();
-                            return _PlainRow(
-                              label: '알림 시간',
-                              trailing: _formatHour(hour),
-                              onTap: () => _pickDigestHour(hour),
-                              showDivider: true,
-                            );
-                          },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은 어려운
+                  // 말 + 예문 + 뜻풀이(국립국어원 API)를 다이제스트와
+                  // 별개로 켜고 끌 수 있게 함. 서버 고정 시각(매일 아침
+                  // 9시)에 발송.
+                  FutureBuilder<bool>(
+                    future: _wordOfDayEnabled,
+                    builder: (context, snapshot) {
+                      return AppCard(
+                        padding: EdgeInsets.zero,
+                        radius: 18,
+                        child: _ToggleRow(
+                          label: '오늘의 단어 알림',
+                          caption: '매일 아침 9시',
+                          value: snapshot.data ?? false,
+                          onChanged: snapshot.connectionState == ConnectionState.waiting
+                              ? null
+                              : _toggleWordOfDay,
+                          showDivider: false,
                         ),
-                        // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은
-                        // 어려운 말 + 예문 + 뜻풀이(국립국어원 API)를
-                        // 다이제스트와 별개로 켜고 끌 수 있게 함.
-                        FutureBuilder<bool>(
-                          future: _wordOfDayEnabled,
-                          builder: (context, snapshot) {
-                            return _ToggleRow(
-                              label: '오늘의 단어 알림',
-                              caption: '매일 아침 9시',
-                              value: snapshot.data ?? false,
-                              onChanged: snapshot.connectionState == ConnectionState.waiting
-                                  ? null
-                                  : _toggleWordOfDay,
-                              showDivider: false,
-                            );
-                          },
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      '세 알림은 발송 시점이 서로 달라요(각 항목 아래 작은 글씨 참고). '
                       '관심 이슈 알림만 조용한 시간대엔 쉬고, 나머지 둘은 정해진 시각에 나가요.',
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
