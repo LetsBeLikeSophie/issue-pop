@@ -377,8 +377,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             Text(
                               outlets.isEmpty
-                                  ? '여러 언론사의 RSS를 모아 이슈판이 이슈를 정리해요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
-                                  : '${outlets.length}개 매체의 RSS를 모아 이슈판이 이슈를 정리해요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.',
+                                  ? '이슈판이 정보를 받아오는 언론사들이에요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
+                                  : '이슈판이 정보를 받아오는 ${outlets.length}개 언론사예요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.',
                               style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
                             ),
                             if (outlets.isNotEmpty) ...[

@@ -74,6 +74,12 @@ WORD_OF_DAY_ALERT_HOUR_KST = 9
 # 첫 요청이 눈에 띄게 느리다는 피드백을 받음("너무 늦게 뜨거든") —
 # 유저 요청을 기다리지 않고 미리 계산해두려고 백그라운드 루프를 따로 둠.
 WORD_OF_DAY_CHECK_INTERVAL_SECONDS = 10 * 60
+# 2026-09-26: 관심 종목 추가 자동완성용 SEC 티커 카탈로그(stocks.py의
+# _fetch_sec_catalog)가 "서버 프로세스당 한 번만" 캐싱돼서, 서버가 오래
+# 안 재시작되면 SEC 쪽 신규 상장/폐지가 계속 안 반영된다는 지적으로
+# 추가함 — 회사 목록이 하루에도 몇 번씩 바뀌는 건 아니라서 하루 주기면
+# 충분하다고 판단.
+STOCK_CATALOG_REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
 KST = ZoneInfo("Asia/Seoul")
 
 # 홈 화면 "오늘 날씨" 카드용. 기상청 공식 API는 계정 가입 + 키 발급이
@@ -582,6 +588,16 @@ async def _word_of_day_loop() -> None:
         await asyncio.sleep(WORD_OF_DAY_CHECK_INTERVAL_SECONDS)
 
 
+async def _stock_catalog_refresh_loop() -> None:
+    """관심 종목 자동완성용 SEC 티커 카탈로그를 하루 한 번 다시 받아옴
+    (stocks.refresh_sec_catalog 참고) — 서버 시작 시 첫 캐싱은
+    stocks._fetch_sec_catalog()가 요청 들어올 때 알아서 하므로, 여기선
+    그 다음부터의 주기적 갱신만 담당함(그래서 sleep을 먼저 함)."""
+    while True:
+        await asyncio.sleep(STOCK_CATALOG_REFRESH_INTERVAL_SECONDS)
+        await asyncio.to_thread(stocks.refresh_sec_catalog)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
@@ -590,11 +606,13 @@ async def lifespan(app: FastAPI):
     digest_task = asyncio.create_task(_digest_loop())
     cluster_audit_task = asyncio.create_task(_cluster_audit_loop())
     word_of_day_task = asyncio.create_task(_word_of_day_loop())
+    stock_catalog_task = asyncio.create_task(_stock_catalog_refresh_loop())
     yield
     refresh_task.cancel()
     digest_task.cancel()
     cluster_audit_task.cancel()
     word_of_day_task.cancel()
+    stock_catalog_task.cancel()
 
 
 app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)

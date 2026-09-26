@@ -237,22 +237,45 @@ _SEC_HEADERS = {"User-Agent": "IssuePop research contact@issue-pop.com"}
 _sec_catalog_cache: list[dict] | None = None
 
 
-def _fetch_sec_catalog() -> list[dict]:
-    """서버 프로세스당 한 번만 받아서 캐싱함(회사 이름은 하루 안에 안
-    바뀌니까) — 실패하면(네트워크 문제 등) 빈 리스트, catalog()가 그때는
-    TICKER_META만으로 동작함(서버가 안 죽으면 됨, 다른 외부 API 연동과
-    같은 방어 원칙)."""
-    global _sec_catalog_cache
-    if _sec_catalog_cache is not None:
-        return _sec_catalog_cache
+def _fetch_sec_catalog_raw() -> list[dict] | None:
+    """SEC에서 실제로 받아오기만 함 — 성공하면 목록, 실패하면(네트워크
+    문제 등) None(호출부가 상황에 맞게 처리하게)."""
     try:
         res = requests.get("https://www.sec.gov/files/company_tickers.json", headers=_SEC_HEADERS, timeout=10)
         res.raise_for_status()
         data = res.json()
-        _sec_catalog_cache = [{"ticker": v["ticker"], "name": v["title"].title()} for v in data.values()]
+        return [{"ticker": v["ticker"], "name": v["title"].title()} for v in data.values()]
     except Exception:  # noqa: BLE001
-        _sec_catalog_cache = []
+        return None
+
+
+def _fetch_sec_catalog() -> list[dict]:
+    """서버 프로세스 시작 후 처음 필요할 때 한 번만 받아서 캐싱함 —
+    실패하면 빈 리스트로 캐싱함(catalog()가 그때는 TICKER_META만으로
+    동작함, 서버가 안 죽으면 됨, 다른 외부 API 연동과 같은 방어 원칙).
+
+    2026-09-26: "서버가 재시작 안 되고 오래 떠 있으면 SEC 쪽 신규
+    상장/폐지가 하나도 안 반영된다"는 지적으로, 프로세스당 한 번뿐이던
+    캐싱에 하루 주기 자동 갱신을 추가함 — 실제 재요청은 api.py의
+    백그라운드 루프(_stock_catalog_refresh_loop)가 refresh_sec_catalog()를
+    불러서 하고, 이 함수 자체는 "캐시 없으면 처음 한 번 채우기"만 계속
+    담당함."""
+    global _sec_catalog_cache
+    if _sec_catalog_cache is not None:
+        return _sec_catalog_cache
+    _sec_catalog_cache = _fetch_sec_catalog_raw() or []
     return _sec_catalog_cache
+
+
+def refresh_sec_catalog() -> None:
+    """SEC 카탈로그를 강제로 다시 받아옴 — api.py의 백그라운드 루프가
+    하루 한 번 호출함. 실패하면(네트워크 문제 등) 기존 캐시를 그대로
+    두고 다음 주기에 다시 시도함 — 빈 목록으로 덮어써서 멀쩡하던 캐시를
+    날리지 않게."""
+    global _sec_catalog_cache
+    fresh = _fetch_sec_catalog_raw()
+    if fresh is not None:
+        _sec_catalog_cache = fresh
 
 
 def catalog() -> list[dict]:
