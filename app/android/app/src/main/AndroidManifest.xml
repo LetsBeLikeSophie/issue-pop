@@ -5,7 +5,7 @@
          브라우저가 이미 네트워크 권한을 갖고 있으니 못 잡았던 버그. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="issue_pop"
+        android:label="Issue Pop"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
