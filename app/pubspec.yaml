@@ -53,6 +53,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -95,3 +96,26 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 2026-09-26: 앱 아이콘 생성 설정 — flutter_launcher_icons가 이 두 이미지로
+# Android/iOS/웹 아이콘 전 사이즈를 만들어줌. app_icon.png는 배경까지
+# 포함된 완성 아이콘(iOS/웹/구형 Android용), app_icon_foreground.png는
+# 배경이 투명한 전경 레이어(Android adaptive icon용 — 원형/사각형 등
+# 런처마다 다른 마스크에 adaptive_icon_background 색이 깔리고 그 위에
+# 이 전경이 얹힘).
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+
+  android: "launcher_icon"
+  min_sdk_android: 21
+  adaptive_icon_background: "#1F1F1F"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+
+  ios: true
+  remove_alpha_ios: true
+
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#1F1F1F"
+    theme_color: "#1F1F1F"
