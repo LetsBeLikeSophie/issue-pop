@@ -49,13 +49,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 화면에서 이미 하므로, 여기선 그 키워드에 새 이슈가 뜨면 알려줄지
   /// on/off + 조용한 시간대만 다룸(다이제스트 시간 설정과 같은 낙관적
   /// 업데이트 패턴 — 지금까지 알고 있던 값에 변경분만 얹어서 저장).
-  Future<void> _updateKeywordAlert(KeywordAlertSettings Function(KeywordAlertSettings) update) async {
+  Future<KeywordAlertSettings> _updateKeywordAlert(
+    KeywordAlertSettings Function(KeywordAlertSettings) update,
+  ) async {
     final current = await (_keywordAlert ?? _devices.getKeywordAlert());
     final next = update(current);
     setState(() {
       _keywordAlert = Future.value(next);
     });
     await _devices.setKeywordAlert(next);
+    return next;
   }
 
   Future<void> _pickKeywordAlertQuietHour({required bool isStart, required int current}) async {
@@ -64,7 +67,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => _HourPickerSheet(selected: current),
     );
     if (picked == null) return;
-    await _updateKeywordAlert((c) => isStart ? c.copyWith(quietStart: picked) : c.copyWith(quietEnd: picked));
+    final next = await _updateKeywordAlert(
+      (c) => isStart ? c.copyWith(quietStart: picked) : c.copyWith(quietEnd: picked),
+    );
+    // 2026-09-26: 시작=종료로 맞추면 "조용한 시간대 없음(항상 허용)"으로
+    // 동작하는데, 직관과 반대라 그 순간 바로 토스트로 알려줌 — 이전엔
+    // 카드 안에 계속 남는 안내 문구였는데, 그보다 이 값을 "막 골랐을 때"
+    // 한 번 알려주는 쪽이 더 눈에 띈다는 피드백으로 바꿈.
+    if (!mounted) return;
+    if (next.quietStart == next.quietEnd) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Center(child: Text('시작·종료가 같아서 알림 금지 시간대가 꺼졌어요 — 언제든 알림이 와요')),
+          duration: Duration(milliseconds: 1800),
+          behavior: SnackBarBehavior.floating,
+          width: 320,
+        ),
+      );
+    }
   }
 
   Future<void> _toggleDigest(bool on) async {
@@ -278,7 +299,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     future: _keywordAlert,
                     builder: (context, snapshot) {
                       final s = snapshot.data;
-                      final quietOff = s != null && s.quietStart == s.quietEnd;
                       return AppCard(
                         padding: EdgeInsets.zero,
                         radius: 18,
@@ -294,31 +314,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               showDivider: s?.enabled ?? false,
                             ),
                             if (s != null && s.enabled) ...[
-                              _PlainRow(
-                                label: '조용한 시간대 시작',
-                                trailing: _formatHour(s.quietStart),
-                                onTap: () => _pickKeywordAlertQuietHour(isStart: true, current: s.quietStart),
-                                showDivider: true,
-                              ),
-                              _PlainRow(
-                                label: '조용한 시간대 종료',
-                                trailing: _formatHour(s.quietEnd),
-                                onTap: () => _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
-                                showDivider: quietOff,
-                              ),
-                              // 2026-09-26: 시작=종료로 맞추면 "조용한
-                              // 시간대 없음(항상 허용)"으로 동작하는데,
-                              // 직관과 반대라("같은 시각이면 오히려 하루
-                              // 종일 안 옴" 아니냐는 질문을 받음) 그
-                              // 상태일 때만 바로 알려줌.
-                              if (quietOff)
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-                                  child: Text(
-                                    '시작·종료가 같아서 조용한 시간대가 꺼져있어요 — 언제든 알림이 와요.',
-                                    style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
-                                  ),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                                child: Text(
+                                  '알림 금지 시간대',
+                                  style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
                                 ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(6, 0, 6, 6),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _QuietHourCell(
+                                        label: '시작',
+                                        value: _formatHour(s.quietStart),
+                                        onTap: () =>
+                                            _pickKeywordAlertQuietHour(isStart: true, current: s.quietStart),
+                                      ),
+                                    ),
+                                    Container(width: 1, height: 34, color: AppColors.divider),
+                                    Expanded(
+                                      child: _QuietHourCell(
+                                        label: '종료',
+                                        value: _formatHour(s.quietEnd),
+                                        onTap: () =>
+                                            _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ],
                         ),
@@ -679,6 +706,36 @@ class _PlainRow extends StatelessWidget {
               Text(trailing!, style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
             if (trailing != null) const SizedBox(width: 4),
             if (trailing != null) Icon(Icons.chevron_right, size: 16, color: AppColors.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 2026-09-26: 조용한 시간대 시작/종료를 각각 독립된 행으로 두니 "이게
+/// 왜 두 줄이나 차지하지" 싶게 UI가 무거워 보인다는 피드백 — 하나의
+/// "조용한 시간대 설정" 아래, 시작/종료를 반반씩 나눠 한 줄로 묶음.
+class _QuietHourCell extends StatelessWidget {
+  const _QuietHourCell({required this.label, required this.value, required this.onTap});
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
+            const SizedBox(height: 3),
+            Text(value, style: TextStyle(fontSize: 15, color: AppColors.ink, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
