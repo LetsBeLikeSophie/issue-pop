@@ -182,22 +182,29 @@ class ApiClient {
   /// 로직을 끝내 안 만들어서 설정만 저장되고 아무 것도 안 오는 상태로
   /// 방치돼 있었음 — 걷어내고 이 토글 하나로 대체함(word_of_day-alert와
   /// 같은 단계 구성).
-  Future<bool> getKeywordAlert(int deviceId) async {
+  /// 2026-09-26: 조용한 시간대(quiet_start/quiet_end)를 같이 관리하게
+  /// bool 하나에서 [KeywordAlertSettings]로 확장함 — "실시간 트렌드
+  /// 알림"의 6개 옵션 중 유일하게 실제로 쓸모 있던 게 이거라 다시 붙임.
+  Future<KeywordAlertSettings> getKeywordAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
     final res = await http.get(uri);
     _checkOk(res);
-    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    return map['keyword_alert_enabled'] as bool;
+    return KeywordAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<void> setKeywordAlert(int deviceId, bool enabled) async {
+  Future<KeywordAlertSettings> setKeywordAlert(int deviceId, KeywordAlertSettings settings) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
     final res = await http.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'enabled': enabled}),
+      body: jsonEncode({
+        'enabled': settings.enabled,
+        'quiet_start': settings.quietStart,
+        'quiet_end': settings.quietEnd,
+      }),
     );
     _checkOk(res);
+    return KeywordAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 2026-09-22: 설정 화면 "문의하기" — mailto: 링크 대신 인앱 폼에서
@@ -360,6 +367,31 @@ class StockNewsItem {
         source: json['source'] as String? ?? 'Yahoo Finance',
         titleKo: json['title_ko'] as String?,
         published: json['published'] as String?,
+      );
+}
+
+class KeywordAlertSettings {
+  const KeywordAlertSettings({required this.enabled, required this.quietStart, required this.quietEnd});
+
+  final bool enabled;
+
+  /// 이 시각부터(quietStart)~이 시각까지(quietEnd) 알림을 안 보냄.
+  /// quietStart == quietEnd면 조용한 시간대 없음(항상 허용). quietStart >
+  /// quietEnd면 자정을 넘는 구간(예: 23~7)으로 취급함(백엔드 _in_quiet_hours
+  /// 참고).
+  final int quietStart;
+  final int quietEnd;
+
+  factory KeywordAlertSettings.fromJson(Map<String, dynamic> json) => KeywordAlertSettings(
+        enabled: json['keyword_alert_enabled'] as bool,
+        quietStart: json['keyword_alert_quiet_start'] as int,
+        quietEnd: json['keyword_alert_quiet_end'] as int,
+      );
+
+  KeywordAlertSettings copyWith({bool? enabled, int? quietStart, int? quietEnd}) => KeywordAlertSettings(
+        enabled: enabled ?? this.enabled,
+        quietStart: quietStart ?? this.quietStart,
+        quietEnd: quietEnd ?? this.quietEnd,
       );
 }
 

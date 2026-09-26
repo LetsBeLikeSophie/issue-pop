@@ -357,9 +357,28 @@ def _keyword_alert_message(matched: list[dict]) -> tuple[str, str]:
     return title, headline
 
 
+def _in_quiet_hours(hour: int, quiet_start: int, quiet_end: int) -> bool:
+    """관심 이슈 알림의 "조용한 시간대"(이 시간엔 알림 금지) 판정.
+    2026-09-26 추가 — "실시간 트렌드 알림" 6개 옵션을 걷어내면서도, 그 중
+    유일하게 실제로 쓸모 있던 "조용한 시간대"만 관심 이슈 알림에 가볍게
+    다시 붙임(체크주기/최소매체수/하루최대알림/카테고리 필터는 안 씀 —
+    복잡도만 늘리고 실사용 근거가 약했음).
+
+    quiet_start == quiet_end면 "설정 안 함"(항상 알림 허용)으로 취급.
+    quiet_start > quiet_end면 자정을 넘어가는 구간(예: 23시~7시)으로 봄."""
+    if quiet_start == quiet_end:
+        return False
+    if quiet_start < quiet_end:
+        return quiet_start <= hour < quiet_end
+    return hour >= quiet_start or hour < quiet_end
+
+
 def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
     """새로 뜬 이슈가 있으면, 관심 이슈 알림을 켠 기기의 관심 키워드와
-    매칭해서 발송함. refresh_cache()가 새 _cache를 만든 직후에 호출됨.
+    매칭해서 발송함(조용한 시간대인 기기는 이번 주기엔 건너뜀 — 나중에
+    몰아서 보내주는 게 아니라 그냥 이번 매칭은 놓침, 알림의 성격상
+    "그때 떴다는 사실" 자체가 핵심이라 나중에 보내는 건 의미가 약하다고
+    판단함). refresh_cache()가 새 _cache를 만든 직후에 호출됨.
 
     2026-09-26: 이슈 id는 재클러스터링 때마다 바뀔 수 있다는 알려진
     한계가 있어서(README 참고) "새 id"가 항상 "진짜 새로운 사건"은
@@ -369,6 +388,7 @@ def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
         return []
     from sqlmodel import select
 
+    now_hour = datetime.now(KST).hour
     sent_to: list[int] = []
     with db.get_session() as session:
         devices = session.exec(select(db.Device).where(db.Device.keyword_alert_enabled)).all()
@@ -380,6 +400,8 @@ def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
             keywords_by_device.setdefault(w.device_id, []).append(w.keyword)
 
         for device in devices:
+            if _in_quiet_hours(now_hour, device.keyword_alert_quiet_start, device.keyword_alert_quiet_end):
+                continue
             keywords = keywords_by_device.get(device.id)
             if not keywords:
                 continue
@@ -1109,6 +1131,17 @@ async def get_digest(device_id: int):
 
 class KeywordAlertIn(BaseModel):
     enabled: bool
+    quiet_start: int
+    quiet_end: int
+
+
+def _keyword_alert_dict(device: db.Device) -> dict:
+    return {
+        "device_id": device.id,
+        "keyword_alert_enabled": device.keyword_alert_enabled,
+        "keyword_alert_quiet_start": device.keyword_alert_quiet_start,
+        "keyword_alert_quiet_end": device.keyword_alert_quiet_end,
+    }
 
 
 @app.put("/devices/{device_id}/keyword-alert")
@@ -1117,15 +1150,21 @@ async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
     이슈가 뜨면 알림(word_of_day-alert와 같은 단계 구성).
     2026-09-26: 옵션만 많고 실제 발송이 없던 "실시간 트렌드 알림"(6개
     설정)을 걷어내고 대신 이걸로 대체함 — 관심 키워드 화면이 이미 있으니
-    새 UI 없이 토글 하나로 "그 키워드에 새 소식 뜨면 알려줘"가 됨."""
+    새 UI 없이 토글 하나로 "그 키워드에 새 소식 뜨면 알려줘"가 됨.
+    quiet_start/quiet_end("조용한 시간대")만 그 6개 중 유일하게 실제
+    쓸모 있던 옵션이라 같이 가져옴 — _in_quiet_hours 참고."""
+    if not (0 <= body.quiet_start <= 23) or not (0 <= body.quiet_end <= 23):
+        raise HTTPException(status_code=422, detail="quiet hours must be 0-23")
     with db.get_session() as session:
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
         device.keyword_alert_enabled = body.enabled
+        device.keyword_alert_quiet_start = body.quiet_start
+        device.keyword_alert_quiet_end = body.quiet_end
         session.add(device)
         session.commit()
-        return {"device_id": device_id, "keyword_alert_enabled": device.keyword_alert_enabled}
+        return _keyword_alert_dict(device)
 
 
 @app.get("/devices/{device_id}/keyword-alert")
@@ -1134,7 +1173,7 @@ async def get_keyword_alert(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
-        return {"device_id": device_id, "keyword_alert_enabled": device.keyword_alert_enabled}
+        return _keyword_alert_dict(device)
 
 
 @app.post("/devices/{device_id}/keyword-alert/run")

@@ -109,8 +109,14 @@ class Device(SQLModel, table=True):
     # 2026-09-26: "관심 이슈 알림" — 이 기기가 등록한 관심 키워드
     # (DeviceKeywordWatch)와 매칭되는 새 이슈가 뜨면 알림. refresh_cache()
     # 직후 새로 생긴 이슈 id만 대상으로 검사함(api.py의
-    # _check_keyword_alerts 참고).
+    # _check_keyword_alerts 참고). 실시간성이 핵심이라 digest_hour처럼
+    # "하루 한 번 이 시각에" 모델은 안 맞음 — 대신 quiet_start/quiet_end로
+    # "이 시간대엔 보내지 마라"만 가볍게 둠(23시~7시 기본값). start==end면
+    # 조용한 시간대 없음(항상 허용), start>end면 자정을 넘는 구간으로
+    # 취급함(_in_quiet_hours 참고).
     keyword_alert_enabled: bool = False
+    keyword_alert_quiet_start: int = 23
+    keyword_alert_quiet_end: int = 7
 
     # 2026-09-11: "오늘의 단어"(오늘 기사에서 뽑은 어려운 말 + 뜻풀이) 알림
     # on/off. 2026-09-26: 실제 발송 로직 추가 — digest_hour처럼 기기마다
@@ -335,6 +341,8 @@ def _migrate_devices_table() -> None:
         additions = {
             "word_of_day_enabled": "INTEGER NOT NULL DEFAULT 0",
             "keyword_alert_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "keyword_alert_quiet_start": "INTEGER NOT NULL DEFAULT 23",
+            "keyword_alert_quiet_end": "INTEGER NOT NULL DEFAULT 7",
             "last_word_of_day_sent_at": "TIMESTAMP",
         }
         for column, ddl in additions.items():

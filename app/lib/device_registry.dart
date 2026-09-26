@@ -45,14 +45,14 @@ class DeviceRegistry {
     await api.setDigestHour(id, hour);
   }
 
-  Future<bool> getKeywordAlert() async {
+  Future<KeywordAlertSettings> getKeywordAlert() async {
     final id = await _deviceId();
     return api.getKeywordAlert(id);
   }
 
-  Future<void> setKeywordAlert(bool enabled) async {
+  Future<KeywordAlertSettings> setKeywordAlert(KeywordAlertSettings settings) async {
     final id = await _deviceId();
-    await api.setKeywordAlert(id, enabled);
+    return api.setKeywordAlert(id, settings);
   }
 
   Future<void> addWatch(String keyword) async {

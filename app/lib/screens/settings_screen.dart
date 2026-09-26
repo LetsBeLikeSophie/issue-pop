@@ -31,7 +31,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
   Future<int?>? _digestHour;
-  Future<bool>? _keywordAlertEnabled;
+  Future<KeywordAlertSettings>? _keywordAlert;
   Future<bool>? _wordOfDayEnabled;
   late final Future<List<SourceOutlet>> _sources;
 
@@ -39,19 +39,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _digestHour = _devices.getDigestHour();
-    _keywordAlertEnabled = _devices.getKeywordAlert();
+    _keywordAlert = _devices.getKeywordAlert();
     _wordOfDayEnabled = _devices.getWordOfDayAlert();
     _sources = widget.api.getSources();
   }
 
   /// 2026-09-26: "관심 이슈 알림" — 키워드 등록/삭제는 관심 키워드
   /// 화면에서 이미 하므로, 여기선 그 키워드에 새 이슈가 뜨면 알려줄지
-  /// on/off만 함(오늘의 단어 알림과 같은 패턴).
-  Future<void> _toggleKeywordAlert(bool on) async {
+  /// on/off + 조용한 시간대만 다룸(다이제스트 시간 설정과 같은 낙관적
+  /// 업데이트 패턴 — 지금까지 알고 있던 값에 변경분만 얹어서 저장).
+  Future<void> _updateKeywordAlert(KeywordAlertSettings Function(KeywordAlertSettings) update) async {
+    final current = await (_keywordAlert ?? _devices.getKeywordAlert());
+    final next = update(current);
     setState(() {
-      _keywordAlertEnabled = Future.value(on);
+      _keywordAlert = Future.value(next);
     });
-    await _devices.setKeywordAlert(on);
+    await _devices.setKeywordAlert(next);
+  }
+
+  Future<void> _pickKeywordAlertQuietHour({required bool isStart, required int current}) async {
+    final picked = await showAppBottomSheet<int>(
+      context,
+      builder: (context) => _HourPickerSheet(selected: current),
+    );
+    if (picked == null) return;
+    await _updateKeywordAlert((c) => isStart ? c.copyWith(quietStart: picked) : c.copyWith(quietEnd: picked));
   }
 
   Future<void> _toggleDigest(bool on) async {
@@ -164,17 +176,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         // 2026-09-26: 관심 키워드 화면에 등록해둔 키워드와
                         // 매칭되는 새 이슈가 뜨면 알림 — 실제 감지/발송이
                         // 붙은 진짜 기능임(예전엔 저장도 안 되는 로컬
-                        // state였음).
-                        FutureBuilder<bool>(
-                          future: _keywordAlertEnabled,
+                        // state였음). 다이제스트처럼 "정해진 시각"이 아니라
+                        // 뜨는 즉시 오는 알림이라, 그 성격이 헷갈리지 않게
+                        // caption으로 바로 밝힘.
+                        FutureBuilder<KeywordAlertSettings>(
+                          future: _keywordAlert,
                           builder: (context, snapshot) {
+                            final s = snapshot.data;
                             return _ToggleRow(
                               label: '관심 이슈 알림',
-                              value: snapshot.data ?? false,
-                              onChanged: snapshot.connectionState == ConnectionState.waiting
+                              caption: '새 소식이 뜨면 바로 알려드려요',
+                              value: s?.enabled ?? false,
+                              onChanged: s == null
                                   ? null
-                                  : _toggleKeywordAlert,
-                              showDivider: true,
+                                  : (v) => _updateKeywordAlert((c) => c.copyWith(enabled: v)),
+                              showDivider: s?.enabled ?? false,
+                            );
+                          },
+                        ),
+                        FutureBuilder<KeywordAlertSettings>(
+                          future: _keywordAlert,
+                          builder: (context, snapshot) {
+                            final s = snapshot.data;
+                            if (s == null || !s.enabled) return const SizedBox.shrink();
+                            return Column(
+                              children: [
+                                _PlainRow(
+                                  label: '조용한 시간대 시작',
+                                  trailing: _formatHour(s.quietStart),
+                                  onTap: () => _pickKeywordAlertQuietHour(isStart: true, current: s.quietStart),
+                                  showDivider: true,
+                                ),
+                                _PlainRow(
+                                  label: '조용한 시간대 종료',
+                                  trailing: _formatHour(s.quietEnd),
+                                  onTap: () => _pickKeywordAlertQuietHour(isStart: false, current: s.quietEnd),
+                                  showDivider: true,
+                                ),
+                              ],
                             );
                           },
                         ),
@@ -184,6 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             final hour = snapshot.data;
                             return _ToggleRow(
                               label: '매일 트렌드 요약 알림',
+                              caption: hour == null ? '켜면 정해진 시각에 하루 한 번' : null,
                               value: hour != null,
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
@@ -218,6 +258,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           builder: (context, snapshot) {
                             return _ToggleRow(
                               label: '오늘의 단어 알림',
+                              caption: '매일 아침 9시',
                               value: snapshot.data ?? false,
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
@@ -237,8 +278,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                     child: Text(
-                      '관심 이슈는 새 소식이 뜨는 대로, 매일 트렌드 요약은 설정한 시각에, '
-                      '오늘의 단어는 매일 아침 9시에 나가요.',
+                      '세 알림은 발송 시점이 서로 달라요(각 항목 아래 작은 글씨 참고). '
+                      '관심 이슈 알림만 조용한 시간대엔 쉬고, 나머지 둘은 정해진 시각에 나가요.',
                       style: TextStyle(fontSize: 11, color: AppColors.inkFaint),
                     ),
                   ),
@@ -386,12 +427,18 @@ class _SectionLabel extends StatelessWidget {
 class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
     required this.label,
+    this.caption,
     required this.value,
     required this.onChanged,
     required this.showDivider,
   });
 
   final String label;
+
+  /// 2026-09-26: 알림이 세 개(관심 이슈/매일 트렌드 요약/오늘의 단어)로
+  /// 늘면서 "이건 언제 오는 거지"가 헷갈린다는 피드백 — 라벨 아래 작은
+  /// 글씨로 발송 시점을 바로 보여줌(관심 이슈: 즉시, 나머지: 정해진 시각).
+  final String? caption;
   final bool value;
   final ValueChanged<bool>? onChanged;
   final bool showDivider;
@@ -405,8 +452,19 @@ class _ToggleRow extends StatelessWidget {
           : null,
       child: Row(
         children: [
-          Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink)),
-          const Spacer(),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink)),
+                if (caption != null) ...[
+                  const SizedBox(height: 2),
+                  Text(caption!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
+                ],
+              ],
+            ),
+          ),
           Switch(
             value: value,
             onChanged: onChanged,
