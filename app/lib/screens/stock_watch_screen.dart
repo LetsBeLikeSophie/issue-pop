@@ -449,7 +449,10 @@ class _NewsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final translated = item.titleKo;
     return InkWell(
-      onTap: item.link.isEmpty ? null : () => launchUrl(Uri.parse(item.link), mode: LaunchMode.externalApplication),
+      // 2026-09-26: inAppBrowserView로 바꿔서 앱 안에 뜨는 시트로 열고
+      // 닫기 버튼으로 바로 앱에 돌아오게 함(expandable_issue_card.dart의
+      // _ArticleLine과 같은 이유).
+      onTap: item.link.isEmpty ? null : () => launchUrl(Uri.parse(item.link), mode: LaunchMode.inAppBrowserView),
       child: Padding(
         padding: const EdgeInsets.only(top: 7),
         child: Column(

@@ -537,7 +537,12 @@ class _ArticleLine extends StatelessWidget {
     return InkWell(
       onTap: article.link.isEmpty
           ? null
-          : () => launchUrl(Uri.parse(article.link), mode: LaunchMode.externalApplication),
+          // 2026-09-26: externalApplication은 OS 브라우저로 완전히 나가버려서
+          // 다시 앱으로 돌아오려면 스와이프/앱 전환을 직접 해야 했음 —
+          // inAppBrowserView(iOS SFSafariViewController/Android Custom
+          // Tabs)로 바꿔서 앱 안에 뜨는 시트로 열고, 닫기 버튼 하나로
+          // 바로 앱으로 돌아오게 함.
+          : () => launchUrl(Uri.parse(article.link), mode: LaunchMode.inAppBrowserView),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(

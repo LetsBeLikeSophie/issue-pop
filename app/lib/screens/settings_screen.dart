@@ -98,7 +98,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// 2026-09-11: 오늘의 단어도 다이제스트와 같은 이유로 미리보기 제공 —
-  /// 사전 API 연동 전이라 definition은 null일 수 있음(시트에서 안내).
+  /// 국립국어원 표준국어대사전 API로 뜻풀이까지 가져옴(dictionary.py).
+  /// word_of_day.pick_word()가 애초에 뜻풀이를 못 찾은 단어는 후보에서
+  /// 걸러내므로 definition이 null인 경우는 사실상 없음 — 그래도 API
+  /// 실패 등 만일을 대비해 시트에서 null 케이스는 안내 문구로 대체함.
   Future<void> _showWordOfDayPreview() async {
     final preview = widget.api.getWordOfDay();
     await showAppBottomSheet<void>(
@@ -208,8 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           showDivider: true,
                         ),
                         // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은
-                        // 어려운 말 + 예문(뜻풀이는 사전 API 연동 전이라
-                        // 아직 없음)을 다이제스트와 별개로 켜고 끌 수 있게 함.
+                        // 어려운 말 + 예문 + 뜻풀이(국립국어원 API)를
+                        // 다이제스트와 별개로 켜고 끌 수 있게 함.
                         FutureBuilder<bool>(
                           future: _wordOfDayEnabled,
                           builder: (context, snapshot) {
@@ -651,8 +654,9 @@ class _DigestPreviewSheet extends StatelessWidget {
 }
 
 /// 2026-09-11: "오늘의 단어" 미리보기 — 오늘 기사에서 뽑은 단어를 사전
-/// 표제어 카드처럼 보여줌. 뜻풀이(definition)는 국립국어원 API 연동 전이라
-/// null일 수 있어서, 그 경우엔 안내 문구로 대체함.
+/// 표제어 카드처럼 보여줌. 뜻풀이(definition)는 국립국어원 표준국어대사전
+/// API(dictionary.py)로 실제로 가져옴 — word_of_day.pick_word()가 애초에
+/// 뜻풀이를 못 찾은 단어는 후보에서 걸러내므로 null인 경우는 사실상 없음.
 class _WordOfDayPreviewSheet extends StatelessWidget {
   const _WordOfDayPreviewSheet({required this.preview});
 
@@ -662,7 +666,7 @@ class _WordOfDayPreviewSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppSheetBody(
       title: '오늘의 단어 미리보기',
-      subtitle: '오늘 기사 제목에서 뽑은 단어예요. 뜻풀이는 아직 준비 중이에요.',
+      subtitle: '오늘 기사 제목에서 뽑은 단어예요. 국립국어원 표준국어대사전 뜻풀이도 함께 보여드려요.',
       children: [
           FutureBuilder<WordOfDay>(
             future: preview,
