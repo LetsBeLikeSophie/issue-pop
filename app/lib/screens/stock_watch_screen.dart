@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
 import '../device_registry.dart';
@@ -10,6 +9,7 @@ import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
+import '../widgets/in_app_browser.dart';
 import '../widgets/removable_chip.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/scroll_spotlight.dart';
@@ -449,10 +449,11 @@ class _NewsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final translated = item.titleKo;
     return InkWell(
-      // 2026-09-26: inAppBrowserView로 바꿔서 앱 안에 뜨는 시트로 열고
-      // 닫기 버튼으로 바로 앱에 돌아오게 함(expandable_issue_card.dart의
-      // _ArticleLine과 같은 이유).
-      onTap: item.link.isEmpty ? null : () => launchUrl(Uri.parse(item.link), mode: LaunchMode.inAppBrowserView),
+      // 2026-09-26: 인앱 브라우저로 열어서 닫기 버튼으로 바로 앱에
+      // 돌아오게 함(expandable_issue_card.dart의 _ArticleLine과 같은
+      // 이유 — flutter_custom_tabs로 닫기 버튼을 눈에 띄게 함, in_app_
+      // browser.dart 참고).
+      onTap: item.link.isEmpty ? null : () => openInAppBrowser(Uri.parse(item.link)),
       child: Padding(
         padding: const EdgeInsets.only(top: 7),
         child: Column(

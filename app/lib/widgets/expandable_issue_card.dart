@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
 import '../favorites_store.dart';
@@ -8,6 +7,7 @@ import '../models/issue.dart';
 import '../theme.dart';
 import 'app_badge.dart';
 import 'app_card.dart';
+import 'in_app_browser.dart';
 
 /// 이슈 하나를 나타내는 카드 — "이슈판" 프로토타입 아티팩트의 카드
 /// 레이아웃을 그대로 앱에 옮긴 것(랭크·카테고리 배지·세리프 키워드·
@@ -539,10 +539,13 @@ class _ArticleLine extends StatelessWidget {
           ? null
           // 2026-09-26: externalApplication은 OS 브라우저로 완전히 나가버려서
           // 다시 앱으로 돌아오려면 스와이프/앱 전환을 직접 해야 했음 —
-          // inAppBrowserView(iOS SFSafariViewController/Android Custom
-          // Tabs)로 바꿔서 앱 안에 뜨는 시트로 열고, 닫기 버튼 하나로
-          // 바로 앱으로 돌아오게 함.
-          : () => launchUrl(Uri.parse(article.link), mode: LaunchMode.inAppBrowserView),
+          // 인앱 브라우저(iOS SFSafariViewController/Android Custom Tabs)로
+          // 바꿔서 앱 안에 뜨는 시트로 열고, 닫기 버튼 하나로 바로 앱으로
+          // 돌아오게 함. url_launcher의 기본 inAppBrowserView는 닫기 버튼
+          // 색을 못 바꿔서 잘 안 보인다는 피드백으로 flutter_custom_tabs
+          // 로 교체함(in_app_browser.dart 참고 — 툴바를 진하게 칠해서
+          // 버튼이 확실히 보이게 함).
+          : () => openInAppBrowser(Uri.parse(article.link)),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
