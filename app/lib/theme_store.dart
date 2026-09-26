@@ -15,7 +15,9 @@ class ThemeStore extends ChangeNotifier {
 
   static const _key = 'color_preset_v1';
 
-  ColorPreset _preset = ColorPreset.current;
+  // 2026-09-26: 처음 까는 사용자 기본값을 "기본"(세이지그린) 대신
+  // "화이트"(neutral)로 바꿈 — 첫인상 테마를 더 무난한 쪽으로.
+  ColorPreset _preset = ColorPreset.neutral;
   ColorPreset get preset => _preset;
 
   Future<void> load() async {
@@ -23,7 +25,7 @@ class ThemeStore extends ChangeNotifier {
     final saved = prefs.getString(_key);
     _preset = ColorPreset.values.firstWhere(
       (p) => p.name == saved,
-      orElse: () => ColorPreset.current,
+      orElse: () => ColorPreset.neutral,
     );
     notifyListeners();
   }

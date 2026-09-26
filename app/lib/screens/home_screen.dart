@@ -424,16 +424,49 @@ class _TopBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Text(
-              'Issue Pop',
-              // 2026-09-09: 좁은 화면 + 아이콘 5개 조합에서 "Issue"가 한
-              // 단어라 줄바꿈으로도 못 줄여서(RenderFlex overflow) 이슈
-              // 카드/카테고리까지 밀려버리는 버그가 있었음 — 두 줄까지는
-              // 허용하되(사용자가 "두 줄 정도는 괜찮다"고 함), 그래도 안
-              // 들어가면 잘라서 절대 넘치지 않게 함.
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
+            // 2026-09-26: "Pop" 뒤에 형광펜으로 칠한 것 같은 하이라이트
+            // 블록을 넣어달라는 요청 — 두 단어를 하나의 Text로 두면 배경색을
+            // 글자 하나만 따로 칠할 수 없어서 Wrap으로 쪼갬. 예전엔 좁은
+            // 화면에서 "Issue"가 한 단어라 줄바꿈도 못 하고 넘쳤던 버그가
+            // 있었는데(2026-09-09), Wrap은 자간 단위로 알아서 다음 줄로
+            // 넘어가므로 그 문제도 같이 해결됨(대신 문자 단위로 잘리는
+            // ellipsis 안전장치는 없어짐 — "Issue Pop" 정도 길이면 필요
+            // 없다고 판단).
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
+              children: [
+                Text(
+                  'Issue ',
+                  style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
+                ),
+                Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    // 2026-09-26: 처음엔 글자 전체 높이를 박스로 감쌌더니
+                    // "형광펜"이라기보다 그냥 배지처럼 보인다는 피드백 —
+                    // 실제 형광펜처럼 글자 아래쪽 절반 정도만 칠하게
+                    // Stack+FractionallySizedBox로 바꿈(하이라이트 높이가
+                    // Text 높이의 절반만 차지, 아래쪽 정렬).
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: FractionallySizedBox(
+                          heightFactor: 0.5,
+                          widthFactor: 1,
+                          child: ColoredBox(color: const Color(0xFFF4C94E)),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      child: Text(
+                        'Pop',
+                        style: AppTypography.serif(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.ink),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
