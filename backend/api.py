@@ -721,6 +721,11 @@ def _to_detail(issue_id: str, c: dict) -> IssueDetail:
 _ALLOWED_IMAGE_DOMAINS = (
     "yna.co.kr", "mt.co.kr", "sbs.co.kr", "donga.com", "ohmynews.com",
     "mk.co.kr", "hani.co.kr", "khan.co.kr", "seoul.co.kr",
+    # 2026-09-26: 헤럴드경제(10번째 매체, 2026-09-20 추가)가 여기 빠져있어서
+    # 이미지 프록시가 계속 403(domain not allowed)을 내고 있었음 — 실제
+    # 원인은 헤럴드경제 쪽 핫링크 방지가 아니라 그냥 이 허용 목록에
+    # 추가를 깜빡한 것.
+    "heraldcorp.com",
 )
 
 
@@ -1504,6 +1509,104 @@ async def list_feedback(_: None = Depends(_require_admin)):
             }
             for f in items
         ]
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy():
+    """앱스토어/플레이스토어 제출용 개인정보처리방침 — 정적 페이지라
+    DB/인증 없이 그냥 반환함. 2026-09-26 작성: 이 시점에 앱이 실제로
+    수집하는 항목만 정직하게 반영함(계정/로그인 기능은 백엔드에 API는
+    있지만 앱 화면에 아직 연결 안 해서 실사용자는 안 거치므로 여기
+    안 적음 — 나중에 붙이면 이 페이지도 같이 갱신해야 함). 법률
+    자문을 대신하지 않는 초안이라는 점을 페이지 자체에도 명시함."""
+    page_html = """<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>개인정보처리방침 — Issue Pop</title>
+<style>
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; background: #EEF1EA;
+         color: #232A20; max-width: 680px; margin: 0 auto; padding: 32px 20px 60px; line-height: 1.6; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .updated { color: #8B9280; font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 16px; margin-top: 28px; margin-bottom: 8px; color: #35503F; }
+  p, li { font-size: 14px; }
+  ul { padding-left: 20px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 8px; border: 1px solid #D7DBC9; }
+  th { background: #E4E9DA; }
+  .contact { background: #fff; border: 1px solid #D7DBC9; border-radius: 10px; padding: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>개인정보처리방침</h1>
+  <p class="updated">시행일자: 2026년 9월 26일</p>
+
+  <p>Issue Pop(이하 "이슈판")은 이용자의 개인정보를 소중히 여기며,
+  「개인정보 보호법」 등 관련 법령을 준수하기 위해 노력합니다. 본
+  방침은 이슈판 앱(웹 포함)이 수집하는 정보와 이용 방법을 안내합니다.</p>
+
+  <h2>1. 수집하는 개인정보 항목</h2>
+  <p>이슈판은 회원가입이나 로그인 없이 이용할 수 있으며, 계정 정보(이름,
+  생년월일, 전화번호 등)를 수집하지 않습니다. 아래 항목만 서비스 제공을
+  위해 수집합니다.</p>
+  <table>
+    <tr><th>항목</th><th>수집 시점</th><th>비고</th></tr>
+    <tr><td>기기 식별용 푸시 토큰(또는 임의 토큰)</td><td>앱 최초 실행 시</td>
+        <td>알림 발송 대상 식별용. 이름 등 개인 식별 정보 아님</td></tr>
+    <tr><td>등록한 관심 키워드·관심 종목(티커)</td><td>이용자가 직접 등록 시</td>
+        <td>위 기기 식별자에만 연결됨</td></tr>
+    <tr><td>알림 설정(발송 시각, 조용한 시간대 등)</td><td>이용자가 설정 변경 시</td>
+        <td>위 기기 식별자에만 연결됨</td></tr>
+    <tr><td>문의 내용 및 답장받을 이메일(선택)</td><td>"문의하기" 이용 시</td>
+        <td>이메일은 입력한 경우에만 수집되며, 답장 목적에만 사용</td></tr>
+    <tr><td>접속 IP, 기기/브라우저 정보</td><td>서비스 이용 시 자동 생성</td>
+        <td>부정 이용 방지·오류 분석 목적, 서버 접속 기록에만 보관</td></tr>
+  </table>
+  <p>"저장한 이슈(즐겨찾기)"는 서버로 전송되지 않고 이용자의 기기
+  안에만 저장됩니다.</p>
+
+  <h2>2. 개인정보의 수집 및 이용 목적</h2>
+  <ul>
+    <li>알림 발송(관심 키워드 소식, 매일 트렌드 요약, 오늘의 단어)</li>
+    <li>이용자가 등록한 관심 키워드·종목 관리</li>
+    <li>문의 응대 및 답변 발송</li>
+    <li>부정 이용 방지, 서비스 오류 확인 및 개선</li>
+  </ul>
+
+  <h2>3. 보유 및 이용 기간</h2>
+  <p>목적 달성 후 지체 없이 파기합니다. 다만 문의 내역은 답변 완료 후
+  일정 기간(최대 1년) 보관 후 파기하며, 관련 법령에서 별도 보관을
+  요구하는 경우 그 기간을 따릅니다. 앱을 삭제하면 서버에 남아있던
+  해당 기기의 알림 설정·관심 키워드도 더 이상 사용되지 않으며, 일정
+  기간 미접속 시 정기적으로 정리됩니다.</p>
+
+  <h2>4. 개인정보의 제3자 제공</h2>
+  <p>이슈판은 이용자의 개인정보를 원칙적으로 외부에 제공하지 않습니다.
+  다만 알림 발송을 위해 아래 업체에 처리를 위탁합니다.</p>
+  <ul>
+    <li><b>Google Firebase Cloud Messaging</b> — 푸시 알림 발송 (수탁 정보:
+    기기 푸시 토큰)</li>
+  </ul>
+
+  <h2>5. 이용자의 권리</h2>
+  <p>이용자는 앱 내 설정 화면에서 언제든지 알림을 끄거나 등록한 키워드·
+  종목을 삭제할 수 있습니다. 그 외 문의사항은 아래 연락처로 요청해
+  주시면 지체 없이 조치합니다.</p>
+
+  <h2>6. 개인정보 보호책임자</h2>
+  <div class="contact">
+    <p style="margin:0">이메일: contact@issue-pop.com</p>
+    <p style="margin:4px 0 0">앱 내 "설정 → 문의하기"로도 연락하실 수 있습니다.</p>
+  </div>
+
+  <h2>7. 방침 변경</h2>
+  <p>본 방침은 법령·서비스 변경에 따라 수정될 수 있으며, 변경 시 이
+  페이지를 통해 공지합니다.</p>
+</body>
+</html>"""
+    return HTMLResponse(content=page_html)
 
 
 @app.get("/feedback/view", response_class=HTMLResponse)
