@@ -286,10 +286,13 @@ def _build_digest_text() -> str:
     """
     items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))
     if not items:
-        return "오늘의 트렌드\n오늘의 트렌드를 아직 준비 중이에요."
+        return "오늘의 이슈팝\n오늘의 트렌드를 아직 준비 중이에요."
     top = items[0]
     headline = f"[{top['category']}] {_truncate(top['representative_title'], _DIGEST_TITLE_MAX_LEN)}"
-    return f"오늘의 트렌드\n{headline}"
+    # 2026-09-26: 알림 제목을 "오늘의 트렌드"에서 앱 설정 화면의 이름과
+    # 맞춰 "오늘의 이슈팝"으로 바꿈(사용자가 설정에서 보는 이름과 실제
+    # 받는 알림 제목이 다르면 헷갈린다는 지적).
+    return f"오늘의 이슈팝\n{headline}"
 
 
 def _send_push(device: db.Device, title: str, body: str, session) -> bool:

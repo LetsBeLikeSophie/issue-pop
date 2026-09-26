@@ -30,6 +30,19 @@ class ApiClient {
     defaultValue: 'http://127.0.0.1:8000',
   );
 
+  // 2026-09-26: 지금까지 모든 호출이 http 패키지의 top-level 함수
+  // (http.get/post/put/delete)를 썼는데, 이 함수들은 호출마다 내부적으로
+  // 새 Client를 만들고 요청 하나 끝나면 바로 닫아버림(패키지 공식 문서도
+  // "같은 서버에 여러 요청을 보낼 거면 Client 하나를 계속 재사용하라"고
+  // 안내함) — 그래서 설정 화면처럼 화면 하나에서 여러 엔드포인트를 동시에
+  // 부르면(다이제스트/관심 키워드/오늘의 단어/매체 목록 등) 매번 TCP+TLS
+  // 핸드셰이크를 처음부터 다시 하고 있었음(설정 화면 로딩이 느리다는
+  // 피드백의 원인으로 추정). ApiClient가 앱 전체에서 인스턴스 하나만
+  // 만들어져 쓰이므로(main.dart), 이 Client 하나를 계속 재사용하면
+  // Keep-Alive로 커넥션을 재활용해서 두 번째 요청부터는 핸드셰이크를
+  // 건너뜀.
+  final http.Client _client = http.Client();
+
   /// 2026-09-07: 기사 썸네일 이미지 프록시 URL 생성용 — 항상
   /// ApiClient() 인스턴스를 통해서만 쓰이고 baseUrl 오버라이드도 안
   /// 하므로(main.dart 참고), ExpandableIssueCard처럼 api 인스턴스가
@@ -46,7 +59,7 @@ class ApiClient {
   Future<List<IssueDetail>> getTrending({int limit = 40, String? category}) async {
     final qp = {'limit': '$limit', 'category': ?category};
     final uri = Uri.parse('$baseUrl/trending').replace(queryParameters: qp);
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => IssueDetail.fromJson(e as Map<String, dynamic>)).toList();
@@ -57,7 +70,7 @@ class ApiClient {
   /// 씀. 새 엔드포인트 없이 이미 있던 /health를 재사용함.
   Future<DateTime?> getLastRefresh() async {
     final uri = Uri.parse('$baseUrl/health');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final ts = map['last_refresh'] as num?;
@@ -67,7 +80,7 @@ class ApiClient {
 
   Future<Map<String, int>> getCategories() async {
     final uri = Uri.parse('$baseUrl/categories');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return map.map((k, v) => MapEntry(k, v as int));
@@ -77,7 +90,7 @@ class ApiClient {
   /// 이슈를 기사까지 통째로 받던 예전 방식보다 훨씬 가벼움).
   Future<({int issueCount, int articleCount})> getStats() async {
     final uri = Uri.parse('$baseUrl/stats');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return (issueCount: map['issue_count'] as int, articleCount: map['article_count'] as int);
@@ -91,7 +104,7 @@ class ApiClient {
   /// — 대신 기사 목록은 빼서 가볍게 만듦(그게 처음에 무거웠던 원인).
   Future<List<IssueSummary>> getIndex() async {
     final uri = Uri.parse('$baseUrl/search').replace(queryParameters: {'q': '', 'limit': '1000'});
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => IssueSummary.fromJson(e as Map<String, dynamic>)).toList();
@@ -101,7 +114,7 @@ class ApiClient {
   /// 받아옴.
   Future<IssueDetail> getIssue(String issueId) async {
     final uri = Uri.parse('$baseUrl/issues/$issueId');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     return IssueDetail.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
@@ -110,7 +123,7 @@ class ApiClient {
   /// 이미 등록된 push_token이면 서버가 기존 device_id를 그대로 돌려줌.
   Future<int> registerDevice(String pushToken) async {
     final uri = Uri.parse('$baseUrl/devices');
-    final res = await http.post(
+    final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'push_token': pushToken}),
@@ -122,7 +135,7 @@ class ApiClient {
 
   Future<int?> getDigestHour(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return map['digest_hour'] as int?;
@@ -130,7 +143,7 @@ class ApiClient {
 
   Future<void> setDigestHour(int deviceId, int? hour) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
-    final res = await http.put(
+    final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'hour': hour}),
@@ -142,7 +155,7 @@ class ApiClient {
   /// 확인할 수 있게 지금 이 순간의 다이제스트 텍스트만 미리 보여줌(부수효과 없음).
   Future<String> getDigestPreview() async {
     final uri = Uri.parse('$baseUrl/digest/preview');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return map['text'] as String;
@@ -152,14 +165,14 @@ class ApiClient {
   /// 사전 API 연동 전까지 null).
   Future<WordOfDay> getWordOfDay() async {
     final uri = Uri.parse('$baseUrl/word-of-day');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     return WordOfDay.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<bool> getWordOfDayAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return map['word_of_day_enabled'] as bool;
@@ -167,7 +180,7 @@ class ApiClient {
 
   Future<void> setWordOfDayAlert(int deviceId, bool enabled) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
-    final res = await http.put(
+    final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'enabled': enabled}),
@@ -187,14 +200,14 @@ class ApiClient {
   /// 알림"의 6개 옵션 중 유일하게 실제로 쓸모 있던 게 이거라 다시 붙임.
   Future<KeywordAlertSettings> getKeywordAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     return KeywordAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<KeywordAlertSettings> setKeywordAlert(int deviceId, KeywordAlertSettings settings) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
-    final res = await http.put(
+    final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -212,7 +225,7 @@ class ApiClient {
   /// 때만 씀, 자동 답장 기능은 없음).
   Future<void> submitFeedback({required int? deviceId, required String message, String? contactEmail}) async {
     final uri = Uri.parse('$baseUrl/feedback');
-    final res = await http.post(
+    final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -226,7 +239,7 @@ class ApiClient {
 
   Future<void> addWatch(int deviceId, String keyword) async {
     final uri = Uri.parse('$baseUrl/watches');
-    final res = await http.post(
+    final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'device_id': deviceId, 'keyword': keyword}),
@@ -236,7 +249,7 @@ class ApiClient {
 
   Future<List<KeywordWatch>> listWatches(int deviceId) async {
     final uri = Uri.parse('$baseUrl/watches/$deviceId');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => KeywordWatch.fromJson(e as Map<String, dynamic>)).toList();
@@ -244,7 +257,7 @@ class ApiClient {
 
   Future<void> deleteWatch(int watchId) async {
     final uri = Uri.parse('$baseUrl/watches/$watchId');
-    final res = await http.delete(uri);
+    final res = await _client.delete(uri);
     _checkOk(res);
   }
 
@@ -253,7 +266,7 @@ class ApiClient {
   /// 노출 안 하기로 한 결정, sources.py의 GET /sources 참고).
   Future<List<SourceOutlet>> getSources() async {
     final uri = Uri.parse('$baseUrl/sources');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => SourceOutlet.fromJson(e as Map<String, dynamic>)).toList();
@@ -264,7 +277,7 @@ class ApiClient {
   /// 같은 패턴(한 번에 통째로 받아서 타이핑마다 로컬에서 걸러냄).
   Future<List<StockCatalogEntry>> getStockCatalog() async {
     final uri = Uri.parse('$baseUrl/stocks/catalog');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => StockCatalogEntry.fromJson(e as Map<String, dynamic>)).toList();
@@ -276,7 +289,7 @@ class ApiClient {
   /// 쪽이 그냥 달러만 보여주면 됨.
   Future<double?> getUsdKrwRate() async {
     final uri = Uri.parse('$baseUrl/fx/usd-krw');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     if (res.statusCode != 200) return null;
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return (map['usd_krw'] as num).toDouble();
@@ -288,7 +301,7 @@ class ApiClient {
   /// 같은 이유) 펼칠 때 추가 호출이 필요 없음.
   Future<List<StockWatch>> listStockWatches(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/stocks');
-    final res = await http.get(uri);
+    final res = await _client.get(uri);
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => StockWatch.fromJson(e as Map<String, dynamic>)).toList();
@@ -296,7 +309,7 @@ class ApiClient {
 
   Future<StockWatch> addStockWatch(int deviceId, String ticker) async {
     final uri = Uri.parse('$baseUrl/stocks');
-    final res = await http.post(
+    final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'device_id': deviceId, 'ticker': ticker}),
@@ -307,7 +320,7 @@ class ApiClient {
 
   Future<void> deleteStockWatch(int watchId) async {
     final uri = Uri.parse('$baseUrl/stocks/$watchId');
-    final res = await http.delete(uri);
+    final res = await _client.delete(uri);
     _checkOk(res);
   }
 
