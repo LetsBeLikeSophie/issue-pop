@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -190,7 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onChanged: s == null
                                   ? null
                                   : (v) => _updateKeywordAlert((c) => c.copyWith(enabled: v)),
-                              showDivider: s?.enabled ?? false,
+                              showDivider: true,
                             );
                           },
                         ),
@@ -228,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
                                   : _toggleDigest,
-                              showDivider: hour != null,
+                              showDivider: true,
                             );
                           },
                         ),
@@ -245,11 +246,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             );
                           },
                         ),
-                        _PlainRow(
-                          label: '발송 내용 미리보기',
-                          onTap: _showDigestPreview,
-                          showDivider: true,
-                        ),
                         // 2026-09-11: "오늘의 단어" — 오늘 기사에서 뽑은
                         // 어려운 말 + 예문 + 뜻풀이(국립국어원 API)를
                         // 다이제스트와 별개로 켜고 끌 수 있게 함.
@@ -263,14 +259,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
                                   : _toggleWordOfDay,
-                              showDivider: true,
+                              showDivider: false,
                             );
                           },
-                        ),
-                        _PlainRow(
-                          label: '오늘의 단어 미리보기',
-                          onTap: _showWordOfDayPreview,
-                          showDivider: false,
                         ),
                       ],
                     ),
@@ -401,6 +392,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
+                  // 2026-09-26: "발송 내용 미리보기"/"오늘의 단어 미리보기"는
+                  // 원래 "실제 발송 전에 뭐가 나가는지 보고 싶다"는 개발
+                  // 초기 요청으로 만든 확인용 도구라, 실제 사용자 화면에
+                  // 알림 토글이랑 섞여 있으면 헷갈리기만 함 — 웹 빌드
+                  // (개발/점검용)에서만 맨 아래로 빼서 보여주고, 실제
+                  // 모바일 앱 빌드에서는 아예 안 보이게 함.
+                  if (kIsWeb) ...[
+                    const SizedBox(height: 16),
+                    _SectionLabel('미리보기 (웹 전용)'),
+                    const SizedBox(height: 8),
+                    AppCard(
+                      padding: EdgeInsets.zero,
+                      radius: 18,
+                      child: Column(
+                        children: [
+                          _PlainRow(
+                            label: '매일 트렌드 요약 미리보기',
+                            onTap: _showDigestPreview,
+                            showDivider: true,
+                          ),
+                          _PlainRow(
+                            label: '오늘의 단어 미리보기',
+                            onTap: _showWordOfDayPreview,
+                            showDivider: false,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
