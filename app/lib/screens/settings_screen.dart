@@ -224,7 +224,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             final hour = snapshot.data;
                             return _ToggleRow(
                               label: '매일 트렌드 요약 알림',
-                              caption: hour == null ? '켜면 정해진 시각에 하루 한 번' : null,
+                              // 2026-09-26: 껐을 때만 캡션을 보여줬더니 켜는
+                              // 순간 사라져서 "설명이 없어졌다"는 피드백 —
+                              // 다른 두 토글처럼 상태와 무관하게 항상 보이게 함.
+                              caption: '설정한 시각에 하루 한 번',
                               value: hour != null,
                               onChanged: snapshot.connectionState == ConnectionState.waiting
                                   ? null
