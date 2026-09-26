@@ -353,10 +353,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Column(
                       children: [
                         // 2026-09-26: "후원하기"보다 Buy Me a Coffee 자체
-                        // 브랜딩(커피 이모지 + 서비스명)을 그대로 쓰는 게
-                        // 낫다는 피드백.
+                        // 브랜딩(서비스명 그대로)을 쓰는 게 낫다는 피드백 —
+                        // 이모지는 빼고 이름만.
                         _PlainRow(
-                          label: '☕ Buy Me a Coffee',
+                          label: 'Buy Me a Coffee',
                           onTap: _openDonationLink,
                           showDivider: true,
                         ),
