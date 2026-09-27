@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -36,6 +37,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<WordOfDayAlertSettings>? _wordOfDayAlert;
   late final Future<List<SourceOutlet>> _sources;
 
+  /// 2026-09-27: 알림 토글들은 "이 알림을 원하냐"는 서버 저장값만 볼 뿐,
+  /// 기기 자체가 알림을 허용했는지는 전혀 안 봐서 — 권한을 거부해도
+  /// 토글은 그대로 떠 있어 "켰는데 왜 안 오지"로 이어짐. 실제 OS 권한
+  /// 상태를 따로 조회해서 거부 상태면 배너로 알려줌.
+  late final Future<AuthorizationStatus> _notificationStatus;
+
+  /// 2026-09-27: 캐시가 없는 첫 실행에서는 토글들이 네트워크 왕복 후에야
+  /// 뜨는 통에 화면이 잠깐 비어 보이다 툭 튀어나오는 느낌이 있었음 —
+  /// 설정값이 다 준비된 다음에 화면을 그리게 함(로컬 캐시가 있으면
+  /// 이 Future가 사실상 즉시 끝나서 체감상 로딩이 안 보임).
+  late final Future<void> _initialLoad;
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +56,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _keywordAlert = _devices.getKeywordAlert();
     _wordOfDayAlert = _devices.getWordOfDayAlert();
     _sources = widget.api.getSources();
+    _notificationStatus = FirebaseMessaging.instance.getNotificationSettings().then((s) => s.authorizationStatus);
+    _initialLoad = Future.wait([_digestHour!, _keywordAlert!, _wordOfDayAlert!]);
   }
 
   /// 2026-09-26: "관심 이슈 알림" — 키워드 등록/삭제는 관심 키워드
@@ -202,9 +217,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             const ScreenHeader(title: '설정'),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-                children: [
+              child: FutureBuilder<void>(
+                future: _initialLoad,
+                builder: (context, loadSnapshot) {
+                  if (loadSnapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return _buildList(context);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+      children: [
+                  FutureBuilder<AuthorizationStatus>(
+                    future: _notificationStatus,
+                    builder: (context, snapshot) {
+                      if (snapshot.data != AuthorizationStatus.denied) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent2Soft,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.notifications_off_outlined, size: 18, color: AppColors.accent2),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '알림 권한이 꺼져 있어요',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '아래에서 알림을 켜도 기기 알림 권한이 꺼져 있으면 실제로는 오지 않아요. 기기 설정 > 앱 > Issue Pop > 알림에서 허용해주세요.',
+                                      style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   _SectionLabel('알림'),
                   const SizedBox(height: 8),
                   // 2026-09-26: 세 알림을 카드 하나에 다 몰아넣었더니 "다
@@ -502,12 +573,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
