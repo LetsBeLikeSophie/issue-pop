@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,10 +21,17 @@ class DeviceRegistry {
   static const _tokenKey = 'device_push_token_v1';
   static const _idKey = 'device_id_v1';
 
+  /// 랜덤 폴백 토큰은 항상 이 길이(24자 hex) — 진짜 FCM 토큰은
+  /// 훨씬 길어서(보통 140자 이상) 구분에 씀.
+  static const _fallbackTokenLength = 24;
+
   Future<int> _deviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getInt(_idKey);
-    if (cached != null) return cached;
+    if (cached != null) {
+      unawaited(_maybeUpgradeToken(prefs, cached));
+      return cached;
+    }
 
     var token = prefs.getString(_tokenKey);
     if (token == null) {
@@ -33,6 +41,27 @@ class DeviceRegistry {
     final id = await api.registerDevice(token);
     await prefs.setInt(_idKey, id);
     return id;
+  }
+
+  /// 2026-09-27: 서비스 워커가 오리진 루트에 없어서(/app/ 밑에만 있어서)
+  /// getFcmToken()이 계속 실패해 랜덤 폴백 토큰으로만 등록되던 기기들이
+  /// 있음 — 서버 배포로 그 문제를 고친 뒤에도, 이미 랜덤 토큰으로 등록된
+  /// 기기는 다시 시도하지 않으면 영원히 알림을 못 받음. 그래서 기기 실행
+  /// 때마다(이미 device_id가 있어도) 조용히 한 번씩 진짜 토큰을 다시
+  /// 요청해보고, 성공하면 같은 device_id를 유지한 채로 갈아끼움 — 등록해둔
+  /// 키워드/조용한 시간대 설정을 잃지 않게. 이미 진짜 토큰이면(길이로
+  /// 판단) 매번 재요청할 필요 없음.
+  Future<void> _maybeUpgradeToken(SharedPreferences prefs, int deviceId) async {
+    final current = prefs.getString(_tokenKey);
+    if (current != null && current.length > _fallbackTokenLength) return;
+    final real = await getFcmToken();
+    if (real == null || real == current) return;
+    try {
+      await api.updateDevicePushToken(deviceId, real);
+      await prefs.setString(_tokenKey, real);
+    } catch (_) {
+      // 다음 실행 때 다시 시도하면 되니 조용히 무시.
+    }
   }
 
   Future<int?> getDigestHour() async {

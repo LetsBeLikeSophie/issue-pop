@@ -133,6 +133,16 @@ class ApiClient {
     return map['device_id'] as int;
   }
 
+  Future<void> updateDevicePushToken(int deviceId, String pushToken) async {
+    final uri = Uri.parse('$baseUrl/devices/$deviceId/push-token');
+    final res = await _client.put(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'push_token': pushToken}),
+    );
+    _checkOk(res);
+  }
+
   Future<int?> getDigestHour(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
     final res = await _client.get(uri);

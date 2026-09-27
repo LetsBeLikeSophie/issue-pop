@@ -70,16 +70,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final next = await _updateKeywordAlert(
       (c) => isStart ? c.copyWith(quietStart: picked) : c.copyWith(quietEnd: picked),
     );
-    // 2026-09-26: 시작=종료로 맞추면 "조용한 시간대 없음(항상 허용)"으로
-    // 동작하는데, 직관과 반대라 그 순간 바로 토스트로 알려줌 — 이전엔
-    // 카드 안에 계속 남는 안내 문구였는데, 그보다 이 값을 "막 골랐을 때"
-    // 한 번 알려주는 쪽이 더 눈에 띈다는 피드백으로 바꿈.
-    if (!mounted) return;
+    // 2026-09-27: 시작=종료로 맞추면 "알림 금지 시간대 없음(항상 허용)"과
+    // 같은 뜻인데, 그 상태를 그냥 두면 헷갈리니 아예 관심 키워드 토글
+    // 자체를 꺼서 시간대 선택 UI도 같이 접히게 함(카드에 남는 안내 문구
+    // 대신 토스트 한 번으로 알려줌).
     if (next.quietStart == next.quietEnd) {
+      await _updateKeywordAlert((c) => c.copyWith(enabled: false));
+      if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Center(child: Text('시작·종료가 같아서 알림 금지 시간대가 꺼졌어요 — 언제든 알림이 와요')),
+          content: Center(child: Text('시작·종료가 같아서 관심 키워드 알림을 껐어요')),
           duration: Duration(milliseconds: 1800),
           behavior: SnackBarBehavior.floating,
           width: 320,
@@ -306,7 +307,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             _ToggleRow(
                               label: '관심 키워드',
-                              caption: '등록한 키워드 소식을 뜨는 즉시 보내드려요',
                               value: s?.enabled ?? false,
                               onChanged: s == null
                                   ? null
@@ -528,18 +528,12 @@ class _SectionLabel extends StatelessWidget {
 class _ToggleRow extends StatelessWidget {
   const _ToggleRow({
     required this.label,
-    this.caption,
     required this.value,
     required this.onChanged,
     required this.showDivider,
   });
 
   final String label;
-
-  /// 2026-09-26: 알림이 세 개(관심 이슈/매일 트렌드 요약/오늘의 단어)로
-  /// 늘면서 "이건 언제 오는 거지"가 헷갈린다는 피드백 — 라벨 아래 작은
-  /// 글씨로 발송 시점을 바로 보여줌(관심 이슈: 즉시, 나머지: 정해진 시각).
-  final String? caption;
   final bool value;
   final ValueChanged<bool>? onChanged;
   final bool showDivider;
@@ -554,17 +548,7 @@ class _ToggleRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink)),
-                if (caption != null) ...[
-                  const SizedBox(height: 2),
-                  Text(caption!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
-                ],
-              ],
-            ),
+            child: Text(label, style: TextStyle(fontSize: 14, color: AppColors.ink)),
           ),
           Switch(
             value: value,

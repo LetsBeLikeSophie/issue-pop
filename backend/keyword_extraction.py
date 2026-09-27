@@ -245,13 +245,35 @@ def extract_keywords(
     if not scored:
         return []
 
+    # 2026-09-27: 점수만 보고 뽑으면 1등/2등 키워드가 같은 기사에 같이
+    # 등장한 적이 한 번도 없는 조합이 나올 수 있음(예: "카카오 · 증권가"인데
+    # 실제로 두 단어를 동시에 언급하는 기사가 0건 — 각자 다른 기사 무리를
+    # 대표하는 단어일 뿐인데 나란히 보이면 그 둘이 한 얘기인 것처럼
+    # 오해하게 됨). 2등부터는 1등 키워드와 같은 기사에 최소 1번은 같이
+    # 등장하는 후보를 우선함.
+    texts = [f"{clean_title(a['title'])} {clean_summary(a.get('summary', ''))}" for a in cluster_articles]
+
     keywords: list[str] = []
     for t, _w, _score in scored:
         if any(t in kw or kw in t for kw in keywords):
             continue
+        if keywords and not any(keywords[0] in text and t in text for text in texts):
+            continue
         keywords.append(t)
         if len(keywords) >= k:
             break
+
+    # 1등 키워드와 같이 등장하는 후보가 하나도 없었으면(그 클러스터에서
+    # 유독 고립된 공통 화제라 다른 단어와 동시 등장이 아예 없는 경우)
+    # 겹침 조건을 접고 원래 방식(점수 순)으로 나머지를 채움 — 조건을
+    # 못 만족한다고 보조 키워드를 아예 안 붙이는 것보단 나음.
+    if len(keywords) < k:
+        for t, _w, _score in scored:
+            if any(t in kw or kw in t for kw in keywords):
+                continue
+            keywords.append(t)
+            if len(keywords) >= k:
+                break
 
     if k >= 2 and len(keywords) >= 2:
         proper_nouns: set[str] = set()

@@ -978,6 +978,30 @@ async def register_device(body: DeviceIn):
         return {"device_id": device.id}
 
 
+@app.put("/devices/{device_id}/push-token")
+async def update_device_push_token(device_id: int, body: DeviceIn):
+    """2026-09-27: 웹에서 서비스 워커가 오리진 루트가 아니라 /app/
+    밑에만 있어서 진짜 FCM 토큰을 못 받아오고 기기 식별용 임시 랜덤
+    토큰으로만 등록되던 버그를 고친 뒤, 이미 등록된 기기가 다음 접속
+    때 진짜 토큰을 받아오면 이 엔드포인트로 갈아끼움 — register_device처럼
+    새 기기를 또 만들면 그동안 등록해둔 관심 키워드/조용한 시간대 같은
+    설정을 다 잃어버리므로, 같은 device_id를 유지한 채 push_token만 바꿈."""
+    with db.get_session() as session:
+        from sqlmodel import select
+
+        device = session.get(db.Device, device_id)
+        if device is None:
+            raise HTTPException(status_code=404, detail="device not found")
+        if device.push_token != body.push_token:
+            existing = session.exec(select(db.Device).where(db.Device.push_token == body.push_token)).first()
+            if existing and existing.id != device_id:
+                raise HTTPException(status_code=409, detail="push token already registered to another device")
+            device.push_token = body.push_token
+            session.add(device)
+            session.commit()
+        return {"device_id": device_id}
+
+
 class WatchIn(BaseModel):
     device_id: int
     keyword: str
