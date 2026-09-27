@@ -164,35 +164,6 @@ def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
     return chains
 
 
-def extract_western_name_pairs(text: str) -> set[str]:
-    """"빌 게이츠"처럼 짧은(1~2자) 이름 + 공백 + 성 형태의 서구식 이름을
-    붙여서 반환.
-
-    2026-09-27: "빌게이츠"를 _USER_WORDS에 등록해도 실제 기사 원문은
-    "빌 게이츠"처럼 공백이 있어서 그 등록이 안 먹힘(kiwipiepy는 공백을
-    형태소 경계로 보기 때문에 사전 등록으로 공백을 넘어 붙일 수 없음).
-    문제는 "게이츠"만으로도 kiwi가 유효한 NNP(고유명사)로 인식해버려서,
-    extract_proper_nouns()가 "이미 완전한 고유명사"로 보고 "빌"을 마저
-    붙여주는 보정을 안 함(용혜인/김승원처럼 애초에 NNP 태그를 못 받는
-    잘림과 달리, 이건 "짧지만 유효한" 고유명사라 다른 문제). 짧은 NNP
-    바로 뒤에 공백 하나만 두고 다른 NNP가 이어지는 패턴 자체를 성+이름
-    후보로 보고 keyword_extraction.py가 "게이츠" 대신 "빌 게이츠"를
-    고르게 함.
-
-    원문 그대로 공백을 살려서 이어붙임("빌게이츠"가 아니라 "빌 게이츠") —
-    extract_noun_ngrams의 일반 바이그램 이어붙이기는 공백 유무를 안
-    가리고 무조건 붙이는데(국민+연금처럼 원래 안 붙어있던 것도 똑같이
-    처리), 그건 원문에 공백이 아예 없는 한국어 복합명사 기준으로 짠
-    규칙이라 서구식 이름에 그대로 쓰면 원래 있어야 할 공백을 지워버림.
-    """
-    tokens = kiwi.tokenize(text)
-    pairs: set[str] = set()
-    for a, b in zip(tokens, tokens[1:]):
-        if a.tag == "NNP" and b.tag == "NNP" and len(a.form) <= 2 and b.start == a.start + a.len + 1:
-            pairs.add(f"{a.form} {b.form}")
-    return pairs
-
-
 def extract_noun_ngrams(text: str) -> list[str]:
     """명사 유니그램 + 바로 붙어있는 명사쌍(바이그램) + 숫자·단위 조합.
 
@@ -243,7 +214,19 @@ def extract_noun_ngrams(text: str) -> list[str]:
             # 그 자체로 카운터 표현의 일부일 가능성이 높음 — 뒤쪽 명사와
             # 이어붙이지 않음.
             continue
-        result.append(tokens[a].form + tokens[b].form)
+        # 2026-09-27: 예전엔 원문에 공백이 있었는지 없었는지 안 가리고
+        # 무조건 붙였음("국민"+"연금"도 "빌"+"게이츠"도 똑같이 "국민연금"/
+        # "빌게이츠") — "빌 게이츠"처럼 원래 띄어 쓰는 서구식 이름의 공백을
+        # 지워버리는 문제가 있었음. 근데 "국민 연금"처럼 흔한 한국어
+        # 복합명사도 기사에 따라 띄어 쓰는 경우가 있어서, 그냥 "공백이
+        # 있었으면 살린다"로 바꾸니 이번엔 "국민연금"이 "국민 연금"으로
+        # 나오는 회귀가 생김(test_pipeline.py로 잡힘) — 두 경우 다 토큰
+        # 간격은 똑같이 1이라 간격만으론 구분이 안 됨. 실제 차이는 품사:
+        # 서구식 이름은 두 토큰 다 NNP(고유명사)로 잡히고, "국민"/"연금"
+        # 같은 일반 복합명사는 NNG로 잡힘 — 둘 다 NNP일 때만 공백을 살림.
+        gap = tokens[b].start - (tokens[a].start + tokens[a].len)
+        sep = " " if (gap == 1 and tokens[a].tag == "NNP" and tokens[b].tag == "NNP") else ""
+        result.append(tokens[a].form + sep + tokens[b].form)
 
     for i, t in enumerate(tokens[:-1]):
         if t.tag == _NUMBER_TAG and tokens[i + 1].tag in _UNIT_TAGS:
