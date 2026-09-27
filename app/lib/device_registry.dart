@@ -25,7 +25,19 @@ class DeviceRegistry {
   /// 훨씬 길어서(보통 140자 이상) 구분에 씀.
   static const _fallbackTokenLength = 24;
 
-  Future<int> _deviceId() async {
+  /// 2026-09-27: 설정/관심종목/관심키워드 화면이 각자 자기 DeviceRegistry
+  /// 인스턴스를 만들어 써서(위젯마다 `DeviceRegistry(widget.api)`), 인스턴스
+  /// 필드로 캐싱해봐야 화면 하나 안에서만 유효했음 — 화면을 새로 열 때마다
+  /// (또는 같은 화면 안에서 다이제스트/키워드알림/오늘의단어를 각각 부를
+  /// 때마다) 기기 등록·토큰 갱신 확인을 매번 다시 했던 게 설정 화면이
+  /// 느려 보이던 원인. 앱 프로세스가 살아있는 동안 딱 한 번만 하면 되는
+  /// 일이라 static Future로 세션 전체에서 공유함 — 여러 곳에서 동시에
+  /// 불러도 `??=`가 먼저 시작된 하나의 Future를 그대로 돌려줌.
+  static Future<int>? _deviceIdFuture;
+
+  Future<int> _deviceId() => _deviceIdFuture ??= _resolveDeviceId();
+
+  Future<int> _resolveDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getInt(_idKey);
     if (cached != null) {
@@ -64,24 +76,70 @@ class DeviceRegistry {
     }
   }
 
+  // 2026-09-27: 이 앱은 로그인이 없어서 알림 설정이 오직 "이 기기"에만
+  // 묶여있음(다른 기기/브라우저에서 바꿀 방법 자체가 없음) — 그러면
+  // 서버가 매번 다시 물어봐야 할 이유가 없음. 화면 열 때마다 네트워크
+  // 왕복하는 대신, 로컬(SharedPreferences)을 먼저 보고 있으면 그걸
+  // 즉시 돌려주고, 바꿀 때만(set*) 로컬에 먼저 쓰고 서버에도 반영
+  // (write-through)함. 로컬이 서버보다 앞서나갈 일이 없는 게, 이
+  // DeviceRegistry를 거치지 않고 이 설정을 바꿀 방법이 없기 때문임.
+  static const _digestHourCachedKey = 'digest_hour_cached_v1';
+  static const _digestHourValueKey = 'digest_hour_value_v1'; // -1이면 null(꺼짐)
+
   Future<int?> getDigestHour() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_digestHourCachedKey) ?? false) {
+      final v = prefs.getInt(_digestHourValueKey) ?? -1;
+      return v == -1 ? null : v;
+    }
     final id = await _deviceId();
-    return api.getDigestHour(id);
+    final hour = await api.getDigestHour(id);
+    await _cacheDigestHour(prefs, hour);
+    return hour;
   }
 
   Future<void> setDigestHour(int? hour) async {
+    await _cacheDigestHour(await SharedPreferences.getInstance(), hour);
     final id = await _deviceId();
     await api.setDigestHour(id, hour);
   }
 
+  Future<void> _cacheDigestHour(SharedPreferences prefs, int? hour) async {
+    await prefs.setBool(_digestHourCachedKey, true);
+    await prefs.setInt(_digestHourValueKey, hour ?? -1);
+  }
+
+  static const _keywordAlertCachedKey = 'keyword_alert_cached_v1';
+  static const _keywordAlertEnabledKey = 'keyword_alert_enabled_v1';
+  static const _keywordAlertStartKey = 'keyword_alert_quiet_start_v1';
+  static const _keywordAlertEndKey = 'keyword_alert_quiet_end_v1';
+
   Future<KeywordAlertSettings> getKeywordAlert() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_keywordAlertCachedKey) ?? false) {
+      return KeywordAlertSettings(
+        enabled: prefs.getBool(_keywordAlertEnabledKey) ?? false,
+        quietStart: prefs.getInt(_keywordAlertStartKey) ?? 23,
+        quietEnd: prefs.getInt(_keywordAlertEndKey) ?? 7,
+      );
+    }
     final id = await _deviceId();
-    return api.getKeywordAlert(id);
+    final settings = await api.getKeywordAlert(id);
+    await _cacheKeywordAlert(prefs, settings);
+    return settings;
   }
 
   Future<KeywordAlertSettings> setKeywordAlert(KeywordAlertSettings settings) async {
+    await _cacheKeywordAlert(await SharedPreferences.getInstance(), settings);
     final id = await _deviceId();
     return api.setKeywordAlert(id, settings);
+  }
+
+  Future<void> _cacheKeywordAlert(SharedPreferences prefs, KeywordAlertSettings settings) async {
+    await prefs.setBool(_keywordAlertCachedKey, true);
+    await prefs.setBool(_keywordAlertEnabledKey, settings.enabled);
+    await prefs.setInt(_keywordAlertStartKey, settings.quietStart);
+    await prefs.setInt(_keywordAlertEndKey, settings.quietEnd);
   }
 
   Future<void> addWatch(String keyword) async {
@@ -112,14 +170,34 @@ class DeviceRegistry {
     await api.deleteStockWatch(watchId);
   }
 
+  static const _wordOfDayCachedKey = 'word_of_day_cached_v1';
+  static const _wordOfDayEnabledKey = 'word_of_day_enabled_v1';
+  static const _wordOfDayHourKey = 'word_of_day_hour_v1';
+
   Future<WordOfDayAlertSettings> getWordOfDayAlert() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_wordOfDayCachedKey) ?? false) {
+      return WordOfDayAlertSettings(
+        enabled: prefs.getBool(_wordOfDayEnabledKey) ?? false,
+        hour: prefs.getInt(_wordOfDayHourKey) ?? 9,
+      );
+    }
     final id = await _deviceId();
-    return api.getWordOfDayAlert(id);
+    final settings = await api.getWordOfDayAlert(id);
+    await _cacheWordOfDayAlert(prefs, settings);
+    return settings;
   }
 
   Future<WordOfDayAlertSettings> setWordOfDayAlert(WordOfDayAlertSettings settings) async {
+    await _cacheWordOfDayAlert(await SharedPreferences.getInstance(), settings);
     final id = await _deviceId();
     return api.setWordOfDayAlert(id, settings);
+  }
+
+  Future<void> _cacheWordOfDayAlert(SharedPreferences prefs, WordOfDayAlertSettings settings) async {
+    await prefs.setBool(_wordOfDayCachedKey, true);
+    await prefs.setBool(_wordOfDayEnabledKey, settings.enabled);
+    await prefs.setInt(_wordOfDayHourKey, settings.hour);
   }
 
   Future<void> submitFeedback(String message, {String? contactEmail}) async {
