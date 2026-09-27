@@ -30,16 +30,29 @@ void main() async {
   await FavoritesStore.instance.load();
   await TextScaleStore.instance.load();
   await ThemeStore.instance.load();
+  runApp(const IssuePopApp());
   // 2026-09-27: 홈 화면 "오늘의 단어" 위젯 — 안드로이드 전용(word_of_day_widget.dart
   // 참고). registerInteractivityCallback은 콜백 핸들을 네이티브에 등록해둬서
   // 나중에 앱이 안 켜져 있어도(위젯 정기 갱신) 헤드리스로 이 콜백을 부를 수
-  // 있게 함 — 매번 앱을 열 때마다 다시 등록해도 안전(idempotent). 위젯
-  // 갱신 자체는 네트워크 호출이라 앱 시작을 막지 않게 await 안 함.
+  // 있게 함 — 매번 앱을 열 때마다 다시 등록해도 안전(idempotent).
+  //
+  // 반드시 runApp() 뒤에, 그리고 try/catch로 감싸서 둠 — 설치 직후 앱이
+  // 아예 안 켜지던 버그가 있었음(원인: 이걸 runApp() 전에 await하고
+  // 있어서, 이 네이티브 플러그인 호출이 실패/예외를 던지면 runApp() 자체가
+  // 절대 실행이 안 돼서 앱이 첫 프레임도 못 그리고 죽음 — 알림 기능
+  // 하나처럼, 위젯 기능 하나 실패가 앱 전체를 막으면 안 됨).
   if (!kIsWeb && Platform.isAndroid) {
-    await HomeWidget.registerInteractivityCallback(wordOfDayBackgroundCallback);
-    unawaited(updateWordOfDayWidget(ApiClient()));
+    unawaited(_initWordOfDayWidget());
   }
-  runApp(const IssuePopApp());
+}
+
+Future<void> _initWordOfDayWidget() async {
+  try {
+    await HomeWidget.registerInteractivityCallback(wordOfDayBackgroundCallback);
+    await updateWordOfDayWidget(ApiClient());
+  } catch (_) {
+    // 위젯 등록/갱신 실패는 조용히 무시 — 다음 실행 때 다시 시도됨.
+  }
 }
 
 class IssuePopApp extends StatelessWidget {
