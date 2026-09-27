@@ -103,6 +103,11 @@ class Device(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     push_token: str = Field(unique=True, index=True)
     digest_hour: int | None = None
+    # 2026-09-27: 원래는 시(0~23)만 골랐는데, "지금 테스트해보게 분 단위로도
+    # 되면 좋겠다"는 요청으로 분(0~59)도 같이 저장함 — digest_hour가
+    # null(꺼짐)이면 이 값은 안 씀. 기존 기기는 이 컬럼이 없다가 마이그레이션
+    # 때 0으로 채워지므로 "정각"으로 자연스럽게 해석됨(하위호환).
+    digest_minute: int = 0
     last_digest_sent_at: datetime | None = None  # 같은 시간대에 중복 발송 방지용
     created_at: datetime = Field(default_factory=now)
 
@@ -125,6 +130,7 @@ class Device(SQLModel, table=True):
     # _word_of_day_alert_check 참고).
     word_of_day_enabled: bool = False
     word_of_day_hour: int = 9
+    word_of_day_minute: int = 0  # digest_minute과 같은 이유/패턴
     last_word_of_day_sent_at: datetime | None = None  # 하루 중복 발송 방지용(last_digest_sent_at과 같은 패턴)
 
 
@@ -346,6 +352,8 @@ def _migrate_devices_table() -> None:
             "keyword_alert_quiet_start": "INTEGER NOT NULL DEFAULT 23",
             "keyword_alert_quiet_end": "INTEGER NOT NULL DEFAULT 7",
             "last_word_of_day_sent_at": "TIMESTAMP",
+            "digest_minute": "INTEGER NOT NULL DEFAULT 0",
+            "word_of_day_minute": "INTEGER NOT NULL DEFAULT 0",
         }
         for column, ddl in additions.items():
             if column not in existing:

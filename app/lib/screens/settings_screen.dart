@@ -1,4 +1,5 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -32,7 +33,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
-  Future<int?>? _digestHour;
+  Future<DigestSettings>? _digest;
   Future<KeywordAlertSettings>? _keywordAlert;
   Future<WordOfDayAlertSettings>? _wordOfDayAlert;
   late final Future<List<SourceOutlet>> _sources;
@@ -52,12 +53,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _digestHour = _devices.getDigestHour();
+    _digest = _devices.getDigest();
     _keywordAlert = _devices.getKeywordAlert();
     _wordOfDayAlert = _devices.getWordOfDayAlert();
     _sources = widget.api.getSources();
-    _notificationStatus = FirebaseMessaging.instance.getNotificationSettings().then((s) => s.authorizationStatus);
-    _initialLoad = Future.wait([_digestHour!, _keywordAlert!, _wordOfDayAlert!]);
+    _initialLoad = Future.wait([_digest!, _keywordAlert!, _wordOfDayAlert!]);
+    // 2026-09-27: getNotificationSettings()를 여기서 바로 부르면, 첫 실행
+    // 때는 OS 권한 다이얼로그(디바이스 등록 체인 안에서 요청됨)에 사용자가
+    // 아직 답하기 전 상태를 그대로 읽어버림 — "허용"을 눌러도 배너가 계속
+    // "거부됨"으로 남아있던 버그. _initialLoad가 끝난 뒤에 체크하면 그
+    // 안에서 이미 권한 요청까지 다 끝난 뒤라 실제 답변이 반영된 상태를
+    // 읽음.
+    _notificationStatus = _initialLoad.then(
+      (_) => FirebaseMessaging.instance.getNotificationSettings(),
+    ).then((s) => s.authorizationStatus);
   }
 
   /// 2026-09-26: "관심 이슈 알림" — 키워드 등록/삭제는 관심 키워드
@@ -105,28 +114,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleDigest(bool on) async {
-    final hour = on ? 9 : null; // 켜면 기본 오전 9시로 시작
+    final settings = DigestSettings(hour: on ? 9 : null, minute: 0); // 켜면 기본 오전 9시 정각으로 시작
     // 화살표 본문은 대입식의 값(Future 자체)을 그대로 반환해서 "setState()
     // callback argument returned a Future" 오류가 남 — 필드는 바뀌지만
     // 정작 다시 그리라는 표시가 예외로 중단돼서 화면이 안 갱신됨
     // (archive_screen.dart _reload에서 발견한 것과 같은 버그, 블록
     // 본문으로 고침).
     setState(() {
-      _digestHour = Future.value(hour);
+      _digest = Future.value(settings);
     });
-    await _devices.setDigestHour(hour);
+    await _devices.setDigest(settings);
   }
 
-  Future<void> _pickDigestHour(int current) async {
-    final picked = await showAppBottomSheet<int>(
+  Future<void> _pickDigestTime(int currentHour, int currentMinute) async {
+    final picked = await showAppBottomSheet<(int, int)>(
       context,
-      builder: (context) => _HourPickerSheet(selected: current),
+      builder: (context) => _TimePickerSheet(initialHour: currentHour, initialMinute: currentMinute),
     );
     if (picked == null) return;
+    final settings = DigestSettings(hour: picked.$1, minute: picked.$2);
     setState(() {
-      _digestHour = Future.value(picked);
+      _digest = Future.value(settings);
     });
-    await _devices.setDigestHour(picked);
+    await _devices.setDigest(settings);
   }
 
   /// 2026-09-10: "그럼 뭐가 발송되는데?"를 바로 확인할 수 있게 지금
@@ -152,13 +162,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _devices.setWordOfDayAlert(next);
   }
 
-  Future<void> _pickWordOfDayHour(int current) async {
-    final picked = await showAppBottomSheet<int>(
+  Future<void> _pickWordOfDayTime(int currentHour, int currentMinute) async {
+    final picked = await showAppBottomSheet<(int, int)>(
       context,
-      builder: (context) => _HourPickerSheet(selected: current),
+      builder: (context) => _TimePickerSheet(initialHour: currentHour, initialMinute: currentMinute),
     );
     if (picked == null) return;
-    await _updateWordOfDayAlert((c) => c.copyWith(hour: picked));
+    await _updateWordOfDayAlert((c) => c.copyWith(hour: picked.$1, minute: picked.$2));
   }
 
   /// 2026-09-11: 오늘의 단어도 다이제스트와 같은 이유로 미리보기 제공 —
@@ -299,10 +309,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // 드러나서 유일하게 캡션을 남겨둠.
                   //
                   // 오늘의 이슈팝 — 지정한 시각에 하루 한 번.
-                  FutureBuilder<int?>(
-                    future: _digestHour,
+                  FutureBuilder<DigestSettings>(
+                    future: _digest,
                     builder: (context, snapshot) {
-                      final hour = snapshot.data;
+                      final settings = snapshot.data;
+                      final hour = settings?.hour;
                       return AppCard(
                         padding: EdgeInsets.zero,
                         radius: 18,
@@ -319,8 +330,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (hour != null)
                               _PlainRow(
                                 label: '알림 시간',
-                                trailing: _formatHour(hour),
-                                onTap: () => _pickDigestHour(hour),
+                                trailing: _formatTime(hour, settings!.minute),
+                                onTap: () => _pickDigestTime(hour, settings.minute),
                                 showDivider: false,
                               ),
                           ],
@@ -353,8 +364,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (s != null && s.enabled)
                               _PlainRow(
                                 label: '알림 시간',
-                                trailing: _formatHour(s.hour),
-                                onTap: () => _pickWordOfDayHour(s.hour),
+                                trailing: _formatTime(s.hour, s.minute),
+                                onTap: () => _pickWordOfDayTime(s.hour, s.minute),
                                 showDivider: false,
                               ),
                           ],
@@ -807,6 +818,16 @@ String _formatHour(int hour) {
   return '오후 ${hour - 12}시';
 }
 
+/// 2026-09-27: "지금 테스트해보게 분 단위로도 설정할 수 있게" 요청으로
+/// 추가 — 정각(분=0)이면 기존 _formatHour와 똑같이 보여서 "매일 1일 1회"
+/// 알림 대부분(정각으로 고르는 게 자연스러움)엔 화면이 안 지저분해지고,
+/// 분을 실제로 고른 경우에만 "9시 5분"처럼 분까지 보여줌.
+String _formatTime(int hour, int minute) {
+  final base = _formatHour(hour);
+  if (minute == 0) return base;
+  return '$base ${minute.toString().padLeft(2, '0')}분';
+}
+
 /// 2026-09-10: "발송 기능이 아직 없는데 그럼 뭐가 발송되는지 보고 싶다"는
 /// 요청으로 추가 — 실제 푸시처럼 보이게 알림 배너 흉내를 낸 카드 안에
 /// GET /digest/preview가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌.
@@ -1106,10 +1127,10 @@ class _ContactSheetState extends State<_ContactSheet> {
   }
 }
 
-/// 다이제스트 알림 시간을 고르는 바텀시트 — 백엔드가 시(0~23) 단위까지만
-/// 받으니(분 단위 아님) 기본 Material 시간 선택기 대신 시간만 고르는
-/// 목록으로 만듦(안 그러면 "9시 30분"을 골라도 30분이 조용히 버려져서
-/// 헷갈릴 수 있음).
+/// 2026-09-27: 관심 키워드의 "알림 금지 시간대" 시작/종료를 고르는
+/// 바텀시트 — 이건 특정 순간에 보내는 알림이 아니라 시(0~23) 경계값이라
+/// 분 단위가 의미 없어서 그대로 둠(분까지 고를 수 있는 _TimePickerSheet는
+/// 오늘의 이슈팝/오늘의 단어처럼 실제 "이 시각에 보낸다"는 알림에만 씀).
 class _HourPickerSheet extends StatelessWidget {
   const _HourPickerSheet({required this.selected});
 
@@ -1148,6 +1169,108 @@ class _HourPickerSheet extends StatelessWidget {
                     onTap: () => Navigator.of(context).pop(hour),
                   );
                 },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 2026-09-27: 오늘의 이슈팝/오늘의 단어 알림 시각 고르는 바텀시트 —
+/// "지금 테스트해보게 분 단위로도 설정할 수 있게, 스크롤 돌리면 넘어가는
+/// UI로" 요청으로 시/분 휠 두 개짜리 피커로 새로 만듦(예전엔 시만
+/// 고르는 탭 목록이었음, 백엔드도 이제 digest_minute/word_of_day_minute을
+/// 같이 저장함). CupertinoPicker는 flutter SDK에 이미 포함돼 있어서
+/// 별도 패키지 없이 씀 — 최근 위젯 패키지 하나로 며칠 크래시를 겪어서,
+/// 새 네이티브 의존성은 최대한 피함.
+class _TimePickerSheet extends StatefulWidget {
+  const _TimePickerSheet({required this.initialHour, required this.initialMinute});
+
+  final int initialHour;
+  final int initialMinute;
+
+  @override
+  State<_TimePickerSheet> createState() => _TimePickerSheetState();
+}
+
+class _TimePickerSheetState extends State<_TimePickerSheet> {
+  late int _hour = widget.initialHour;
+  late int _minute = widget.initialMinute;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: 360,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                '알림 시간 선택',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink),
+              ),
+            ),
+            Divider(height: 1, color: AppColors.divider),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: CupertinoPicker(
+                      scrollController: FixedExtentScrollController(initialItem: widget.initialHour),
+                      itemExtent: 40,
+                      onSelectedItemChanged: (i) => setState(() => _hour = i),
+                      selectionOverlay: Container(
+                        decoration: BoxDecoration(
+                          border: Border.symmetric(horizontal: BorderSide(color: AppColors.divider)),
+                        ),
+                      ),
+                      children: [
+                        for (var h = 0; h < 24; h++)
+                          Center(
+                            child: Text(
+                              _formatHour(h),
+                              style: TextStyle(fontSize: 15, color: AppColors.ink),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: CupertinoPicker(
+                      scrollController: FixedExtentScrollController(initialItem: widget.initialMinute),
+                      itemExtent: 40,
+                      onSelectedItemChanged: (i) => setState(() => _minute = i),
+                      selectionOverlay: Container(
+                        decoration: BoxDecoration(
+                          border: Border.symmetric(horizontal: BorderSide(color: AppColors.divider)),
+                        ),
+                      ),
+                      children: [
+                        for (var m = 0; m < 60; m++)
+                          Center(
+                            child: Text(
+                              '${m.toString().padLeft(2, '0')}분',
+                              style: TextStyle(fontSize: 15, color: AppColors.ink),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop((_hour, _minute)),
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                  child: const Text('확인'),
+                ),
               ),
             ),
           ],

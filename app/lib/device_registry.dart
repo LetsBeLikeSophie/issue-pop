@@ -85,28 +85,30 @@ class DeviceRegistry {
   // DeviceRegistry를 거치지 않고 이 설정을 바꿀 방법이 없기 때문임.
   static const _digestHourCachedKey = 'digest_hour_cached_v1';
   static const _digestHourValueKey = 'digest_hour_value_v1'; // -1이면 null(꺼짐)
+  static const _digestMinuteValueKey = 'digest_minute_value_v1';
 
-  Future<int?> getDigestHour() async {
+  Future<DigestSettings> getDigest() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_digestHourCachedKey) ?? false) {
       final v = prefs.getInt(_digestHourValueKey) ?? -1;
-      return v == -1 ? null : v;
+      return DigestSettings(hour: v == -1 ? null : v, minute: prefs.getInt(_digestMinuteValueKey) ?? 0);
     }
     final id = await _deviceId();
-    final hour = await api.getDigestHour(id);
-    await _cacheDigestHour(prefs, hour);
-    return hour;
+    final settings = await api.getDigest(id);
+    await _cacheDigest(prefs, settings);
+    return settings;
   }
 
-  Future<void> setDigestHour(int? hour) async {
-    await _cacheDigestHour(await SharedPreferences.getInstance(), hour);
+  Future<void> setDigest(DigestSettings settings) async {
+    await _cacheDigest(await SharedPreferences.getInstance(), settings);
     final id = await _deviceId();
-    await api.setDigestHour(id, hour);
+    await api.setDigest(id, settings);
   }
 
-  Future<void> _cacheDigestHour(SharedPreferences prefs, int? hour) async {
+  Future<void> _cacheDigest(SharedPreferences prefs, DigestSettings settings) async {
     await prefs.setBool(_digestHourCachedKey, true);
-    await prefs.setInt(_digestHourValueKey, hour ?? -1);
+    await prefs.setInt(_digestHourValueKey, settings.hour ?? -1);
+    await prefs.setInt(_digestMinuteValueKey, settings.minute);
   }
 
   static const _keywordAlertCachedKey = 'keyword_alert_cached_v1';
@@ -173,6 +175,7 @@ class DeviceRegistry {
   static const _wordOfDayCachedKey = 'word_of_day_cached_v1';
   static const _wordOfDayEnabledKey = 'word_of_day_enabled_v1';
   static const _wordOfDayHourKey = 'word_of_day_hour_v1';
+  static const _wordOfDayMinuteKey = 'word_of_day_minute_v1';
 
   Future<WordOfDayAlertSettings> getWordOfDayAlert() async {
     final prefs = await SharedPreferences.getInstance();
@@ -180,6 +183,7 @@ class DeviceRegistry {
       return WordOfDayAlertSettings(
         enabled: prefs.getBool(_wordOfDayEnabledKey) ?? false,
         hour: prefs.getInt(_wordOfDayHourKey) ?? 9,
+        minute: prefs.getInt(_wordOfDayMinuteKey) ?? 0,
       );
     }
     final id = await _deviceId();
@@ -198,6 +202,7 @@ class DeviceRegistry {
     await prefs.setBool(_wordOfDayCachedKey, true);
     await prefs.setBool(_wordOfDayEnabledKey, settings.enabled);
     await prefs.setInt(_wordOfDayHourKey, settings.hour);
+    await prefs.setInt(_wordOfDayMinuteKey, settings.minute);
   }
 
   Future<void> submitFeedback(String message, {String? contactEmail}) async {

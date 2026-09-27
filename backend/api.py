@@ -63,7 +63,7 @@ REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
 # 없지만 그래도 굳이 피크 시간에 돌 이유는 없어서).
 CLUSTER_AUDIT_HOUR_KST = 4
 CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS = 30 * 60
-DIGEST_CHECK_INTERVAL_SECONDS = 5 * 60  # 다이제스트 대상 확인 주기
+DIGEST_CHECK_INTERVAL_SECONDS = 60  # 다이제스트/오늘의단어 대상 확인 주기 — 분 단위 지정을 놓치지 않으려면 1분
 DIGEST_DEDUPE_WINDOW_SECONDS = 50 * 60  # 이 안에 이미 보냈으면 재발송 안 함
 # 2026-09-14: 오늘의 단어를 유저가 그날 처음 GET /word-of-day를 부를 때
 # 그 자리에서(사전 API 최대 15번 + LLM 1번, 순차 호출) 계산해서 그
@@ -422,9 +422,12 @@ def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
 
 
 def _digest_check() -> list[int]:
-    """지금 KST 시각과 digest_hour가 일치하는 기기를 찾아서 발송(스텁)함.
-    같은 시간대에 중복 발송하지 않으려고 last_digest_sent_at을 확인함
-    (5분마다 확인하는데 매번 보내면 한 시간대에 최대 12번 보낼 수 있어서).
+    """지금 KST 시각(시+분)과 digest_hour/digest_minute이 일치하는 기기를
+    찾아서 발송(스텁)함. 같은 시간대에 중복 발송하지 않으려고
+    last_digest_sent_at을 확인함. 2026-09-27: 분 단위 지정을 테스트할 수
+    있으려면 그 정확한 분에 체크가 실제로 걸려야 해서, 확인 주기
+    (DIGEST_CHECK_INTERVAL_SECONDS)를 5분→1분으로 같이 줄임 — 5분
+    주기로는 임의의 목표 분을 놓칠 수 있었음.
     수동 테스트용으로 POST /digest/run에서도 이 함수를 그대로 씀."""
     from sqlmodel import select
 
@@ -432,7 +435,9 @@ def _digest_check() -> list[int]:
     sent_to: list[int] = []
     with db.get_session() as session:
         devices = session.exec(
-            select(db.Device).where(db.Device.digest_hour == now_kst.hour)
+            select(db.Device).where(
+                db.Device.digest_hour == now_kst.hour, db.Device.digest_minute == now_kst.minute
+            )
         ).all()
         now_utc = datetime.now(timezone.utc)
         for device in devices:
@@ -476,7 +481,9 @@ def _word_of_day_alert_check(force: bool = False) -> list[int]:
     with db.get_session() as session:
         query = select(db.Device).where(db.Device.word_of_day_enabled)
         if not force:
-            query = query.where(db.Device.word_of_day_hour == now_kst.hour)
+            query = query.where(
+                db.Device.word_of_day_hour == now_kst.hour, db.Device.word_of_day_minute == now_kst.minute
+            )
         devices = session.exec(query).all()
         for device in devices:
             if not force and device.last_word_of_day_sent_at is not None:
@@ -1168,6 +1175,11 @@ async def delete_stock_watch(watch_id: int):
 
 class DigestIn(BaseModel):
     hour: int | None = None  # 0~23(KST), null이면 끔
+    # 2026-09-27: "지금 테스트해보게 분 단위로도 설정할 수 있게 해달라"는
+    # 요청으로 추가함 — hour가 null(꺼짐)이면 이 값은 의미 없음. 기존
+    # 클라이언트가 이 필드를 안 보내도 기본값 0(정각)으로 동작해서
+    # 하위호환됨.
+    minute: int = 0
 
 
 @app.put("/devices/{device_id}/digest")
@@ -1179,14 +1191,17 @@ async def set_digest(device_id: int, body: DigestIn):
     (_send_digest 참고). 기기당 하루 1회."""
     if body.hour is not None and not (0 <= body.hour <= 23):
         raise HTTPException(status_code=422, detail="hour must be 0-23")
+    if not (0 <= body.minute <= 59):
+        raise HTTPException(status_code=422, detail="minute must be 0-59")
     with db.get_session() as session:
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
         device.digest_hour = body.hour
+        device.digest_minute = body.minute
         session.add(device)
         session.commit()
-        return {"device_id": device_id, "digest_hour": device.digest_hour}
+        return {"device_id": device_id, "digest_hour": device.digest_hour, "digest_minute": device.digest_minute}
 
 
 @app.get("/devices/{device_id}/digest")
@@ -1195,7 +1210,7 @@ async def get_digest(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
-        return {"device_id": device_id, "digest_hour": device.digest_hour}
+        return {"device_id": device_id, "digest_hour": device.digest_hour, "digest_minute": device.digest_minute}
 
 
 class KeywordAlertIn(BaseModel):
@@ -1321,6 +1336,7 @@ async def get_word_of_day():
 class WordOfDayAlertIn(BaseModel):
     enabled: bool
     hour: int
+    minute: int = 0  # digest_minute과 같은 이유(2026-09-27, 분 단위 테스트용)
 
 
 def _word_of_day_alert_dict(device: db.Device) -> dict:
@@ -1328,6 +1344,7 @@ def _word_of_day_alert_dict(device: db.Device) -> dict:
         "device_id": device.id,
         "word_of_day_enabled": device.word_of_day_enabled,
         "word_of_day_hour": device.word_of_day_hour,
+        "word_of_day_minute": device.word_of_day_minute,
     }
 
 
@@ -1338,12 +1355,15 @@ async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
     기기별 시각 선택으로 바꿈."""
     if not (0 <= body.hour <= 23):
         raise HTTPException(status_code=422, detail="hour must be 0-23")
+    if not (0 <= body.minute <= 59):
+        raise HTTPException(status_code=422, detail="minute must be 0-59")
     with db.get_session() as session:
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
         device.word_of_day_enabled = body.enabled
         device.word_of_day_hour = body.hour
+        device.word_of_day_minute = body.minute
         session.add(device)
         session.commit()
         return _word_of_day_alert_dict(device)

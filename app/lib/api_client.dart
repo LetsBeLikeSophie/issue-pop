@@ -143,20 +143,19 @@ class ApiClient {
     _checkOk(res);
   }
 
-  Future<int?> getDigestHour(int deviceId) async {
+  Future<DigestSettings> getDigest(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
     final res = await _client.get(uri);
     _checkOk(res);
-    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    return map['digest_hour'] as int?;
+    return DigestSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<void> setDigestHour(int deviceId, int? hour) async {
+  Future<void> setDigest(int deviceId, DigestSettings settings) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
     final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'hour': hour}),
+      body: jsonEncode({'hour': settings.hour, 'minute': settings.minute}),
     );
     _checkOk(res);
   }
@@ -195,7 +194,7 @@ class ApiClient {
     final res = await _client.put(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'enabled': settings.enabled, 'hour': settings.hour}),
+      body: jsonEncode({'enabled': settings.enabled, 'hour': settings.hour, 'minute': settings.minute}),
     );
     _checkOk(res);
     return WordOfDayAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
@@ -397,19 +396,40 @@ class StockNewsItem {
 }
 
 class WordOfDayAlertSettings {
-  const WordOfDayAlertSettings({required this.enabled, required this.hour});
+  const WordOfDayAlertSettings({required this.enabled, required this.hour, this.minute = 0});
 
   final bool enabled;
   final int hour;
 
+  /// 2026-09-27: "지금 테스트해보게 분 단위로도" 요청으로 추가 — 안 보내는
+  /// 기존 클라이언트/저장된 값과의 하위호환을 위해 기본값 0(정각).
+  final int minute;
+
   factory WordOfDayAlertSettings.fromJson(Map<String, dynamic> json) => WordOfDayAlertSettings(
         enabled: json['word_of_day_enabled'] as bool,
         hour: json['word_of_day_hour'] as int,
+        minute: json['word_of_day_minute'] as int? ?? 0,
       );
 
-  WordOfDayAlertSettings copyWith({bool? enabled, int? hour}) => WordOfDayAlertSettings(
+  WordOfDayAlertSettings copyWith({bool? enabled, int? hour, int? minute}) => WordOfDayAlertSettings(
         enabled: enabled ?? this.enabled,
         hour: hour ?? this.hour,
+        minute: minute ?? this.minute,
+      );
+}
+
+/// 2026-09-27: 다이제스트(오늘의 이슈팝) 알림 시각 — hour가 null이면
+/// 꺼짐. 예전엔 시(hour) 하나(int?)만 있었는데, "지금 테스트해보게 분
+/// 단위로도 설정할 수 있게" 요청으로 minute을 더해서 작은 값 객체로 뺌.
+class DigestSettings {
+  const DigestSettings({required this.hour, this.minute = 0});
+
+  final int? hour;
+  final int minute;
+
+  factory DigestSettings.fromJson(Map<String, dynamic> json) => DigestSettings(
+        hour: json['digest_hour'] as int?,
+        minute: json['digest_minute'] as int? ?? 0,
       );
 }
 
