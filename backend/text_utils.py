@@ -164,6 +164,29 @@ def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
     return chains
 
 
+def extract_western_name_pairs(text: str) -> set[str]:
+    """"빌 게이츠"처럼 짧은(1~2자) 이름 + 공백 + 성 형태의 서구식 이름을
+    붙여서 반환.
+
+    2026-09-27: "빌게이츠"를 _USER_WORDS에 등록해도 실제 기사 원문은
+    "빌 게이츠"처럼 공백이 있어서 그 등록이 안 먹힘(kiwipiepy는 공백을
+    형태소 경계로 보기 때문에 사전 등록으로 공백을 넘어 붙일 수 없음).
+    문제는 "게이츠"만으로도 kiwi가 유효한 NNP(고유명사)로 인식해버려서,
+    extract_proper_nouns()가 "이미 완전한 고유명사"로 보고 "빌"을 마저
+    붙여주는 보정을 안 함(용혜인/김승원처럼 애초에 NNP 태그를 못 받는
+    잘림과 달리, 이건 "짧지만 유효한" 고유명사라 다른 문제). 짧은 NNP
+    바로 뒤에 공백 하나만 두고 다른 NNP가 이어지는 패턴 자체를 성+이름
+    후보로 보고 keyword_extraction.py가 "게이츠" 대신 "빌게이츠"를
+    고르게 함.
+    """
+    tokens = kiwi.tokenize(text)
+    pairs: set[str] = set()
+    for a, b in zip(tokens, tokens[1:]):
+        if a.tag == "NNP" and b.tag == "NNP" and len(a.form) <= 2 and b.start == a.start + a.len + 1:
+            pairs.add(a.form + b.form)
+    return pairs
+
+
 def extract_noun_ngrams(text: str) -> list[str]:
     """명사 유니그램 + 바로 붙어있는 명사쌍(바이그램) + 숫자·단위 조합.
 

@@ -57,6 +57,7 @@ from text_utils import (
     extract_fused_syllable_chains,
     extract_noun_ngrams,
     extract_proper_nouns,
+    extract_western_name_pairs,
 )
 
 # "8명", "13%"처럼 숫자+단위(또는 %)만으로 된 토큰인지 — 대표/보조
@@ -290,6 +291,8 @@ def extract_keywords(
             # 매번 사람이 이름을 추가하지 않아도 같은 패턴이면 자동으로 잡힘.
             proper_nouns |= set(extract_fused_syllable_chains(title))
             proper_nouns |= set(extract_fused_syllable_chains(summary))
+            proper_nouns |= extract_western_name_pairs(title)
+            proper_nouns |= extract_western_name_pairs(summary)
 
         # 2026-09-11 LLM 감사에서 발견: extract_noun_ngrams의 바이그램
         # 이어붙이기가 "김승원"(고유명사)+"신약"을 "김승원신약"으로 붙여
@@ -302,9 +305,17 @@ def extract_keywords(
         # 자리 그대로 깨끗한 고유명사로 바꿔치기하는 패스를 먼저 돌림
         # (위치 무관).
         for i, kw in enumerate(keywords):
-            if kw in proper_nouns:
-                continue
             related = [p for p in proper_nouns if p != kw and (p in kw or kw in p)]
+            longer_related = [p for p in related if len(p) > len(kw)]
+            # kw 자체가 이미 유효한 고유명사로 인식되더라도("게이츠"도 kiwi가
+            # NNP로 보긴 함) 그걸 포함하는 더 긴 후보가 있으면(서구식
+            # "이름+성" 등, extract_western_name_pairs 참고) 그쪽이 항상 더
+            # 정보량이 많으므로 우선함. 반대로 kw가 이미 완전하고 longer_related가
+            # 없으면(대부분의 정상적인 한국 인명) 예전처럼 손대지 않음 —
+            # "김승원신약" 같은 우연한 합성어에 낚여 정상 키워드를 갈아치우는
+            # 걸 막아줌.
+            if kw in proper_nouns and not longer_related:
+                continue
             if not related:
                 continue
             clean = max(related, key=len)
