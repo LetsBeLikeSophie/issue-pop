@@ -533,11 +533,30 @@ def _run_cluster_audit() -> int:
         with db.get_session() as session:
             for f in findings:
                 c = _cache.get(f["issue_id"])
+                keyword = c["keyword"] if c else ""
+                # 2026-09-27: issue_id는 클러스터링이 매일 다시 돌면서 매번
+                # 새로 해시되기 때문에("빌게이츠" 같은 같은 근본 원인이
+                # 오늘도 내일도 다른 issue_id로 잡힘) 지금까지는 같은 단어가
+                # 같은 문제로 계속 다시 걸려도 그냥 매일 새 행으로 쌓이기만
+                # 했음(하루 90~100여 건씩, 리뷰가 못 따라가서 방치됨) —
+                # 아직 검토 안 한(reviewed=False) 같은 키워드+문제유형이
+                # 이미 있으면 또 안 쌓고 건너뜀.
+                from sqlmodel import select
+
+                dup = session.exec(
+                    select(db.ClusterAuditFinding).where(
+                        db.ClusterAuditFinding.keyword == keyword,
+                        db.ClusterAuditFinding.problem_type == f["problem_type"],
+                        db.ClusterAuditFinding.reviewed == False,  # noqa: E712
+                    )
+                ).first()
+                if dup is not None:
+                    continue
                 session.add(
                     db.ClusterAuditFinding(
                         date=today,
                         issue_id=f["issue_id"],
-                        keyword=c["keyword"] if c else "",
+                        keyword=keyword,
                         category=c["category"] if c else "",
                         problem_type=f["problem_type"],
                         detail=f["detail"],
