@@ -176,14 +176,20 @@ def extract_western_name_pairs(text: str) -> set[str]:
     붙여주는 보정을 안 함(용혜인/김승원처럼 애초에 NNP 태그를 못 받는
     잘림과 달리, 이건 "짧지만 유효한" 고유명사라 다른 문제). 짧은 NNP
     바로 뒤에 공백 하나만 두고 다른 NNP가 이어지는 패턴 자체를 성+이름
-    후보로 보고 keyword_extraction.py가 "게이츠" 대신 "빌게이츠"를
+    후보로 보고 keyword_extraction.py가 "게이츠" 대신 "빌 게이츠"를
     고르게 함.
+
+    원문 그대로 공백을 살려서 이어붙임("빌게이츠"가 아니라 "빌 게이츠") —
+    extract_noun_ngrams의 일반 바이그램 이어붙이기는 공백 유무를 안
+    가리고 무조건 붙이는데(국민+연금처럼 원래 안 붙어있던 것도 똑같이
+    처리), 그건 원문에 공백이 아예 없는 한국어 복합명사 기준으로 짠
+    규칙이라 서구식 이름에 그대로 쓰면 원래 있어야 할 공백을 지워버림.
     """
     tokens = kiwi.tokenize(text)
     pairs: set[str] = set()
     for a, b in zip(tokens, tokens[1:]):
         if a.tag == "NNP" and b.tag == "NNP" and len(a.form) <= 2 and b.start == a.start + a.len + 1:
-            pairs.add(a.form + b.form)
+            pairs.add(f"{a.form} {b.form}")
     return pairs
 
 
