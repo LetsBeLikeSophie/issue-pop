@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+2026-09-27: 홈 화면 "오늘의 단어" 위젯 메타데이터.
+updatePeriodMillis는 하루 한 번만 바뀌는 값이라 6시간(21600000ms)이면
+충분함(Android 최소 허용 주기는 30분이라 그보다 훨씬 여유 있게 잡음).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="60dp"
+    android:updatePeriodMillis="21600000"
+    android:initialLayout="@layout/word_of_day_widget"
+    android:configure="com.issuepop.issue_pop.WordOfDayWidgetConfigureActivity"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen">
+</appwidget-provider>

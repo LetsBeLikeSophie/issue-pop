@@ -1,8 +1,10 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 
 import 'api_client.dart';
 import 'favorites_store.dart';
@@ -11,6 +13,7 @@ import 'screens/home_screen.dart';
 import 'text_scale_store.dart';
 import 'theme.dart';
 import 'theme_store.dart';
+import 'word_of_day_widget.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +30,15 @@ void main() async {
   await FavoritesStore.instance.load();
   await TextScaleStore.instance.load();
   await ThemeStore.instance.load();
+  // 2026-09-27: 홈 화면 "오늘의 단어" 위젯 — 안드로이드 전용(word_of_day_widget.dart
+  // 참고). registerInteractivityCallback은 콜백 핸들을 네이티브에 등록해둬서
+  // 나중에 앱이 안 켜져 있어도(위젯 정기 갱신) 헤드리스로 이 콜백을 부를 수
+  // 있게 함 — 매번 앱을 열 때마다 다시 등록해도 안전(idempotent). 위젯
+  // 갱신 자체는 네트워크 호출이라 앱 시작을 막지 않게 await 안 함.
+  if (!kIsWeb && Platform.isAndroid) {
+    await HomeWidget.registerInteractivityCallback(wordOfDayBackgroundCallback);
+    unawaited(updateWordOfDayWidget(ApiClient()));
+  }
   runApp(const IssuePopApp());
 }
 

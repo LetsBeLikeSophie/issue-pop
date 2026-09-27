@@ -29,12 +29,46 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 2026-09-27: "오늘의 단어" 위젯을 탭해서 앱을 열 때 씀
+                 (HomeWidgetLaunchIntent가 이 액션으로 MainActivity를 찾음). -->
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.LAUNCH"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 2026-09-27: 홈 화면 "오늘의 단어" 위젯 — WordOfDayWidgetProvider.kt
+             참고. HomeWidgetBackgroundReceiver는 위젯이 주기적으로 깨울 때
+             헤드리스 플러터 엔진으로 word_of_day_widget.dart의 백그라운드
+             콜백을 실행해주는 home_widget 패키지 내장 리시버. -->
+        <receiver android:name=".WordOfDayWidgetProvider" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/word_of_day_widget_info"/>
+        </receiver>
+        <!-- 위젯을 처음 추가할 때 형광펜 색을 고르는 화면(WordOfDayWidgetConfigureActivity.kt). -->
+        <activity
+            android:name=".WordOfDayWidgetConfigureActivity"
+            android:exported="true"
+            android:theme="@style/NormalTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE"/>
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
