@@ -160,7 +160,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                                           style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.w700,
-                                            color: w.quote!.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                                            color: w.quote!.percent >= 0 ? AppColors.stockUp : AppColors.stockDown,
                                           ),
                                         ),
                                   onTap: () => _spotlight.scrollTo(w.ticker),
@@ -303,8 +303,8 @@ class _StockCardState extends State<_StockCard> {
                               const SizedBox(width: 6),
                               AppBadge.filled(
                                 label: _formatPercent(quote.percent),
-                                background: quote.percent >= 0 ? AppColors.accentSoft : AppColors.accent2Soft,
-                                foreground: quote.percent >= 0 ? AppColors.accent : AppColors.accent2,
+                                background: quote.percent >= 0 ? AppColors.stockUpSoft : AppColors.stockDownSoft,
+                                foreground: quote.percent >= 0 ? AppColors.stockUp : AppColors.stockDown,
                                 mono: true,
                               ),
                             ],
@@ -404,15 +404,15 @@ class _StockSummaryBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(child: _SummaryStat(value: '$rising개', label: '상승', color: AppColors.accent)),
+          Expanded(child: _SummaryStat(value: '$rising개', label: '상승', color: AppColors.stockUp)),
           Container(width: 1, height: 26, color: AppColors.line),
-          Expanded(child: _SummaryStat(value: '$falling개', label: '하락', color: AppColors.accent2)),
+          Expanded(child: _SummaryStat(value: '$falling개', label: '하락', color: AppColors.stockDown)),
           Container(width: 1, height: 26, color: AppColors.line),
           Expanded(
             child: _SummaryStat(
               value: avg == null ? '—' : _formatPercent(avg),
               label: '평균 등락',
-              color: avg == null ? AppColors.inkFaint : (avg >= 0 ? AppColors.accent : AppColors.accent2),
+              color: avg == null ? AppColors.inkFaint : (avg >= 0 ? AppColors.stockUp : AppColors.stockDown),
             ),
           ),
         ],

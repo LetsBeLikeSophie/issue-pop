@@ -29,6 +29,10 @@ class _Palette {
     required this.accent2Soft,
     required this.line,
     required this.brightness,
+    required this.stockUp,
+    required this.stockUpSoft,
+    required this.stockDown,
+    required this.stockDownSoft,
   });
 
   final Color bg;
@@ -43,6 +47,19 @@ class _Palette {
   final Color accent2Soft;
   final Color line;
   final Brightness brightness;
+
+  // 2026-09-27: 주식 상승/하락 표시가 그동안 이 팔레트의 accent/accent2를
+  // 그대로 재사용해서, 프리셋을 바꾸면 상승색이 파란색(네이비 accent,
+  // "화이트" 프리셋)이었다가 초록색("현재" 프리셋)이었다가 계속 바뀌는
+  // 문제가 있었음("마이너스는 파란색, 플러스는 빨간색"이어야 하는 국내
+  // 증권 관행이 지켜진 적이 아예 없었음). 상승=빨강/하락=파랑은 테마
+  // 색상 취향과 무관하게 항상 같아야 하는 고정 의미라서, 팔레트 전환과
+  // 무관한 별도 필드로 뺌(다크 프리셋만 어두운 배경 대비를 위해 더
+  // 밝은 톤을 씀).
+  final Color stockUp;
+  final Color stockUpSoft;
+  final Color stockDown;
+  final Color stockDownSoft;
 }
 
 const _currentPalette = _Palette(
@@ -58,6 +75,10 @@ const _currentPalette = _Palette(
   accent2Soft: Color(0xFFF1DED3),
   line: Color(0xFFD7DBC9),
   brightness: Brightness.light,
+  stockUp: Color(0xFFD64545),
+  stockUpSoft: Color(0xFFF6DEDE),
+  stockDown: Color(0xFF3B6FD6),
+  stockDownSoft: Color(0xFFDCE6F8),
 );
 
 // "흰색(회색 정도)" 요청으로 시작한 프리셋 — 2026-09-20: 디자인 캔버스
@@ -81,6 +102,10 @@ const _neutralPalette = _Palette(
   accent2Soft: Color(0xFFEFE7E1),
   line: Color(0xFFE7E8EB),
   brightness: Brightness.light,
+  stockUp: Color(0xFFD64545),
+  stockUpSoft: Color(0xFFF6DEDE),
+  stockDown: Color(0xFF3B6FD6),
+  stockDownSoft: Color(0xFFDCE6F8),
 );
 
 // 기존 포레스트그린/테라코타 톤을 어두운 배경에 맞게 반전 — 색상 자체는
@@ -98,6 +123,10 @@ const _darkPalette = _Palette(
   accent2Soft: Color(0xFF3D2E24),
   line: Color(0xFF3A4033),
   brightness: Brightness.dark,
+  stockUp: Color(0xFFE2685F),
+  stockUpSoft: Color(0xFF3D2424),
+  stockDown: Color(0xFF6F97E8),
+  stockDownSoft: Color(0xFF1F2C40),
 );
 
 const Map<ColorPreset, _Palette> _palettes = {
@@ -123,6 +152,13 @@ class AppColors {
   static Color get accent2Soft => _p.accent2Soft;
   static Color get line => _p.line;
   static Brightness get brightness => _p.brightness;
+
+  /// 국내 증권 관행(상승=빨강/하락=파랑) 고정 색 — 프리셋(accent/accent2)과
+  /// 무관하게 항상 같은 의미를 가져야 해서 팔레트 취향과 분리해둠.
+  static Color get stockUp => _p.stockUp;
+  static Color get stockUpSoft => _p.stockUpSoft;
+  static Color get stockDown => _p.stockDown;
+  static Color get stockDownSoft => _p.stockDownSoft;
 
   // 구 이름 유지(위젯 코드 전반에서 참조) — 새 팔레트로 매핑.
   static Color get card => surface;
