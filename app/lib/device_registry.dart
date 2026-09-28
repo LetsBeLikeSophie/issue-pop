@@ -205,6 +205,19 @@ class DeviceRegistry {
     await prefs.setInt(_wordOfDayMinuteKey, settings.minute);
   }
 
+  /// 2026-09-28: "알림이 하루종일 안 온다"는 걸 실기기 로그 없이도
+  /// 점검할 수 있게 — 지금 저장된 토큰이 진짜 FCM 토큰인지 임시
+  /// 랜덤 식별자에 머물러 있는지를 설정 화면에서 바로 보여줌.
+  Future<String> tokenDiagnostic() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_tokenKey);
+    if (token == null) return '토큰 없음(아직 기기 등록 전)';
+    if (token.length <= _fallbackTokenLength) {
+      return '임시 식별자만 있음(${token.length}자) — 알림이 실제로 갈 수 없는 상태예요';
+    }
+    return '정상 알림 토큰(${token.length}자)';
+  }
+
   Future<void> submitFeedback(String message, {String? contactEmail}) async {
     final id = await _deviceId();
     await api.submitFeedback(deviceId: id, message: message, contactEmail: contactEmail);

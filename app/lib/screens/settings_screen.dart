@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
 import '../device_registry.dart';
+import '../push_token.dart';
 import '../text_scale_store.dart';
 import '../theme.dart';
 import '../theme_store.dart';
@@ -31,18 +32,22 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   late final DeviceRegistry _devices = DeviceRegistry(widget.api);
   Future<DigestSettings>? _digest;
   Future<KeywordAlertSettings>? _keywordAlert;
   Future<WordOfDayAlertSettings>? _wordOfDayAlert;
   late final Future<List<SourceOutlet>> _sources;
 
-  /// 2026-09-27: 알림 토글들은 "이 알림을 원하냐"는 서버 저장값만 볼 뿐,
-  /// 기기 자체가 알림을 허용했는지는 전혀 안 봐서 — 권한을 거부해도
-  /// 토글은 그대로 떠 있어 "켰는데 왜 안 오지"로 이어짐. 실제 OS 권한
-  /// 상태를 따로 조회해서 거부 상태면 배너로 알려줌.
-  late final Future<AuthorizationStatus> _notificationStatus;
+  /// 2026-09-28: OS 알림 권한은 앱이 통제할 수 없는 시점에 바뀔 수 있음
+  /// (사용자가 기기 설정으로 나가서 껐다 켰다 할 수 있음) — 그래서 앱을
+  /// 다시 시작해야만 반영되는 대신, 화면이 "다시 보일 때마다"(포그라운드
+  /// 복귀 시점, didChangeAppLifecycleState의 resumed) 매번 다시 조회함.
+  /// 이건 순수 로컬 조회라(getNotificationSettings()는 기기 OS 상태를
+  /// 그냥 읽어오는 것 — 서버 왕복 전혀 없음) 매번 다시 불러도 비용이
+  /// 없음. null=아직 확인 전, true=거부됨(토글 비활성화), false=허용됨.
+  bool? _notificationsDenied;
+  AuthorizationStatus? _lastKnownNotificationStatus;
 
   /// 2026-09-27: 캐시가 없는 첫 실행에서는 토글들이 네트워크 왕복 후에야
   /// 뜨는 통에 화면이 잠깐 비어 보이다 툭 튀어나오는 느낌이 있었음 —
@@ -53,20 +58,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _digest = _devices.getDigest();
     _keywordAlert = _devices.getKeywordAlert();
     _wordOfDayAlert = _devices.getWordOfDayAlert();
     _sources = widget.api.getSources();
     _initialLoad = Future.wait([_digest!, _keywordAlert!, _wordOfDayAlert!]);
-    // 2026-09-27: getNotificationSettings()를 여기서 바로 부르면, 첫 실행
-    // 때는 OS 권한 다이얼로그(디바이스 등록 체인 안에서 요청됨)에 사용자가
+    // 2026-09-27: getNotificationSettings()를 곧바로 부르면, 첫 실행 때는
+    // OS 권한 다이얼로그(디바이스 등록 체인 안에서 요청됨)에 사용자가
     // 아직 답하기 전 상태를 그대로 읽어버림 — "허용"을 눌러도 배너가 계속
     // "거부됨"으로 남아있던 버그. _initialLoad가 끝난 뒤에 체크하면 그
-    // 안에서 이미 권한 요청까지 다 끝난 뒤라 실제 답변이 반영된 상태를
-    // 읽음.
-    _notificationStatus = _initialLoad.then(
-      (_) => FirebaseMessaging.instance.getNotificationSettings(),
-    ).then((s) => s.authorizationStatus);
+    // 안에서 이미 권한 요청까지 다 끝난 뒤라 실제 답변이 반영된 상태를 읽음.
+    _initialLoad.then((_) => _refreshNotificationStatus());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 2026-09-28: 사용자가 배너를 보고 기기 설정으로 나가서 권한을 켠 뒤
+  /// 이 화면으로 돌아오면(resumed), 재실행 없이 바로 반영되게 함.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshNotificationStatus();
+    }
+  }
+
+  Future<void> _refreshNotificationStatus() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    if (!mounted) return;
+    setState(() {
+      _lastKnownNotificationStatus = settings.authorizationStatus;
+      _notificationsDenied = settings.authorizationStatus == AuthorizationStatus.denied;
+    });
   }
 
   /// 2026-09-26: "관심 이슈 알림" — 키워드 등록/삭제는 관심 키워드
@@ -206,6 +233,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// 2026-09-28: "알림이 하루종일 안 온다"를 실기기 로그 없이도 점검할
+  /// 수 있게 — 지금 권한 상태/토큰 상태/마지막 토큰 발급 시도 결과를
+  /// 한 화면에 모아 보여줌. FcmDiagnostics(push_token.dart)는 그 세션
+  /// 안에서 가장 최근 시도한 결과만 담고 있어서, 이 화면을 보기 전에
+  /// 한 번은 앱을 열어(설정 화면 진입 시 기기 등록/토큰 갱신이 돎)
+  /// 실제로 시도가 있었어야 값이 참.
+  Future<void> _showNotificationDiagnostics() async {
+    await _refreshNotificationStatus();
+    final tokenInfo = await _devices.tokenDiagnostic();
+    if (!mounted) return;
+    await showAppBottomSheet<void>(
+      context,
+      builder: (_) => _NotificationDiagnosticsSheet(
+        permissionStatus: _lastKnownNotificationStatus,
+        tokenInfo: tokenInfo,
+        lastAttemptStatus: FcmDiagnostics.lastStatus,
+        lastError: FcmDiagnostics.lastError,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 2026-09-26: AppColors.xxx는 static getter라(Theme.of(context) 같은
@@ -247,10 +295,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
       children: [
-                  FutureBuilder<AuthorizationStatus>(
-                    future: _notificationStatus,
-                    builder: (context, snapshot) {
-                      if (snapshot.data != AuthorizationStatus.denied) return const SizedBox.shrink();
+                  Builder(
+                    builder: (context) {
+                      if (_notificationsDenied != true) return const SizedBox.shrink();
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Container(
@@ -322,7 +369,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _ToggleRow(
                               label: '오늘의 이슈팝',
                               value: hour != null,
-                              onChanged: snapshot.connectionState == ConnectionState.waiting
+                              onChanged: snapshot.connectionState == ConnectionState.waiting || _notificationsDenied == true
                                   ? null
                                   : _toggleDigest,
                               showDivider: hour != null,
@@ -356,7 +403,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _ToggleRow(
                               label: '오늘의 단어',
                               value: s?.enabled ?? false,
-                              onChanged: s == null
+                              onChanged: s == null || _notificationsDenied == true
                                   ? null
                                   : (v) => _updateWordOfDayAlert((c) => c.copyWith(enabled: v)),
                               showDivider: s?.enabled ?? false,
@@ -390,7 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             _ToggleRow(
                               label: '관심 키워드',
                               value: s?.enabled ?? false,
-                              onChanged: s == null
+                              onChanged: s == null || _notificationsDenied == true
                                   ? null
                                   : (v) => _updateKeywordAlert((c) => c.copyWith(enabled: v)),
                               showDivider: s?.enabled ?? false,
@@ -517,6 +564,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _PlainRow(
                           label: '문의하기',
                           onTap: _showContactSheet,
+                          showDivider: true,
+                        ),
+                        // 2026-09-28: "알림이 하루종일 안 온다"를 실기기
+                        // 로그(adb) 없이도 점검할 수 있게 — 지금 저장된
+                        // 토큰이 진짜 FCM 토큰인지, 마지막 발급 시도에서
+                        // 뭐가 잘못됐는지를 바로 보여줌.
+                        _PlainRow(
+                          label: '알림 진단 정보',
+                          onTap: _showNotificationDiagnostics,
                           showDivider: false,
                         ),
                       ],
@@ -833,6 +889,75 @@ String _formatTime(int hour, int minute) {
 /// GET /digest/preview가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌.
 /// 실제 발송(FCM)과는 무관한 조회 전용이라 기기 목록을 건드리거나
 /// last_digest_sent_at을 바꾸지 않음.
+/// 2026-09-28: "알림이 하루종일 안 온다"를 실기기 로그(adb) 없이도
+/// 점검할 수 있게 만든 진단 화면 — 권한 상태/토큰 상태/마지막 토큰
+/// 발급 시도 결과를 그대로 보여줌. 문의하기로 이 내용을 복사해 보내면
+/// 원인 파악이 훨씬 빨라짐.
+class _NotificationDiagnosticsSheet extends StatelessWidget {
+  const _NotificationDiagnosticsSheet({
+    required this.permissionStatus,
+    required this.tokenInfo,
+    required this.lastAttemptStatus,
+    required this.lastError,
+  });
+
+  final AuthorizationStatus? permissionStatus;
+  final String tokenInfo;
+  final String? lastAttemptStatus;
+  final String? lastError;
+
+  String _permissionLabel(AuthorizationStatus? status) {
+    switch (status) {
+      case AuthorizationStatus.authorized:
+        return '허용됨';
+      case AuthorizationStatus.denied:
+        return '거부됨';
+      case AuthorizationStatus.provisional:
+        return '임시 허용(조용한 알림)';
+      case AuthorizationStatus.notDetermined:
+        return '아직 물어본 적 없음';
+      case null:
+        return '확인 실패';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSheetBody(
+      title: '알림 진단 정보',
+      subtitle: '알림이 안 온다면 이 값들을 확인해보세요. 문의하기에 그대로 붙여 보내주시면 더 빨리 봐드릴 수 있어요.',
+      children: [
+        _DiagnosticRow(label: '기기 알림 권한', value: _permissionLabel(permissionStatus)),
+        _DiagnosticRow(label: '알림 토큰 상태', value: tokenInfo),
+        _DiagnosticRow(label: '마지막 토큰 발급 시도', value: lastAttemptStatus ?? '이번 세션에서 아직 시도 안 함'),
+        if (lastError != null) _DiagnosticRow(label: '마지막 오류', value: lastError!),
+      ],
+    );
+  }
+}
+
+class _DiagnosticRow extends StatelessWidget {
+  const _DiagnosticRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: AppColors.inkFaint, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          SelectableText(value, style: TextStyle(fontSize: 13, color: AppColors.ink)),
+        ],
+      ),
+    );
+  }
+}
+
 class _DigestPreviewSheet extends StatelessWidget {
   const _DigestPreviewSheet({required this.preview});
 
