@@ -307,25 +307,28 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Icon(Icons.notifications_off_outlined, size: 18, color: AppColors.accent2),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '알림 권한이 꺼져 있어요',
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      '아래에서 알림을 켜도 기기 알림 권한이 꺼져 있으면 실제로는 오지 않아요. 기기 설정 > 앱 > Issue Pop > 알림에서 허용해주세요.',
-                                      style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4),
-                                    ),
-                                  ],
+                                child: Text(
+                                  '알림을 받으려면 켜주세요',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink),
                                 ),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: openNotificationSettings,
+                                style: TextButton.styleFrom(
+                                  backgroundColor: AppColors.accent2,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: const Text('알림 설정 열기', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                               ),
                             ],
                           ),

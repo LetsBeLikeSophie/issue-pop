@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/services.dart' show MethodChannel;
 
 /// 2026-09-08: 실제 FCM 등록 토큰을 받아옴 — 예전엔 기기 식별용으로 그냥
 /// 로컬에서 만든 랜덤 문자열(device_registry.dart의 _randomToken)을
@@ -21,6 +22,19 @@ class FcmDiagnostics {
   FcmDiagnostics._();
   static String? lastStatus;
   static String? lastError;
+}
+
+const _settingsChannel = MethodChannel('issuepop/settings');
+
+/// 2026-09-28: "알림 설정 열기" 버튼용 — MainActivity.kt에 만들어둔
+/// 네이티브 채널을 호출해서 기기의 앱 알림 설정 화면으로 바로 이동함.
+Future<void> openNotificationSettings() async {
+  if (kIsWeb) return;
+  try {
+    await _settingsChannel.invokeMethod('openNotificationSettings');
+  } catch (e) {
+    debugPrint('[Settings] openNotificationSettings 실패: $e');
+  }
 }
 
 Future<String?> getFcmToken() async {
