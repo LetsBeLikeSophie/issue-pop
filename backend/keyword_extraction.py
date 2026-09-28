@@ -320,7 +320,24 @@ def extract_keywords(
         if not any(kw in proper_nouns for kw in keywords):
             for t, _w, _score in scored[:_PROPER_NOUN_SEARCH_WINDOW]:
                 if t in proper_nouns and not any(t in kw or kw in t for kw in keywords[:-1]):
-                    keywords[-1] = t
+                    # 2026-09-29 실측(권혁빈 이혼소송 기사): kiwi 사전에 없는
+                    # 인명은 NNP가 이름의 일부만 잡을 수 있음(예: "권혁빈"이
+                    # NNP "권혁"+NNG "빈"으로 쪼개짐) — extract_proper_nouns가
+                    # 그 "권혁"만 고유명사로 보고하니, 이 자리에서 그대로
+                    # 넣으면 이름이 잘린 채로 나감. 정작 온전한 "권혁빈"은
+                    # ngram 융합으로 scored 후보에 이미 동점으로 존재하는데도
+                    # proper_nouns 집합엔 없어서(=NNP 태그가 아니라서) 고려
+                    # 대상에서 빠졌던 것 — t 뒤에 뭔가 바로 붙어서 이름을
+                    # 완성하는 scored 후보가 있으면(=t로 시작하는 더 긴 후보)
+                    # 그쪽을 우선함. startswith로 제한하는 이유: "t가 포함되는"
+                    # 조건만 쓰면 "스마일게이트 권혁"처럼 앞에 딴 단어가 붙은
+                    # 후보까지 걸려서, 오히려 "빈"은 여전히 안 붙은 채 길이만
+                    # 더 긴 후보를 잘못 고르는 걸 실측으로 확인함 — t로
+                    # "시작하는" 후보만 받아야 진짜 "뒤에 붙은 조각을 채우는"
+                    # 케이스로 좁혀짐. 여러 개면 가장 짧은(=가장 적게 덧붙인)
+                    # 걸 고름 — 진짜 필요한 만큼만 보정하기 위해서.
+                    extended = [c for c, _w2, _s2 in scored if c.startswith(t) and len(c) > len(t)]
+                    keywords[-1] = min(extended, key=len) if extended else t
                     break
 
         # 위 고유명사 보정을 거치고도(고유명사가 상위 8개 후보 안에 아예

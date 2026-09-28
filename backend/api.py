@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 import bcrypt
 import firebase_admin
 import requests
+from firebase_admin import exceptions as fb_exceptions
 from firebase_admin import messaging
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -300,7 +301,17 @@ def _send_push(device: db.Device, title: str, body: str, session) -> bool:
     앱 삭제 등) FCM이 UnregisteredError로 알려주는데, 그 기기는 앞으로도
     계속 실패할 뿐이라 아예 지워서 다음 확인부터 안 걸리게 함 — 안 지우면
     영원히 실패하는 발송을 계속 시도하게 됨. 이 기기를 삭제했으면 True를
-    돌려줌(호출하는 쪽이 그 뒤 last_*_sent_at 갱신 등을 건너뛰게)."""
+    돌려줌(호출하는 쪽이 그 뒤 last_*_sent_at 갱신 등을 건너뛰게).
+
+    2026-09-29 실측: UnregisteredError는 "한때 유효했다가 나중에 무효해진"
+    토큰만 잡음(진짜 앱 삭제 등). getFcmToken() 실패로 폴백된 24자 임시
+    식별자처럼 애초에 FCM 형식조차 아닌 토큰은 InvalidArgumentError로
+    따로 옴("The registration token is not a valid FCM registration
+    token") — 이것도 앞으로 영원히 실패할 게 뻔하니 같이 잡아서 삭제함.
+    (실제로 이 두 에러를 구분 못 해서 가짜 토큰 기기 89개가 안 지워지고
+    계속 쌓여있던 걸 발견함.) 둘 다 "이 토큰은 절대 안 될 토큰"이라는
+    공통점이 있어서 같이 처리하고, 그 외(쿼터 초과 등 일시적 오류)는
+    기존대로 그냥 로그만 찍고 다음에 다시 시도함."""
     if not _firebase_ready:
         print(f"[push] (Firebase 미설정, 로그만) device={device.id} title={title!r} body={body!r}")
         return False
@@ -315,8 +326,8 @@ def _send_push(device: db.Device, title: str, body: str, session) -> bool:
     try:
         messaging.send(message)
         print(f"[push] device={device.id} 발송 완료: {title}")
-    except messaging.UnregisteredError:
-        print(f"[push] device={device.id} 토큰 만료 — 기기 삭제")
+    except (messaging.UnregisteredError, fb_exceptions.InvalidArgumentError):
+        print(f"[push] device={device.id} 토큰 무효 — 기기 삭제")
         session.delete(device)
         return True
     except Exception as e:  # noqa: BLE001 — FCM 쪽 일시 오류 등 다양하게 옴
@@ -421,27 +432,31 @@ def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
     return sent_to
 
 
-def _digest_check() -> list[int]:
+def _digest_check(force: bool = False) -> list[int]:
     """지금 KST 시각(시+분)과 digest_hour/digest_minute이 일치하는 기기를
     찾아서 발송(스텁)함. 같은 시간대에 중복 발송하지 않으려고
     last_digest_sent_at을 확인함. 2026-09-27: 분 단위 지정을 테스트할 수
     있으려면 그 정확한 분에 체크가 실제로 걸려야 해서, 확인 주기
     (DIGEST_CHECK_INTERVAL_SECONDS)를 5분→1분으로 같이 줄임 — 5분
     주기로는 임의의 목표 분을 놓칠 수 있었음.
-    수동 테스트용으로 POST /digest/run에서도 이 함수를 그대로 씀."""
+    수동 테스트용으로 POST /digest/run에서도 이 함수를 그대로 씀.
+    2026-09-29: "1분 뒤로 계속 시간 바꿔가며 테스트"하는데 DEDUPE_WINDOW(50분)에
+    막혀서 두 번째부터 안 오는 걸 확인 못 하던 문제 — _word_of_day_alert_check와
+    같은 패턴으로 force=True면 시각 일치·중복방지 둘 다 무시하고 무조건 발송함."""
     from sqlmodel import select
 
     now_kst = datetime.now(KST)
     sent_to: list[int] = []
     with db.get_session() as session:
-        devices = session.exec(
-            select(db.Device).where(
+        query = select(db.Device).where(db.Device.digest_hour.is_not(None))
+        if not force:
+            query = query.where(
                 db.Device.digest_hour == now_kst.hour, db.Device.digest_minute == now_kst.minute
             )
-        ).all()
+        devices = session.exec(query).all()
         now_utc = datetime.now(timezone.utc)
         for device in devices:
-            if device.last_digest_sent_at is not None:
+            if not force and device.last_digest_sent_at is not None:
                 # SQLite는 timezone 정보 없이 저장해서 읽어오면 naive
                 # datetime이 됨 — 저장할 땐 항상 UTC였으니 그걸로 다시
                 # tag만 붙여서 비교함.
@@ -1379,12 +1394,14 @@ async def get_word_of_day_alert(device_id: int):
 
 
 @app.post("/digest/run")
-async def run_digest_check():
+async def run_digest_check(force: bool = False):
     """개발/테스트용 — 지금 KST 시각이 되길 기다리지 않고 다이제스트
-    스케줄러를 즉시 한 번 실행함(5분마다 자동으로도 돌긴 함). Firebase
+    스케줄러를 즉시 한 번 실행함(1분마다 자동으로도 돌긴 함). Firebase
     자격증명이 서버에 설정돼 있으면 실제로 발송되고, 없으면 로그만
-    찍는 스텁으로 동작함(_send_digest 참고)."""
-    sent_to = await asyncio.to_thread(_digest_check)
+    찍는 스텁으로 동작함(_send_digest 참고). force=true면 시각 일치·
+    중복방지 둘 다 무시하고 무조건 발송함(그 외엔 /word-of-day/alert-run과
+    같은 규칙)."""
+    sent_to = await asyncio.to_thread(_digest_check, force)
     return {"checked_hour_kst": datetime.now(KST).hour, "sent_to_device_ids": sent_to}
 
 
