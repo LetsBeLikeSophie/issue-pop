@@ -50,6 +50,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+import category
 import cluster_audit
 import db
 import quotes
@@ -211,6 +212,7 @@ async def refresh_cache() -> None:
         # 새 이슈 체크 자체를 건너뜀.
         old_ids = set(_cache.keys())
         _cache = {_make_id(c): c for c in clusters}
+        await asyncio.to_thread(_classify_categories, _cache)
         _last_refresh = time.time()
         _last_error = None
         new_issue_ids = (set(_cache.keys()) - old_ids) if old_ids else set()
@@ -1316,6 +1318,38 @@ async def digest_preview():
     _build_digest_text()가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌
     (발송/기기 조회 등 부수효과 전혀 없음, 설정 화면의 "미리보기"에서 씀)."""
     return {"text": _build_digest_text()}
+
+
+def _classify_categories(clusters_by_id: dict) -> None:
+    """refresh_cache()가 새로 클러스터링한 직후, 각 클러스터의 category를
+    LLM 기반 분류(category.classify_category_llm)로 갈아치움 — 룰 기반
+    사전 매칭(clustering.py 안에서 이미 한 번 매김)이 "암살자" 영화
+    클러스터를 "영화"라는 단어 하나 때문에 "연예"로 잘못 분류하는 문제를
+    발견해서 도입함(2026-09-29).
+
+    CategoryCache에 대표 키워드 조합으로 캐싱함 — 재클러스터링이 30분마다
+    도는데 캐싱 없이 매번 LLM에 물으면 같은 진행 중인 이슈를 하루 수십 번
+    재질문하게 돼서 비용이 쓸데없이 쌓임(db.CategoryCache 독스트링 참고).
+    LLM 실패(API 다운 등)/캐시 미스 둘 다 아닐 때만 새로 묻고, 실패하면
+    기존 룰 기반 분류(clustering.py가 이미 매겨둔 값)를 그대로 둠 — 캐시엔
+    LLM이 실제로 성공한 값만 남김(룰 기반 폴백값을 캐싱해버리면 다음
+    재클러스터링 때도 LLM을 아예 안 물어보게 돼서 영영 안 고쳐짐)."""
+    with db.get_session() as session:
+        for cluster in clusters_by_id.values():
+            keywords = cluster.get("keywords") or []
+            if not keywords:
+                continue
+            keyword_key = "|".join(keywords)
+            cached = session.get(db.CategoryCache, keyword_key)
+            if cached is not None:
+                cluster["category"] = cached.category
+                continue
+            llm_category = category.classify_category_llm(keywords, cluster["representative_title"])
+            if llm_category is None:
+                continue  # 룰 기반 값(clustering.py가 이미 매김) 그대로 둠
+            cluster["category"] = llm_category
+            session.add(db.CategoryCache(keyword_key=keyword_key, category=llm_category))
+        session.commit()
 
 
 def _get_or_create_word_of_day() -> db.WordOfDay | None:

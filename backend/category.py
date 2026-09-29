@@ -164,3 +164,43 @@ def classify_category(cluster_articles: list[dict]) -> str:
     # 동점이면 카테고리 딕셔너리 정의 순서(정치가 제일 앞)로 결정론적으로 고름.
     best = max(scores.items(), key=lambda kv: (kv[1], -list(CATEGORY_KEYWORDS).index(kv[0])))
     return best[0]
+
+
+# 사전 매칭이 아니라 실제 사람이 기사를 읽었을 때의 판단에 가깝게 하려고
+# LLM도 씀 — classify_category_llm 참고. "기타"는 사전에 아예 없는
+# 표현일 때만 쓰는 안전판이라 LLM한테도 선택지로 그대로 줌.
+VALID_CATEGORIES = tuple(CATEGORY_KEYWORDS) + ("기타",)
+
+
+def classify_category_llm(keywords: list[str], representative_title: str) -> str | None:
+    """대표 키워드 + 대표 헤드라인(앱에서 카드에 실제로 보이는 그 제목,
+    expandable_issue_card.dart 참고)을 LLM(Haiku)에 줘서 카테고리를 분류함.
+
+    2026-09-29: 룰 기반 classify_category가 "암살자(들)" 영화의 정치적
+    논쟁 기사를 그냥 "영화"라는 단어 하나 때문에 "연예"로 잘못 분류하는
+    걸 발견함 — 사전 매칭은 실제 기사 맥락을 못 읽음. 실측(트렌딩 40건
+    기준)해보니 대표 키워드만 주면 "이승기"/"JYP" 같은 유명인·기획사
+    이름 하나에 낚여서 룰 기반과 똑같은 종류의 실수를 반복했지만,
+    대표 헤드라인까지 같이 주면 그 함정에서 많이 벗어남 — 그래서 키워드만
+    쓰지 않고 헤드라인도 같이 줌. 비용은 건당 $0.0002 수준으로 무시할
+    만하지만, 30분마다 재클러스터링되는 같은 진행 중인 이슈를 매번 다시
+    묻는 건 낭비라 호출부(api.py)가 CategoryCache로 감싸서 씀.
+
+    Returns:
+        VALID_CATEGORIES 중 하나. API 실패, 또는 응답이 유효한 카테고리가
+        아니면(안전장치) None — 호출부가 classify_category()로 폴백함.
+    """
+    import llm
+
+    prompt = (
+        "다음 뉴스 이슈를 분류해줘.\n"
+        f"키워드: {', '.join(keywords)}\n"
+        f"헤드라인: {representative_title}\n\n"
+        "아래 카테고리 중 하나로만 분류해줘. 다른 설명 없이 카테고리 이름만 답해.\n"
+        f"카테고리: {', '.join(VALID_CATEGORIES)}"
+    )
+    text = llm.complete(prompt, max_tokens=20, temperature=0)
+    if text is None:
+        return None
+    cleaned = text.strip("\"'. \n")
+    return cleaned if cleaned in VALID_CATEGORIES else None

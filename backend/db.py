@@ -190,6 +190,26 @@ class WordOfDay(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class CategoryCache(SQLModel, table=True):
+    """2026-09-29: 이슈 카테고리를 LLM(대표 키워드+헤드라인 기반)으로 분류한
+    결과 캐시 — "암살자" 클러스터가 "영화"라는 단어 하나 때문에 룰 기반
+    사전 매칭으로 "연예"로 잘못 분류되던 문제(실제 내용은 정치적 논쟁)를
+    고치려고 도입함. 재클러스터링이 30분마다 도는데, 기사 링크 기반
+    이슈 id(_make_id)는 그 사이 기사가 추가/제거되며 계속 바뀌어서 캐시
+    키로 못 씀 — 대신 대표 키워드 조합(하루 동안 진행되는 같은 이슈는
+    비교적 안정적으로 유지됨, category.py의 classify_category_llm 참고)을
+    기본키로 씀. 캐싱 없이 매번 LLM에 물으면 같은 진행 중인 이슈를 하루
+    수십 번씩 재질문하게 돼서 비용이 헛되이 쌓임(실측: 건당 $0.0002라도
+    30분마다 x 클러스터 수백 개 = 한 달 $100+ 규모, 캐싱하면 진짜 새
+    이슈만 물어서 $몇 달러 수준으로 줄어듦)."""
+
+    __tablename__ = "category_cache"
+
+    keyword_key: str = Field(primary_key=True)  # keywords를 "|"로 이어붙인 값
+    category: str
+    created_at: datetime = Field(default_factory=now)
+
+
 class ClusterAuditFinding(SQLModel, table=True):
     """2026-09-11: 클러스터링/키워드/카테고리 품질을 LLM으로 감사한 결과.
     30분 라이브 클러스터링(cluster_audit.py 참고)은 전혀 안 건드리고,

@@ -24,12 +24,26 @@ _API_URL = "https://api.anthropic.com/v1/messages"
 _MODEL = "claude-haiku-4-5-20251001"
 
 
-def complete(prompt: str, max_tokens: int = 1024) -> str | None:
+def complete(prompt: str, max_tokens: int = 1024, temperature: float | None = None) -> str | None:
     """Claude Haiku에 프롬프트 하나를 보내고 텍스트 응답을 받음. 키가
-    없거나 API 실패 시 None(호출부가 각자 폴백 처리)."""
+    없거나 API 실패 시 None(호출부가 각자 폴백 처리).
+
+    temperature: 기본(None)이면 API 기본값(1.0에 가까움) 그대로 씀 — 지금까지의
+    호출부(단어 고르기 등)는 이걸로 충분했음. 2026-09-29: 카테고리 분류처럼
+    답을 오래 캐싱해두는 용도로 쓰려니, 애매한 케이스에서 같은 입력에도
+    호출마다 답이 달라지는 걸 실측으로 확인함("암살자" 케이스가 문화/연예를
+    오갔음) — 한 번 뽑은 답을 계속 재사용하는 구조에서는 그 "한 번"이 최대한
+    일관된 답이어야 해서, 이런 용도는 낮은 temperature를 명시적으로 넘기게 함."""
     if not _API_KEY:
         return None
     try:
+        payload = {
+            "model": _MODEL,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
         res = requests.post(
             _API_URL,
             headers={
@@ -37,13 +51,7 @@ def complete(prompt: str, max_tokens: int = 1024) -> str | None:
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
-            data=json.dumps(
-                {
-                    "model": _MODEL,
-                    "max_tokens": max_tokens,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
-            ),
+            data=json.dumps(payload),
             timeout=60,
         )
         res.raise_for_status()
