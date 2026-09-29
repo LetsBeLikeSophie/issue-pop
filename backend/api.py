@@ -31,6 +31,7 @@ import re
 import secrets
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -1320,6 +1321,9 @@ async def digest_preview():
     return {"text": _build_digest_text()}
 
 
+_CLASSIFY_CONCURRENCY = 10  # 동시에 LLM에 물어볼 최대 개수(아래 독스트링 참고)
+
+
 def _classify_categories(clusters_by_id: dict) -> None:
     """refresh_cache()가 새로 클러스터링한 직후, 각 클러스터의 category를
     LLM 기반 분류(category.classify_category_llm)로 갈아치움 — 룰 기반
@@ -1333,7 +1337,18 @@ def _classify_categories(clusters_by_id: dict) -> None:
     LLM 실패(API 다운 등)/캐시 미스 둘 다 아닐 때만 새로 묻고, 실패하면
     기존 룰 기반 분류(clustering.py가 이미 매겨둔 값)를 그대로 둠 — 캐시엔
     LLM이 실제로 성공한 값만 남김(룰 기반 폴백값을 캐싱해버리면 다음
-    재클러스터링 때도 LLM을 아예 안 물어보게 돼서 영영 안 고쳐짐)."""
+    재클러스터링 때도 LLM을 아예 안 물어보게 돼서 영영 안 고쳐짐).
+
+    2026-09-29(실장애): 서버 막 시작한 직후엔 캐시가 텅 비어있어서 클러스터
+    수백 개가 한꺼번에 다 캐시 미스임 — 처음엔 이걸 하나씩 순차로 LLM에
+    물어봤는데, refresh_cache()가 앱 시작을 막고 있는 첫 실행 경로라 이게
+    수 분씩 늘어나서 실제로 /health가 10분 넘게 502를 뱉는 장애로 이어짐
+    (확인: journalctl에 마지막 로그 찍힌 뒤로 몇 분씩 조용히 막혀있었음).
+    ThreadPoolExecutor로 동시에 여러 개씩 물어보게 바꿔서 고침 — LLM 호출은
+    네트워크 대기가 대부분이라 병렬화 효과가 큼. DB 세션도 네트워크 호출
+    내내 열어두지 않게(락 오래 잡지 않게) 캐시 조회/LLM 호출/캐시 저장을
+    단계별로 나눔."""
+    to_classify: list[tuple[str, dict]] = []
     with db.get_session() as session:
         for cluster in clusters_by_id.values():
             keywords = cluster.get("keywords") or []
@@ -1343,11 +1358,38 @@ def _classify_categories(clusters_by_id: dict) -> None:
             cached = session.get(db.CategoryCache, keyword_key)
             if cached is not None:
                 cluster["category"] = cached.category
-                continue
-            llm_category = category.classify_category_llm(keywords, cluster["representative_title"])
-            if llm_category is None:
-                continue  # 룰 기반 값(clustering.py가 이미 매김) 그대로 둠
-            cluster["category"] = llm_category
+            else:
+                to_classify.append((keyword_key, cluster))
+
+    if not to_classify:
+        return
+
+    results: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=_CLASSIFY_CONCURRENCY) as executor:
+        futures = {
+            executor.submit(
+                category.classify_category_llm, cluster["keywords"], cluster["representative_title"]
+            ): keyword_key
+            for keyword_key, cluster in to_classify
+        }
+        for future in as_completed(futures):
+            keyword_key = futures[future]
+            try:
+                llm_category = future.result()
+            except Exception:  # noqa: BLE001 — 이 클러스터 하나만 룰 기반 값 유지, 나머지는 계속 진행
+                llm_category = None
+            if llm_category is not None:
+                results[keyword_key] = llm_category
+
+    if not results:
+        return
+
+    for keyword_key, cluster in to_classify:
+        if keyword_key in results:
+            cluster["category"] = results[keyword_key]
+
+    with db.get_session() as session:
+        for keyword_key, llm_category in results.items():
             session.add(db.CategoryCache(keyword_key=keyword_key, category=llm_category))
         session.commit()
 
