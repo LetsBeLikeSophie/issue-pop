@@ -53,7 +53,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from category import classify_category
 from embedding_utils import embed
-from keyword_extraction import build_global_df, extract_keywords, split_articles_by_keywords
+from keyword_extraction import (
+    build_global_df,
+    extract_keywords,
+    split_articles_by_keywords,
+    split_articles_by_shared_entity,
+)
 from text_utils import clean_summary, clean_title
 
 
@@ -94,6 +99,25 @@ def _split_by_keyword_membership(
 
     idx_by_id = {id(articles[i]): i for i in indices}
     groups, leftover = split_articles_by_keywords([articles[i] for i in indices], keywords)
+    idx_groups = [[idx_by_id[id(a)] for a in g] for g in groups]
+    idx_leftover = [idx_by_id[id(a)] for a in leftover]
+    return idx_groups, idx_leftover
+
+
+def _split_by_shared_entity(
+    indices: list[int], articles: list[dict], global_df, total_articles: int
+) -> tuple[list[list[int]], list[int]]:
+    """_split_by_keyword_membership으로도 못 잡는 케이스(문체/정형 문구는
+    같은데 실제 회사·인물은 다 다른 기사가 섞이는 것, 예: 여러 증권사의
+    서로 다른 회사 "목표가 하향" 리포트) — split_articles_by_shared_entity
+    참고. 이것도 전역 인덱스<->기사 변환만 담당."""
+    if len(indices) < 3:
+        return [indices], []
+
+    idx_by_id = {id(articles[i]): i for i in indices}
+    groups, leftover = split_articles_by_shared_entity(
+        [articles[i] for i in indices], global_df, total_articles
+    )
     idx_groups = [[idx_by_id[id(a)] for a in g] for g in groups]
     idx_leftover = [idx_by_id[id(a)] for a in leftover]
     return idx_groups, idx_leftover
@@ -165,13 +189,22 @@ def cluster_articles(articles: list[dict], threshold: float = 0.45) -> list[dict
     # 그룹으로 쪼갬(패턴 B) — _split_by_keyword_membership 참고. 걸러진
     # 기사들은 자기들끼리 다시 한번 묶어봄(우연히 서로 진짜 같은 주제일
     # 수 있어서).
+    #
+    # 2026-09-29: 키워드 매칭 검증을 통과해도(공통 정형 문구가 키워드로
+    # 뽑혀서 전부 "포함"으로 나옴) 실제로는 서로 다른 회사/인물 기사가
+    # 섞인 경우가 있어서(예: 증권사별 "목표가 하향" 리포트, 각자 다른
+    # 회사), 고유명사 공유 여부로 한 번 더 검증함 —
+    # split_articles_by_shared_entity 참고.
     refined_groups: list[list[int]] = []
     leftovers: list[int] = []
     for indices in groups.values():
         probe_keywords = extract_keywords([articles[i] for i in indices], global_df, n)
-        sub_groups, dropped = _split_by_keyword_membership(indices, articles, probe_keywords)
-        refined_groups.extend(sub_groups)
-        leftovers.extend(dropped)
+        kw_groups, kw_dropped = _split_by_keyword_membership(indices, articles, probe_keywords)
+        leftovers.extend(kw_dropped)
+        for kw_group in kw_groups:
+            entity_groups, entity_dropped = _split_by_shared_entity(kw_group, articles, global_df, n)
+            refined_groups.extend(entity_groups)
+            leftovers.extend(entity_dropped)
     if leftovers:
         refined_groups.extend(_complete_linkage_groups(leftovers, sim_matrix, threshold))
 

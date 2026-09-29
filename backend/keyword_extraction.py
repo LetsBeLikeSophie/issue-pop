@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 
 from text_utils import (
     clean_summary,
@@ -411,3 +411,104 @@ def split_articles_by_keywords(
         return [matched], unmatched
 
     return [articles], []
+
+
+# 2026-09-29 실측(threshold 0.45~0.60 스윕): "신한증권 기아 목표가 하향" +
+# "제일기획 목표가 하향" + "한전KPS 목표가 하향"처럼 회사는 다 다른데
+# "목표가 하향" 같은 정형 문구가 겹쳐서 위 split_articles_by_keywords가
+# 못 잡는 경우를 발견함 — 그 정형 문구 자체가 keywords[0]/[1]로 뽑혀서
+# "다 포함하니 안 갈라짐"으로 나옴. 임계값을 0.60까지 올려도 이 케이스는
+# 안 갈라져서(임베딩이 회사명보다 증권사 리포트 특유의 문체를 더 강하게
+# 봄), threshold 튜닝 대신 이 함수로 따로 잡음.
+_ENTITY_MIN_LEN = 2
+_ENTITY_MAX_DF_RATIO = 0.02  # 전체 코퍼스의 이 비율 넘게 흔한 고유명사는 "정부"/"대통령" 같은
+# 범용어일 가능성이 높아서 연결고리로 안 씀(2026-08-24 카테고리 분류에서도
+# 비슷한 이유로 범용 키워드를 걸러낸 적 있음 — 같은 원칙).
+
+
+def _article_entities(article: dict, global_df: Counter, total_articles: int) -> set[str]:
+    title = clean_title(article["title"])
+    summary = clean_summary(article.get("summary", ""))
+    entities = extract_proper_nouns(title) | extract_proper_nouns(summary)
+    entities |= set(extract_fused_syllable_chains(title))
+    entities |= set(extract_fused_syllable_chains(summary))
+    max_df = total_articles * _ENTITY_MAX_DF_RATIO
+    return {e for e in entities if len(e) >= _ENTITY_MIN_LEN and global_df.get(e, 0) <= max_df}
+
+
+def split_articles_by_shared_entity(
+    articles: list[dict], global_df: Counter, total_articles: int
+) -> tuple[list[list[dict]], list[dict]]:
+    """클러스터 안에서 서로 겹치는 고유명사(인물/기관/지명)가 전혀 없는
+    기사 무리가 섞여있으면 갈라냄.
+
+    split_articles_by_keywords는 "대표 키워드 문구가 텍스트에 있는지"만
+    보는데, 여러 기사가 문체/정형 문구는 비슷하면서 실제 주어(회사/인물)는
+    다 다른 경우(위 주석의 "목표가 하향" 케이스) 그 문구 자체가 키워드로
+    뽑혀서 전부 "포함"으로 걸려버려 못 잡음. 여기서는 대신 각 기사의
+    고유명사 집합을 뽑아서, Union-Find로 "고유명사를 하나라도 공유하는"
+    기사끼리 묶음 — "재산공개" 같은 진짜 종합 기사는 이름은 기사마다
+    달라도 특정 다인물 요약 기사가 여러 이름을 같이 언급해서 다리 역할을
+    하기 때문에(예: "김상욱 울산시장 50억, 최기영 봉화군수 349억...") 결국
+    하나로 이어지고, "목표가 하향"류는 애초에 다리 역할을 할 기사가 없어서
+    회사별로 뚝뚝 끊어짐 — 실측으로 확인한 차이.
+
+    고유명사가 아예 없는 기사(일반 주제 기사, 예: 날씨)는 신호가 없으니
+    건드리지 않음 — 고유명사 있는 기사들 사이에서만 판정함.
+
+    Returns:
+        (그룹 리스트, 낙오 기사 리스트). 판정 대상이 아니었으면 ([articles], [])."""
+    if len(articles) < 3:
+        return [articles], []
+
+    entity_sets = [_article_entities(a, global_df, total_articles) for a in articles]
+    has_entity = [i for i, e in enumerate(entity_sets) if e]
+    # 절반 미만만 고유명사가 있으면 신호가 약함(대부분 일반 주제 기사라는
+    # 뜻) — 섣불리 가르지 않음.
+    if len(has_entity) < max(3, len(articles) // 2):
+        return [articles], []
+
+    parent = list(range(len(articles)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    entity_to_first: dict[str, int] = {}
+    for i in has_entity:
+        for e in entity_sets[i]:
+            if e in entity_to_first:
+                union(i, entity_to_first[e])
+            else:
+                entity_to_first[e] = i
+
+    components: dict[int, list[int]] = defaultdict(list)
+    for i in has_entity:
+        components[find(i)].append(i)
+
+    if len(components) < 2:
+        return [articles], []
+
+    ordered = sorted(components.values(), key=len, reverse=True)
+    largest = ordered[0]
+    rest = [i for comp in ordered[1:] for i in comp]
+    no_entity = [i for i in range(len(articles)) if i not in has_entity]
+
+    # 가장 큰 무리가 압도적이면(2/3 이상) 나머지는 소수 낙오로 보고 뺌.
+    if 3 * len(largest) >= 2 * len(articles):
+        main = sorted(largest + no_entity)
+        dropped = sorted(rest)
+        return [[articles[i] for i in main]], [articles[i] for i in dropped]
+
+    # 압도적인 무리가 없으면(진짜 여러 다른 주체가 섞였다는 뜻) 고유명사
+    # 없는 기사는 가장 큰 무리에 붙여두고, 나머지 무리들을 각각 별도
+    # 그룹으로 쪼갬.
+    groups = [sorted(largest + no_entity)] + [sorted(comp) for comp in ordered[1:]]
+    return [[articles[i] for i in g] for g in groups], []
