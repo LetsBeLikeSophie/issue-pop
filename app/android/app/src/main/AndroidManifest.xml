@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 2026-08-30: 실기기에서 처음 돌려보고 발견함 — 이게 없으면 앱이
          네트워크 자체를 못 써서 모든 API 호출이 "Failed host lookup"
          (DNS 조회 실패)로 보임. 지금까지는 웹 프리뷰로만 테스트해서
@@ -30,65 +29,12 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- 2026-09-27: "오늘의 단어" 위젯을 탭해서 앱을 열 때 씀
-                 (HomeWidgetLaunchIntent가 이 액션으로 MainActivity를 찾음). -->
-            <intent-filter>
-                <action android:name="es.antonborri.home_widget.action.LAUNCH"/>
-            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- 2026-09-27: 홈 화면 "오늘의 단어" 위젯 — WordOfDayWidgetProvider.kt
-             참고. HomeWidgetBackgroundReceiver는 위젯이 주기적으로 깨울 때
-             헤드리스 플러터 엔진으로 word_of_day_widget.dart의 백그라운드
-             콜백을 실행해주는 home_widget 패키지 내장 리시버. -->
-        <receiver android:name=".WordOfDayWidgetProvider" android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/word_of_day_widget_info"/>
-        </receiver>
-        <!-- 위젯을 처음 추가할 때 형광펜 색을 고르는 화면(WordOfDayWidgetConfigureActivity.kt). -->
-        <activity
-            android:name=".WordOfDayWidgetConfigureActivity"
-            android:exported="true"
-            android:theme="@style/NormalTheme">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE"/>
-            </intent-filter>
-        </activity>
-        <receiver
-            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="es.antonborri.home_widget.action.BACKGROUND"/>
-            </intent-filter>
-        </receiver>
-
-        <!-- 2026-09-27: home_widget이 끌고 온 androidx.work(WorkManager)가
-             기본적으로 androidx.startup.InitializationProvider를 통해 앱
-             프로세스 시작 시점(Dart가 실행되기도 전, Application.onCreate()
-             근처)에 자동 초기화되는데, 이게 위젯 기능 추가 후 앱이 아예
-             안 켜지는 크래시의 원인으로 의심됨(위젯 추가 전 빌드엔 이
-             WorkManagerInitializer 자체가 없었음 — 머지된 매니페스트 비교로
-             확인). WorkManager 자동 초기화를 꺼서 그 시점의 크래시를
-             막음 — 위젯의 백그라운드 갱신(HomeWidgetBackgroundWorker)은
-             실제로 그 코드 경로가 실행될 때(위젯 정기 갱신 등)만 필요해서,
-             그때 가서 실패하는 게 앱 전체가 하나도 못 뜨는 것보단 훨씬 낫음. -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                tools:node="remove"/>
-        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

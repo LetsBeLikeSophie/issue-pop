@@ -43,11 +43,6 @@ dependencies:
   firebase_messaging: ^15.1.6
   share_plus: ^13.3.0
   flutter_custom_tabs: ^2.6.0
-  # 2026-09-27: 0.7.0+는 androidx.glance-appwidget 알파 버전을 끌고 와서
-  # compileSdk 37 + Kotlin JVM target 11을 요구함 — 이 프로젝트의
-  # compileSdk(36)/JVM target(1.8)과 안 맞아 빌드가 깨짐. 0.6.0은 안정
-  # glance 1.0.0을 써서 문제없이 빌드됨 — 캐럿(^) 없이 정확히 고정.
-  home_widget: 0.6.0
 
 dev_dependencies:
   flutter_test:
