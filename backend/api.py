@@ -489,7 +489,12 @@ def _word_of_day_alert_check(force: bool = False) -> list[int]:
     if row is None or not row.word:
         return []
     title = "오늘의 단어"
-    body = f"{row.word}" + (f" — {row.example}" if row.example else "")
+    # 2026-09-30: 예문(row.example) 대신 뜻풀이(row.definition)를 보내야
+    # 한다는 피드백 — "오늘의 단어" 알림의 목적이 새 단어 뜻을 바로
+    # 알려주는 거라, 예문보다 뜻풀이가 맞음. definition은 word_of_day.py의
+    # pick_word()가 애초에 뜻풀이 없는 단어는 후보에서 거르므로(사전 API
+    # 조회 실패한 단어는 애초에 안 뽑힘) 항상 값이 있음.
+    body = f"{row.word}" + (f" — {row.definition}" if row.definition else "")
 
     from sqlmodel import select
 
