@@ -141,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   Future<void> _toggleDigest(bool on) async {
-    final settings = DigestSettings(hour: on ? 9 : null, minute: 0); // 켜면 기본 오전 9시 정각으로 시작
+    final settings = DigestSettings(hour: on ? 9 : null, minute: 0); // 켜면 기본 9시 정각으로 시작
     // 화살표 본문은 대입식의 값(Future 자체)을 그대로 반환해서 "setState()
     // callback argument returned a Future" 오류가 남 — 필드는 바뀌지만
     // 정작 다시 그리라는 표시가 예외로 중단돼서 화면이 안 갱신됨
@@ -153,13 +153,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     await _devices.setDigest(settings);
   }
 
-  Future<void> _pickDigestTime(int currentHour, int currentMinute) async {
-    final picked = await showAppBottomSheet<(int, int)>(
+  Future<void> _pickDigestTime(int currentHour) async {
+    final picked = await showAppBottomSheet<int>(
       context,
-      builder: (context) => _TimePickerSheet(initialHour: currentHour, initialMinute: currentMinute),
+      builder: (context) => _TimePickerSheet(initialHour: currentHour),
     );
     if (picked == null) return;
-    final settings = DigestSettings(hour: picked.$1, minute: picked.$2);
+    final settings = DigestSettings(hour: picked, minute: 0);
     setState(() {
       _digest = Future.value(settings);
     });
@@ -189,13 +189,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     await _devices.setWordOfDayAlert(next);
   }
 
-  Future<void> _pickWordOfDayTime(int currentHour, int currentMinute) async {
-    final picked = await showAppBottomSheet<(int, int)>(
+  Future<void> _pickWordOfDayTime(int currentHour) async {
+    final picked = await showAppBottomSheet<int>(
       context,
-      builder: (context) => _TimePickerSheet(initialHour: currentHour, initialMinute: currentMinute),
+      builder: (context) => _TimePickerSheet(initialHour: currentHour),
     );
     if (picked == null) return;
-    await _updateWordOfDayAlert((c) => c.copyWith(hour: picked.$1, minute: picked.$2));
+    await _updateWordOfDayAlert((c) => c.copyWith(hour: picked, minute: 0));
   }
 
   /// 2026-09-11: 오늘의 단어도 다이제스트와 같은 이유로 미리보기 제공 —
@@ -381,7 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                               _PlainRow(
                                 label: '알림 시간',
                                 trailing: _formatTime(hour, settings!.minute),
-                                onTap: () => _pickDigestTime(hour, settings.minute),
+                                onTap: () => _pickDigestTime(hour),
                                 showDivider: false,
                               ),
                           ],
@@ -415,7 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                               _PlainRow(
                                 label: '알림 시간',
                                 trailing: _formatTime(s.hour, s.minute),
-                                onTap: () => _pickWordOfDayTime(s.hour, s.minute),
+                                onTap: () => _pickWordOfDayTime(s.hour),
                                 showDivider: false,
                               ),
                           ],
@@ -863,24 +863,17 @@ class _QuietHourCell extends StatelessWidget {
   }
 }
 
-/// 2026-08-26: 그냥 오전/오후로만 나누면 "오전 1시"/"오후 1시"처럼 둘 다
-/// "1시"가 나와서 헷갈린다는 이유로 새벽/오전/오후/저녁 4구간(일기예보
-/// 방식)으로 바꿨었는데, 2026-09-26에 오히려 이 4구간 자체가(어디부터
-/// "저녁"인지 등) 헷갈린다는 반대 피드백을 받음 — 대부분의 한국어 앱이
-/// 쓰는 가장 익숙한 표준 12시간제(오전/오후만) 표기로 되돌림. "오전
-/// 1시"/"오후 1시"처럼 같은 숫자가 반복되는 건, 어차피 오전/오후 글자가
-/// 항상 같이 붙어 있어서 실제 헷갈릴 상황은 적다고 판단.
-String _formatHour(int hour) {
-  if (hour == 0) return '오전 12시';
-  if (hour < 12) return '오전 $hour시';
-  if (hour == 12) return '오후 12시';
-  return '오후 ${hour - 12}시';
-}
+/// 2026-08-26: 새벽/오전/오후/저녁 4구간 → 표준 12시간제(오전/오후) →
+/// 2026-09-30에 다시 24시간제로 정리함(비공개 테스트 준비하며 UI 정돈 —
+/// "오전 11시"에서 "오후 12시"로 넘어가는 지점 등 12시간제 자체가 스크롤
+/// 휠에서 오히려 헷갈린다는 피드백). "13시"처럼 그대로 읽는 24시간제가
+/// 시간표/일정 앱에서 흔히 쓰는 표기라 스크롤 휠이랑도 잘 맞음.
+String _formatHour(int hour) => '$hour시';
 
 /// 2026-09-27: "지금 테스트해보게 분 단위로도 설정할 수 있게" 요청으로
-/// 추가 — 정각(분=0)이면 기존 _formatHour와 똑같이 보여서 "매일 1일 1회"
-/// 알림 대부분(정각으로 고르는 게 자연스러움)엔 화면이 안 지저분해지고,
-/// 분을 실제로 고른 경우에만 "9시 5분"처럼 분까지 보여줌.
+/// 추가했다가, 2026-09-30에 실사용엔 분 단위가 불필요하다는 피드백으로
+/// 피커에서는 뺌 — 다만 이 함수는 남겨둠. 과거에 분 단위로 저장된 값이
+/// 있으면(테스트 중 고른 값 등) 여전히 "9시 5분"처럼 보여주기 위해서.
 String _formatTime(int hour, int minute) {
   final base = _formatHour(hour);
   if (minute == 0) return base;
@@ -1307,17 +1300,17 @@ class _HourPickerSheet extends StatelessWidget {
 }
 
 /// 2026-09-27: 오늘의 이슈팝/오늘의 단어 알림 시각 고르는 바텀시트 —
-/// "지금 테스트해보게 분 단위로도 설정할 수 있게, 스크롤 돌리면 넘어가는
-/// UI로" 요청으로 시/분 휠 두 개짜리 피커로 새로 만듦(예전엔 시만
-/// 고르는 탭 목록이었음, 백엔드도 이제 digest_minute/word_of_day_minute을
-/// 같이 저장함). CupertinoPicker는 flutter SDK에 이미 포함돼 있어서
-/// 별도 패키지 없이 씀 — 최근 위젯 패키지 하나로 며칠 크래시를 겪어서,
-/// 새 네이티브 의존성은 최대한 피함.
+/// 처음엔 시/분 휠 두 개짜리로 만들었다가(테스트용 분 단위 설정 요청),
+/// 2026-09-30에 비공개 테스트 준비하며 분 단위는 실사용에 불필요하다는
+/// 피드백으로 시 하나만 고르는 휠로 정리함(백엔드 digest_minute/
+/// word_of_day_minute 컬럼 자체는 나중을 위해 그대로 둠 — 여기서는 항상
+/// 0으로 보냄). CupertinoPicker는 flutter SDK에 이미 포함돼 있어서 별도
+/// 패키지 없이 씀 — 최근 위젯 패키지 하나로 며칠 크래시를 겪어서, 새
+/// 네이티브 의존성은 최대한 피함.
 class _TimePickerSheet extends StatefulWidget {
-  const _TimePickerSheet({required this.initialHour, required this.initialMinute});
+  const _TimePickerSheet({required this.initialHour});
 
   final int initialHour;
-  final int initialMinute;
 
   @override
   State<_TimePickerSheet> createState() => _TimePickerSheetState();
@@ -1325,7 +1318,6 @@ class _TimePickerSheet extends StatefulWidget {
 
 class _TimePickerSheetState extends State<_TimePickerSheet> {
   late int _hour = widget.initialHour;
-  late int _minute = widget.initialMinute;
 
   @override
   Widget build(BuildContext context) {
@@ -1343,50 +1335,23 @@ class _TimePickerSheetState extends State<_TimePickerSheet> {
             ),
             Divider(height: 1, color: AppColors.divider),
             Expanded(
-              child: Row(
+              child: CupertinoPicker(
+                scrollController: FixedExtentScrollController(initialItem: widget.initialHour),
+                itemExtent: 40,
+                onSelectedItemChanged: (i) => setState(() => _hour = i),
+                selectionOverlay: Container(
+                  decoration: BoxDecoration(
+                    border: Border.symmetric(horizontal: BorderSide(color: AppColors.divider)),
+                  ),
+                ),
                 children: [
-                  Expanded(
-                    child: CupertinoPicker(
-                      scrollController: FixedExtentScrollController(initialItem: widget.initialHour),
-                      itemExtent: 40,
-                      onSelectedItemChanged: (i) => setState(() => _hour = i),
-                      selectionOverlay: Container(
-                        decoration: BoxDecoration(
-                          border: Border.symmetric(horizontal: BorderSide(color: AppColors.divider)),
-                        ),
+                  for (var h = 0; h < 24; h++)
+                    Center(
+                      child: Text(
+                        _formatHour(h),
+                        style: TextStyle(fontSize: 15, color: AppColors.ink),
                       ),
-                      children: [
-                        for (var h = 0; h < 24; h++)
-                          Center(
-                            child: Text(
-                              _formatHour(h),
-                              style: TextStyle(fontSize: 15, color: AppColors.ink),
-                            ),
-                          ),
-                      ],
                     ),
-                  ),
-                  Expanded(
-                    child: CupertinoPicker(
-                      scrollController: FixedExtentScrollController(initialItem: widget.initialMinute),
-                      itemExtent: 40,
-                      onSelectedItemChanged: (i) => setState(() => _minute = i),
-                      selectionOverlay: Container(
-                        decoration: BoxDecoration(
-                          border: Border.symmetric(horizontal: BorderSide(color: AppColors.divider)),
-                        ),
-                      ),
-                      children: [
-                        for (var m = 0; m < 60; m++)
-                          Center(
-                            child: Text(
-                              '${m.toString().padLeft(2, '0')}분',
-                              style: TextStyle(fontSize: 15, color: AppColors.ink),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -1395,7 +1360,7 @@ class _TimePickerSheetState extends State<_TimePickerSheet> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop((_hour, _minute)),
+                  onPressed: () => Navigator.of(context).pop(_hour),
                   style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
                   child: const Text('확인'),
                 ),
