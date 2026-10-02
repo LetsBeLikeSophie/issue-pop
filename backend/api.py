@@ -1775,7 +1775,12 @@ async def privacy_policy():
 
   <h2>6. 개인정보 보호책임자</h2>
   <div class="contact">
-    <p style="margin:0">이메일: contact@issue-pop.com</p>
+    <p style="margin:0">이메일: contact&#64;issue-pop.com</p>
+    <!-- 2026-10-03: Play 스토어 등록 중 발견 — Cloudflare의 이메일 주소
+         난독화(스팸봇 방지)가 이 raw 이메일을 "[email protected]"로
+         가려버려서, JS 없이 페이지를 긁는 구글 심사봇한테는 깨진
+         텍스트로 보임. &#64;는 브라우저엔 "@"로 똑같이 보이지만
+         Cloudflare의 raw 텍스트 패턴 매칭은 피해감. -->
     <p style="margin:4px 0 0">앱 내 "설정 → 문의하기"로도 연락하실 수 있습니다.</p>
   </div>
 
