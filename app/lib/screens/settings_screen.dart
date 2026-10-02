@@ -220,6 +220,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     await launchUrl(Uri.parse('https://buymeacoffee.com/itssophie'), mode: LaunchMode.externalApplication);
   }
 
+  /// 2026-10-02: 구글 플레이 정책상 개인정보처리방침이 스토어 등록정보뿐
+  /// 아니라 앱 안에서도 눌러서 바로 볼 수 있어야 함 — 지금까지 앱 안
+  /// 어디에도 링크가 없던 걸 비공개 테스트 준비하며 발견해서 추가함.
+  Future<void> _openPrivacyPolicy() async {
+    await launchUrl(Uri.parse('https://api.issue-pop.com/privacy'), mode: LaunchMode.externalApplication);
+  }
+
   /// 2026-09-22: mailto: 링크는 메일 클라이언트가 연결 안 된 기기(특히
   /// 웹)에서 그냥 안 열리는 경우가 많아서, 인앱 폼(POST /feedback)으로
   /// 바꿈 — 앱을 안 벗어나고 바로 보낼 수 있음.
@@ -567,6 +574,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         _PlainRow(
                           label: '문의하기',
                           onTap: _showContactSheet,
+                          showDivider: true,
+                        ),
+                        _PlainRow(
+                          label: '개인정보처리방침',
+                          onTap: _openPrivacyPolicy,
                           showDivider: true,
                         ),
                         // 2026-09-28: "알림이 하루종일 안 온다"를 실기기
