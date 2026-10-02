@@ -133,6 +133,15 @@ class Device(SQLModel, table=True):
     word_of_day_minute: int = 0  # digest_minute과 같은 이유/패턴
     last_word_of_day_sent_at: datetime | None = None  # 하루 중복 발송 방지용(last_digest_sent_at과 같은 패턴)
 
+    # 2026-10-03: 개인정보처리방침에 "일정 기간 미접속 시 정기적으로
+    # 정리됩니다"라고 적어뒀는데, 실제로 그걸 판단할 "마지막 활동 시각"
+    # 자체가 없었음(created_at은 "언제 등록됐는지"만 알지 "최근에 썼는지"는
+    # 모름) — 문서랑 코드가 안 맞던 걸 발견해서 추가함. 이 기기의
+    # device_id로 오는 요청(설정 조회/변경, 키워드·종목 등록 등)이 있을
+    # 때마다 api.py가 갱신함 — prune_inactive_devices가 이 값 기준으로
+    # 지움.
+    last_active_at: datetime = Field(default_factory=now)
+
 
 class DeviceKeywordWatch(SQLModel, table=True):
     __tablename__ = "device_keyword_watches"
@@ -374,10 +383,18 @@ def _migrate_devices_table() -> None:
             "last_word_of_day_sent_at": "TIMESTAMP",
             "digest_minute": "INTEGER NOT NULL DEFAULT 0",
             "word_of_day_minute": "INTEGER NOT NULL DEFAULT 0",
+            "last_active_at": "TIMESTAMP",
         }
+        is_new_column = "last_active_at" not in existing
         for column, ddl in additions.items():
             if column not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE devices ADD COLUMN {column} {ddl}")
+        if is_new_column:
+            # 2026-10-03: 막 추가한 컬럼이라 기존 행은 전부 NULL임 — 등록
+            # 시각(created_at)으로 한 번 채워서, 배포 직후 전부 "비활성"으로
+            # 오판되는 걸 막음(실제 마지막 활동은 모르지만, 적어도 가입
+            # 시점부터 1년 카운트가 시작되는 게 바로 지워지는 것보단 나음).
+            conn.exec_driver_sql("UPDATE devices SET last_active_at = created_at WHERE last_active_at IS NULL")
         conn.commit()
 
 
@@ -468,5 +485,45 @@ def prune_old_issues(session: Session, retention_days: int = 3) -> int:
     stale_issue_ids = select(Issue.id).where(Issue.last_seen_at < cutoff)
     session.exec(delete(Article).where(Article.issue_id.in_(stale_issue_ids)))  # type: ignore[arg-type]
     result = session.exec(delete(Issue).where(Issue.last_seen_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
+def prune_old_feedback(session: Session, retention_days: int = 365) -> int:
+    """2026-10-03: 개인정보처리방침에 "문의 내역은 답변 완료 후 일정
+    기간(최대 1년) 보관 후 파기"라고 적어놨는데, 실제로 지우는 코드가
+    없어서 문의가 무한정 쌓이고 있던 걸 발견해서 추가함.
+
+    "답변 완료 시각"은 이 폼이 "답장 기능 없는 일방향 제출함"이라(수동
+    으로 contact_email에 직접 답장) 애초에 시스템에 기록되지 않음 —
+    그래서 제출 시각(created_at) 기준으로 지움. 이렇게 하면 실제
+    "답변 완료 후 1년"보다 항상 더 일찍(또는 같게) 지워지니, 방침에서
+    약속한 "최대 1년"을 넘기는 일은 없음(보수적으로 안전한 쪽)."""
+    cutoff = now() - timedelta(days=retention_days)
+    result = session.exec(delete(Feedback).where(Feedback.created_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
+def prune_inactive_devices(session: Session, retention_days: int = 365) -> int:
+    """2026-10-03: 개인정보처리방침에 "앱을 삭제하면... 일정 기간 미접속
+    시 정기적으로 정리됩니다"라고 적어놨는데, 이것도 실제로 지우는 코드가
+    없었음(기기가 앱을 지워도 서버는 알 방법이 없어서, last_active_at
+    — api.py가 이 기기로 오는 요청마다 갱신함 — 기준으로 "한동안 아예
+    안 쓰였다"고 판단해서 정리함).
+
+    기기가 지워지면 그 기기의 관심 키워드/종목도 더 이상 의미가 없으니
+    같이 지움(Feedback.device_id는 조회용 참고 정보라 별개로
+    prune_old_feedback이 자기 보관기간대로 따로 정리함 — 여기서는 안
+    건드림)."""
+    cutoff = now() - timedelta(days=retention_days)
+    stale_device_ids = select(Device.id).where(Device.last_active_at < cutoff)
+    session.exec(
+        delete(DeviceKeywordWatch).where(DeviceKeywordWatch.device_id.in_(stale_device_ids))  # type: ignore[arg-type]
+    )
+    session.exec(
+        delete(DeviceStockWatch).where(DeviceStockWatch.device_id.in_(stale_device_ids))  # type: ignore[arg-type]
+    )
+    result = session.exec(delete(Device).where(Device.last_active_at < cutoff))  # type: ignore[arg-type]
     session.commit()
     return result.rowcount

@@ -248,6 +248,15 @@ async def refresh_cache() -> None:
                 pruned_embeddings = db.prune_old_embedding_cache(session)
                 if pruned_embeddings:
                     print(f"[prune] 오래된 임베딩 캐시 {pruned_embeddings}건 정리함")
+                # 2026-10-03: 개인정보처리방침에 적어둔 보관기간(문의 1년,
+                # 미접속 기기 1년)을 실제로 지키게 함 — db.prune_old_feedback/
+                # prune_inactive_devices 독스트링 참고.
+                pruned_feedback = db.prune_old_feedback(session)
+                if pruned_feedback:
+                    print(f"[prune] 보관기간(1년) 지난 문의 {pruned_feedback}건 정리함")
+                pruned_devices = db.prune_inactive_devices(session)
+                if pruned_devices:
+                    print(f"[prune] 1년 이상 비활성 기기 {pruned_devices}건 정리함")
 
         await asyncio.to_thread(_persist)
 
@@ -1046,8 +1055,9 @@ async def update_device_push_token(device_id: int, body: DeviceIn):
             if existing and existing.id != device_id:
                 raise HTTPException(status_code=409, detail="push token already registered to another device")
             device.push_token = body.push_token
-            session.add(device)
-            session.commit()
+        device.last_active_at = db.now()
+        session.add(device)
+        session.commit()
         return {"device_id": device_id}
 
 
@@ -1059,8 +1069,11 @@ class WatchIn(BaseModel):
 @app.post("/watches")
 async def add_watch(body: WatchIn):
     with db.get_session() as session:
-        if session.get(db.Device, body.device_id) is None:
+        device = session.get(db.Device, body.device_id)
+        if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
         watch = db.DeviceKeywordWatch(device_id=body.device_id, keyword=body.keyword)
         session.add(watch)
         session.commit()
@@ -1109,8 +1122,12 @@ async def list_stock_watches(device_id: int):
     with db.get_session() as session:
         from sqlmodel import select
 
-        if session.get(db.Device, device_id) is None:
+        device = session.get(db.Device, device_id)
+        if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
+        session.commit()
         _seed_stock_watches(session, device_id)
         watches = session.exec(
             select(db.DeviceStockWatch).where(db.DeviceStockWatch.device_id == device_id)
@@ -1157,8 +1174,11 @@ async def add_stock_watch(body: StockWatchIn):
     with db.get_session() as session:
         from sqlmodel import select
 
-        if session.get(db.Device, body.device_id) is None:
+        device = session.get(db.Device, body.device_id)
+        if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
         # 2026-09-06: 같은 티커를 두 번 추가하면 칩/카드가 중복으로 뜨는
         # 문제("있는 건 추가 안 되어야 할 것 같다" 피드백) — register_device와
         # 같은 패턴으로, 이미 있으면 새로 안 만들고 기존 걸 그대로 돌려줌.
@@ -1171,7 +1191,8 @@ async def add_stock_watch(body: StockWatchIn):
         watch = existing or db.DeviceStockWatch(device_id=body.device_id, ticker=ticker)
         if existing is None:
             session.add(watch)
-            session.commit()
+        session.commit()
+        if existing is None:
             session.refresh(watch)
         name, sector = stocks.ticker_meta(ticker)
     # 2026-09-06: 다음 30분 갱신 주기까지 기다리지 않고 이 티커 하나만
@@ -1222,6 +1243,7 @@ async def set_digest(device_id: int, body: DigestIn):
             raise HTTPException(status_code=404, detail="device not registered")
         device.digest_hour = body.hour
         device.digest_minute = body.minute
+        device.last_active_at = db.now()
         session.add(device)
         session.commit()
         return {"device_id": device_id, "digest_hour": device.digest_hour, "digest_minute": device.digest_minute}
@@ -1233,6 +1255,9 @@ async def get_digest(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
+        session.commit()
         return {"device_id": device_id, "digest_hour": device.digest_hour, "digest_minute": device.digest_minute}
 
 
@@ -1269,6 +1294,7 @@ async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
         device.keyword_alert_enabled = body.enabled
         device.keyword_alert_quiet_start = body.quiet_start
         device.keyword_alert_quiet_end = body.quiet_end
+        device.last_active_at = db.now()
         session.add(device)
         session.commit()
         return _keyword_alert_dict(device)
@@ -1280,6 +1306,9 @@ async def get_keyword_alert(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
+        session.commit()
         return _keyword_alert_dict(device)
 
 
@@ -1460,6 +1489,7 @@ async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
         device.word_of_day_enabled = body.enabled
         device.word_of_day_hour = body.hour
         device.word_of_day_minute = body.minute
+        device.last_active_at = db.now()
         session.add(device)
         session.commit()
         return _word_of_day_alert_dict(device)
@@ -1471,6 +1501,9 @@ async def get_word_of_day_alert(device_id: int):
         device = session.get(db.Device, device_id)
         if device is None:
             raise HTTPException(status_code=404, detail="device not registered")
+        device.last_active_at = db.now()
+        session.add(device)
+        session.commit()
         return _word_of_day_alert_dict(device)
 
 
