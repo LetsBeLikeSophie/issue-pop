@@ -28,3 +28,7 @@ app/ios/Runner/GoogleService-Info.plist
 
 # 사업 기획 노트 (가격/유료화 전략) — 코드는 공개해도 이건 비공개로
 MONETIZATION.md
+
+# 빌드 산출물(AAB) — 용량 크고 매번 재빌드 가능해서 git엔 안 올림,
+# 로컬 보관용으로만 releases/ 밑에 둠
+releases/
