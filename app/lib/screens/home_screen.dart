@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
+import '../widgets/launch_loading.dart';
 import '../widgets/scroll_spotlight.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
@@ -93,11 +94,22 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _lastRefreshAt;
   Timer? _clockTimer;
 
+  /// 2026-10-13: 첫 이슈 목록을 받아오는 동안 덮어두는 로딩 화면(LaunchLoading).
+  bool _showLaunch = true;
+
   @override
   void initState() {
     super.initState();
     _trending = widget.api.getTrending(limit: 40);
     _index = widget.api.getIndex();
+    // 성공이든 실패든 첫 응답이 오면 로딩 화면을 걷음(실패는 각 화면의 에러/오프라인 표시가 담당).
+    // 너무 빨리 끝나도 깜빡이지 않게 최소 0.5초는 보여줌.
+    Future.wait([
+      _trending.then<void>((_) {}, onError: (_) {}),
+      Future<void>.delayed(const Duration(milliseconds: 500)),
+    ]).then((_) {
+      if (mounted) setState(() => _showLaunch = false);
+    });
     _pageController = PageController();
     _pageSpotlights = List.generate(_pageSpecs.length, (_) => ScrollSpotlightController());
     widget.api.getLastRefresh().then((t) {
@@ -166,7 +178,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       floatingActionButton: isSearching ? null : ScrollJumpFab(controller: _pageSpotlights[_page]),
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: Column(
           children: [
             _TopBar(
@@ -276,6 +290,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ],
         ),
+          ),
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              child: _showLaunch
+                  ? const LaunchLoading(key: ValueKey('launch'))
+                  : const SizedBox.shrink(key: ValueKey('launch-done')),
+            ),
+          ),
+        ],
       ),
     );
   }
