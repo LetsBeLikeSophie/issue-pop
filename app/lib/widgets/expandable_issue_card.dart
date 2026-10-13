@@ -36,6 +36,7 @@ class ExpandableIssueCard extends StatefulWidget {
     this.maxOutletCount = 1,
     this.subtitle,
     this.archiveMode = false,
+    this.initiallyExpanded = false,
   });
 
   final IssueSummary issue;
@@ -57,6 +58,10 @@ class ExpandableIssueCard extends StatefulWidget {
   /// "삭제"로 바뀜(이 화면의 카드는 항상 이미 저장된 상태라서).
   final bool archiveMode;
 
+  /// 푸시 알림을 눌러 이슈 하나만 단독으로 열었을 때처럼, 처음부터 펼친 채로
+  /// 보여줄 때 씀(push_router.dart의 이슈 화면).
+  final bool initiallyExpanded;
+
   @override
   State<ExpandableIssueCard> createState() => _ExpandableIssueCardState();
 }
@@ -70,6 +75,10 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
     super.initState();
     if (widget.issue case final IssueDetail d) {
       _detail = Future.value(d);
+    }
+    if (widget.initiallyExpanded) {
+      _expanded = true;
+      _detail ??= widget.api!.getIssue(widget.issue.id);
     }
   }
 
@@ -234,6 +243,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                       ]),
                                     ),
                                   if (isSingle) const _SingleTag(),
+                                  if (issue.trend case final trend?) _TrendBadge(trend: trend, delta: issue.trendDelta),
                                   if (_daysTracked(issue.firstSeenAt) case final days? when days >= 2)
                                     _DaysTrackedBadge(days: days),
                                 ],
@@ -330,6 +340,34 @@ class _SingleTag extends StatelessWidget {
 int? _daysTracked(DateTime? firstSeenAt) {
   if (firstSeenAt == null) return null;
   return DateTime.now().difference(firstSeenAt).inDays + 1;
+}
+
+/// 2026-10-13: 서버가 한 시간쯤 전과 비교해 붙여주는 배지. "NEW"는 직전엔 없던
+/// 이슈, "급상승"은 기사 수가 눈에 띄게 늘어난 이슈(+N건). 일별 히스토리 없이
+/// 정직하게 구할 수 있는 "지금 뜨는 중" 신호만 보여줌.
+class _TrendBadge extends StatelessWidget {
+  const _TrendBadge({required this.trend, this.delta});
+
+  final String trend;
+  final int? delta;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSurge = trend == 'surge';
+    final label = isSurge ? (delta == null ? '급상승' : '급상승 +$delta') : 'NEW';
+    final color = isSurge ? AppColors.accent2 : AppColors.accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: color, letterSpacing: 0.3),
+      ),
+    );
+  }
 }
 
 class _DaysTrackedBadge extends StatelessWidget {

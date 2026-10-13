@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../api_client.dart';
 import '../models/issue.dart';
+import '../offline_cache.dart';
 import '../theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -71,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 걸러서 보여주는 거라 네트워크 왕복이 없음(검색과 같은 패턴).
   late Future<List<IssueSummary>> _index;
 
-  _SortMode _sort = _SortMode.outlet;
+  _SortMode _sort = _SortMode.count;
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _pageSpotlights = List.generate(_pageSpecs.length, (_) => ScrollSpotlightController());
     widget.api.getLastRefresh().then((t) {
       if (mounted) setState(() => _lastRefreshAt = t);
-    });
+    }).catchError((_) {});
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -123,9 +124,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _trending = widget.api.getTrending(limit: 40);
       _index = widget.api.getIndex();
     });
-    await _trending;
-    final t = await widget.api.getLastRefresh();
-    if (mounted) setState(() => _lastRefreshAt = t);
+    try {
+      await _trending;
+      final t = await widget.api.getLastRefresh();
+      if (mounted) setState(() => _lastRefreshAt = t);
+    } catch (_) {
+      // 실패는 각 FutureBuilder(에러 화면/오프라인 배너)가 이미 보여줌.
+    }
   }
 
   void _goToPage(int i) {
@@ -183,6 +188,11 @@ class _HomeScreenState extends State<HomeScreen> {
               onSettings: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => SettingsScreen(api: widget.api)),
               ),
+            ),
+            ValueListenableBuilder<DateTime?>(
+              valueListenable: OfflineCache.staleSince,
+              builder: (context, since, _) =>
+                  since == null ? const SizedBox.shrink() : _OfflineBanner(since: since, onRetry: _refresh),
             ),
             if (!isSearching)
               Padding(
@@ -394,6 +404,52 @@ class _IssueList extends StatelessWidget {
           if (i != issues.length - 1) const SizedBox(height: 8),
         ],
       ],
+    );
+  }
+}
+
+/// 2026-10-13: 서버/네트워크 문제로 새 데이터를 못 받아서 기기에 남겨둔 마지막
+/// 데이터를 대신 보여주는 중일 때만 뜨는 안내(OfflineCache 참고).
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner({required this.since, required this.onRetry});
+
+  final DateTime since;
+  final Future<void> Function() onRetry;
+
+  String _ago() {
+    final m = DateTime.now().difference(since).inMinutes;
+    if (m < 1) return '방금';
+    if (m < 60) return '$m분 전';
+    if (m < 60 * 24) return '${m ~/ 60}시간 전';
+    return '${m ~/ (60 * 24)}일 전';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.accent2Soft,
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off, size: 15, color: AppColors.accent2),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '연결이 안 돼요 · ${_ago()} 받아둔 이슈를 보여드려요',
+              style: TextStyle(fontSize: 11.5, color: AppColors.ink),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: Text('다시 시도', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.accent2)),
+          ),
+        ],
+      ),
     );
   }
 }

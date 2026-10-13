@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models/issue.dart';
+import 'offline_cache.dart';
 
 /// backend/api.py 클라이언트.
 ///
@@ -59,10 +60,30 @@ class ApiClient {
   Future<List<IssueDetail>> getTrending({int limit = 40, String? category}) async {
     final qp = {'limit': '$limit', 'category': ?category};
     final uri = Uri.parse('$baseUrl/trending').replace(queryParameters: qp);
-    final res = await _client.get(uri);
-    _checkOk(res);
-    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    final body = await _getWithOfflineFallback(uri, 'trending_${limit}_${category ?? ''}');
+    final list = jsonDecode(body) as List;
     return list.map((e) => IssueDetail.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 2026-10-13: 네트워크가 안 되거나 서버가 5xx를 줄 때(재시작 중 502 등)
+  /// 에러 화면 대신 마지막으로 성공했던 응답을 돌려줌 — 이때 [OfflineCache.staleSince]에
+  /// 그 데이터를 받아둔 시각을 남겨서 홈 화면이 "오프라인" 배너를 띄움. 성공하면
+  /// 항상 새 응답을 덮어써 저장하고 배너 상태를 지움. 저장된 게 없으면 원래대로 예외.
+  /// 요청이 안 끝나고 멈추는 경우(터널 등)에도 오래 로딩만 보이지 않게 12초 제한.
+  Future<String> _getWithOfflineFallback(Uri uri, String cacheKey) async {
+    try {
+      final res = await _client.get(uri).timeout(const Duration(seconds: 12));
+      _checkOk(res);
+      final body = utf8.decode(res.bodyBytes);
+      OfflineCache.staleSince.value = null;
+      OfflineCache.save(cacheKey, body);
+      return body;
+    } catch (_) {
+      final cached = await OfflineCache.load(cacheKey);
+      if (cached == null) rethrow;
+      OfflineCache.staleSince.value = cached.savedAt;
+      return cached.body;
+    }
   }
 
   /// 2026-09-21: 상단바의 "N분 전 업데이트" 표시용 — 서버가 30분마다
@@ -104,9 +125,8 @@ class ApiClient {
   /// — 대신 기사 목록은 빼서 가볍게 만듦(그게 처음에 무거웠던 원인).
   Future<List<IssueSummary>> getIndex() async {
     final uri = Uri.parse('$baseUrl/search').replace(queryParameters: {'q': '', 'limit': '1000'});
-    final res = await _client.get(uri);
-    _checkOk(res);
-    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    final body = await _getWithOfflineFallback(uri, 'index');
+    final list = jsonDecode(body) as List;
     return list.map((e) => IssueSummary.fromJson(e as Map<String, dynamic>)).toList();
   }
 

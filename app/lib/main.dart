@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'api_client.dart';
 import 'favorites_store.dart';
 import 'firebase_options.dart';
+import 'push_router.dart';
 import 'screens/home_screen.dart';
 import 'text_scale_store.dart';
 import 'theme.dart';
@@ -27,11 +28,22 @@ void main() async {
   await FavoritesStore.instance.load();
   await TextScaleStore.instance.load();
   await ThemeStore.instance.load();
-  runApp(const IssuePopApp());
+  final api = ApiClient();
+  final navigatorKey = GlobalKey<NavigatorState>();
+  runApp(IssuePopApp(api: api, navigatorKey: navigatorKey));
+  // 푸시 알림을 눌렀을 때 해당 이슈로 이동(push_router.dart)
+  await PushRouter(navigatorKey: navigatorKey, api: api).init();
 }
 
+/// 2026-10-13: 태블릿/넓은 화면(웹 포함)에서 카드가 화면 끝까지 늘어나지 않게
+/// 앱 전체 콘텐츠 최대 폭. 폰(보통 360~430dp)은 이보다 좁아서 영향 없음.
+const _kMaxContentWidth = 720.0;
+
 class IssuePopApp extends StatelessWidget {
-  const IssuePopApp({super.key});
+  const IssuePopApp({super.key, required this.api, required this.navigatorKey});
+
+  final ApiClient api;
+  final GlobalKey<NavigatorState> navigatorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +57,7 @@ class IssuePopApp extends StatelessWidget {
       builder: (context, _) {
         return MaterialApp(
           title: 'Issue Pop',
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           // 설정의 "글자 크기"를 앱 전체에 적용 — 화면마다 개별 텍스트에
@@ -58,12 +71,21 @@ class IssuePopApp extends StatelessWidget {
                   data: media.copyWith(
                     textScaler: TextScaler.linear(TextScaleStore.instance.scale),
                   ),
-                  child: child!,
+                  // 최대 폭을 넘는 화면에선 가운데 정렬(좌우는 앱 배경색).
+                  child: ColoredBox(
+                    color: AppColors.bg,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: _kMaxContentWidth),
+                        child: child!,
+                      ),
+                    ),
+                  ),
                 );
               },
             );
           },
-          home: HomeScreen(api: ApiClient()),
+          home: HomeScreen(api: api),
         );
       },
     );

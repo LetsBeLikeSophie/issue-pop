@@ -60,6 +60,21 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
     await _watches;
   }
 
+  /// 2026-10-13: 추천 칩을 눌러 바로 등록(추가 시트를 안 열어도 됨).
+  Future<void> _quickAdd(String keyword) async {
+    await _devices.addWatch(keyword);
+    await _refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("'$keyword' 키워드를 등록했어요"),
+        duration: const Duration(milliseconds: 1600),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _removeKeyword(int watchId) async {
     await _devices.deleteWatch(watchId);
     await _refresh();
@@ -126,10 +141,27 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
 
                   final watches = snapshot.data ?? [];
                   if (watches.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.person_search,
-                      title: '아직 등록된 키워드가 없어요',
-                      subtitle: '위 "키워드 추가"로 관심 있는 인물이나 키워드를 등록해보세요',
+                    return FutureBuilder<List<IssueSummary>>(
+                      future: _index,
+                      builder: (context, indexSnapshot) {
+                        final suggestions = suggestKeywords(indexSnapshot.data ?? const [], const {});
+                        return Column(
+                          children: [
+                            const Expanded(
+                              child: EmptyState(
+                                icon: Icons.person_search,
+                                title: '아직 등록된 키워드가 없어요',
+                                subtitle: '아래 추천 키워드를 누르거나, 위 "키워드 추가"로 직접 등록해보세요',
+                              ),
+                            ),
+                            if (suggestions.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+                                child: _SuggestedKeywords(keywords: suggestions, onPick: _quickAdd),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   }
 
@@ -166,6 +198,11 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
                                     ),
                                 ],
                               ),
+                              if (suggestKeywords(index, watches.map((w) => w.keyword).toSet())
+                                  case final suggestions when suggestions.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                _SuggestedKeywords(keywords: suggestions, onPick: _quickAdd),
+                              ],
                               const SizedBox(height: 16),
                               for (final w in watches) ...[
                                 _KeywordSection(
@@ -189,6 +226,72 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 오늘 매체 커버리지가 높은 이슈의 대표 키워드 중 아직 등록 안 한 것 상위 [take]개.
+/// 추가 시트의 "오늘 많이 보도된 키워드"와 같은 기준.
+List<String> suggestKeywords(List<IssueSummary> index, Set<String> current, {int take = 8}) {
+  final sorted = [...index]..sort((a, b) {
+      final c = b.outletCount.compareTo(a.outletCount);
+      return c != 0 ? c : b.articleCount.compareTo(a.articleCount);
+    });
+  final seen = <String>{};
+  final out = <String>[];
+  for (final i in sorted) {
+    if (current.contains(i.keyword) || !seen.add(i.keyword)) continue;
+    out.add(i.keyword);
+    if (out.length == take) break;
+  }
+  return out;
+}
+
+/// 2026-10-13: "오늘 많이 보도된 키워드"를 칩으로 바로 보여주고 누르면 즉시 등록.
+class _SuggestedKeywords extends StatelessWidget {
+  const _SuggestedKeywords({required this.keywords, required this.onPick});
+
+  final List<String> keywords;
+  final void Function(String keyword) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '추천 키워드 · 오늘 많이 보도됐어요',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.inkFaint, letterSpacing: 0.3),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final k in keywords)
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => onPick(k),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 11, 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.chipBg,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 13, color: AppColors.accent),
+                      const SizedBox(width: 3),
+                      Text(k, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.ink)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

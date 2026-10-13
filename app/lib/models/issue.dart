@@ -13,6 +13,11 @@ class IssueSummary {
   /// 씀) 진짜 "추이"는 아니고 지속 기간만 보여줌.
   final DateTime? firstSeenAt;
 
+  /// 2026-10-13: 서버가 한 시간 전과 비교해 붙이는 "new"(직전엔 없던 새 이슈) /
+  /// "surge"(기사 수 급증) / null. surge일 땐 [trendDelta]가 늘어난 기사 수.
+  final String? trend;
+  final int? trendDelta;
+
   IssueSummary({
     required this.id,
     required this.keyword,
@@ -22,6 +27,8 @@ class IssueSummary {
     required this.articleCount,
     required this.outletCount,
     this.firstSeenAt,
+    this.trend,
+    this.trendDelta,
   });
 
   factory IssueSummary.fromJson(Map<String, dynamic> json) => IssueSummary(
@@ -33,6 +40,8 @@ class IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
+        trend: json['trend'] as String?,
+        trendDelta: json['trend_delta'] as int?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -44,6 +53,8 @@ class IssueSummary {
         'article_count': articleCount,
         'outlet_count': outletCount,
         'first_seen_at': firstSeenAt?.toIso8601String(),
+        'trend': trend,
+        'trend_delta': trendDelta,
       };
 }
 
@@ -103,6 +114,8 @@ class IssueDetail extends IssueSummary {
     required super.articleCount,
     required super.outletCount,
     super.firstSeenAt,
+    super.trend,
+    super.trendDelta,
     required this.outlets,
     required this.articles,
   });
@@ -116,6 +129,8 @@ class IssueDetail extends IssueSummary {
         articleCount: json['article_count'] as int,
         outletCount: json['outlet_count'] as int,
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
+        trend: json['trend'] as String?,
+        trendDelta: json['trend_delta'] as int?,
         outlets: (json['outlets'] as List)
             .map((e) => OutletBreakdown.fromJson(e as Map<String, dynamic>))
             .toList(),
