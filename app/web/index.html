@@ -16,6 +16,10 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!-- 2026-10-13: viewport 메타가 없으면 모바일 브라우저가 로딩 중엔 980px 폭으로 그렸다가
+       Flutter가 뜨면서 기기 폭으로 바뀌어, 스플래시 로고/로딩바가 작게 보이다가 갑자기
+       커지는 문제가 있었음. 확대(핀치줌)는 접근성 때문에 막지 않음. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="여러 매체의 RSS를 모아 오늘 많이 보도된 이슈를 클러스터링해서 보여주는 뉴스 트렌드 앱">
 
   <!-- iOS meta tags & icons -->
