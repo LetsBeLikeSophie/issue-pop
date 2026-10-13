@@ -90,10 +90,15 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def clean_title(title: str) -> str:
+    # 2026-10-02 발견, 2026-10-13 반영: 한겨레 칼럼류 기사는 title 필드
+    # 자체에 저자 서명 <span style="color: ...">[필명]</span> 태그가 raw
+    # HTML로 들어있음(summary의 HTML 테이블 버그와 같은 패턴인데 title엔
+    # 태그 제거가 없었음). clean_summary와 똑같이 태그를 먼저 걷어냄.
+    title = _HTML_TAG_RE.sub(" ", title)
     title = html.unescape(title)
     title = _BRACKET_TAG_RE.sub("", title)
     title = _UPDATE_SUFFIX_RE.sub("", title)
-    return title.strip()
+    return re.sub(r"\s+", " ", title).strip()
 
 
 def clean_summary(summary: str) -> str:

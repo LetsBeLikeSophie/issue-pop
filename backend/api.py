@@ -88,6 +88,16 @@ KST = ZoneInfo("Asia/Seoul")
 WEATHER_LAT, WEATHER_LON = 37.5665, 126.9780
 
 _cache: dict[str, dict] = {}
+# 2026-10-13: "급상승/NEW" 배지용 — 갱신할 때마다 (시각, {키워드: 기사수})
+# 스냅샷을 남겨두고 한 시간쯤 전 스냅샷과 비교함(_annotate_trends). 메모리에만
+# 있어서 서버를 재시작하면 25분쯤은 배지가 안 붙음(그 사이 스냅샷이 쌓일 때까지).
+_trend_snapshots: list[tuple[float, dict[str, int]]] = []
+_TREND_BASELINE_MIN_AGE = 60 * 60  # 이상 지난 스냅샷 중 가장 최근 것을 기준으로 삼음
+_TREND_FALLBACK_MIN_AGE = 25 * 60  # 그런 게 없으면 이 정도라도 지난 가장 오래된 스냅샷
+_TREND_KEEP_SECONDS = 3 * 60 * 60
+_TREND_SURGE_MIN_DELTA = 4  # 기준 대비 이만큼 이상 늘고
+_TREND_SURGE_MIN_RATIO = 1.5  # 1.5배 이상일 때만 "급상승"
+_TREND_NEW_MIN_ARTICLES = 4  # 기준 시점엔 없던 키워드인데 기사가 이 정도 이상이면 "NEW"
 _last_refresh: float | None = None
 _last_error: str | None = None
 _refresh_lock = asyncio.Lock()
@@ -119,6 +129,57 @@ def _make_id(cluster: dict) -> str:
     묶음이면 재수집 후에도 같은 id가 나오게(완전 보장은 아니지만 v0로 충분)."""
     keys = sorted(a.get("link") or a["title"] for a in cluster["articles"])
     return hashlib.sha1("|".join(keys).encode("utf-8")).hexdigest()[:12]
+
+
+def _cluster_keywords(c: dict) -> set[str]:
+    return {c["keyword"], *c["keywords"]}
+
+
+def _annotate_trends(cache: dict[str, dict], now_ts: float) -> dict[str, int]:
+    """각 이슈에 "trend"("new"/"surge"/None)와 "trend_delta"를 붙임.
+
+    이슈 id는 기사 구성이 바뀌면 같이 바뀌어서(_make_id) id로는 "지난번
+    그 이슈"를 못 찾음 — 그래서 대표/보조 키워드로 한 시간쯤 전 스냅샷과
+    맞춰봄(키워드가 하나라도 겹치면 같은 이슈로 취급). 스냅샷이 아직
+    충분히 안 쌓였으면 아무것도 안 붙임(서버 재시작 직후 등).
+    반환값은 로그/검증용 집계(new/surge 개수)."""
+    snapshot = {}
+    for c in cache.values():
+        for k in _cluster_keywords(c):
+            snapshot[k] = max(snapshot.get(k, 0), c["article_count"])
+
+    baseline: dict[str, int] | None = None
+    aged = [(ts, s) for ts, s in _trend_snapshots if now_ts - ts >= _TREND_BASELINE_MIN_AGE]
+    if aged:
+        baseline = max(aged, key=lambda x: x[0])[1]
+    else:
+        fallback = [(ts, s) for ts, s in _trend_snapshots if now_ts - ts >= _TREND_FALLBACK_MIN_AGE]
+        if fallback:
+            baseline = min(fallback, key=lambda x: x[0])[1]
+
+    _trend_snapshots.append((now_ts, snapshot))
+    cutoff = now_ts - _TREND_KEEP_SECONDS
+    _trend_snapshots[:] = [(ts, s) for ts, s in _trend_snapshots if ts >= cutoff]
+
+    counts = {"new": 0, "surge": 0}
+    for c in cache.values():
+        c["trend"] = None
+        c["trend_delta"] = None
+        if baseline is None:
+            continue
+        prev_counts = [baseline[k] for k in _cluster_keywords(c) if k in baseline]
+        if not prev_counts:
+            if c["article_count"] >= _TREND_NEW_MIN_ARTICLES:
+                c["trend"] = "new"
+                counts["new"] += 1
+            continue
+        prev = max(prev_counts)
+        delta = c["article_count"] - prev
+        if delta >= _TREND_SURGE_MIN_DELTA and c["article_count"] >= prev * _TREND_SURGE_MIN_RATIO:
+            c["trend"] = "surge"
+            c["trend_delta"] = delta
+            counts["surge"] += 1
+    return counts
 
 
 def _fetch_weather(lat: float | None = None, lon: float | None = None) -> dict | None:
@@ -212,9 +273,16 @@ async def refresh_cache() -> None:
         # 재시작할 때마다 쓸데없이 알림이 우르르 나갈 수 있어서, 그 경우엔
         # 새 이슈 체크 자체를 건너뜀.
         old_ids = set(_cache.keys())
-        _cache = {_make_id(c): c for c in clusters}
+        new_cache: dict[str, dict] = {}
+        for c in clusters:
+            cid = _make_id(c)
+            c["id"] = cid  # 푸시 알림 payload(어떤 이슈를 열지)에서 id가 필요해서 클러스터에도 넣어둠
+            new_cache[cid] = c
+        _cache = new_cache
         await asyncio.to_thread(_classify_categories, _cache)
         _last_refresh = time.time()
+        trend_counts = _annotate_trends(_cache, _last_refresh)
+        print(f"[trend] new={trend_counts['new']} surge={trend_counts['surge']} (스냅샷 {len(_trend_snapshots)}개)")
         _last_error = None
         new_issue_ids = (set(_cache.keys()) - old_ids) if old_ids else set()
 
@@ -277,6 +345,12 @@ def _truncate(text: str, max_len: int) -> str:
     return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
 
 
+def _top_issue() -> dict | None:
+    """매체 커버리지 1위 이슈(다이제스트 본문과 알림 탭 이동 대상이 같아야 해서 공용)."""
+    items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))
+    return items[0] if items else None
+
+
 def _build_digest_text() -> str:
     """다이제스트 알림 본문. 아직 실제 LLM 요약이 없어서(cluster_summaries는
     수동 입력만 가능, README 참고) AI 요약이 아니라 매체 커버리지 1위
@@ -293,10 +367,9 @@ def _build_digest_text() -> str:
     쓰이는 관례는 그대로 유지(_DigestPreviewSheet가 첫 줄을 title로
     split해서 씀, _send_digest도 title은 별도로 고정값을 씀).
     """
-    items = sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))
-    if not items:
+    top = _top_issue()
+    if top is None:
         return "오늘의 이슈팝\n오늘의 트렌드를 아직 준비 중이에요."
-    top = items[0]
     headline = f"[{top['category']}] {_truncate(top['representative_title'], _DIGEST_TITLE_MAX_LEN)}"
     # 2026-09-26: 알림 제목을 "오늘의 트렌드"에서 앱 설정 화면의 이름과
     # 맞춰 "오늘의 이슈팝"으로 바꿈(사용자가 설정에서 보는 이름과 실제
@@ -304,7 +377,17 @@ def _build_digest_text() -> str:
     return f"오늘의 이슈팝\n{headline}"
 
 
-def _send_push(device: db.Device, title: str, body: str, session) -> bool:
+def _issue_push_data(issue: dict | None) -> dict[str, str] | None:
+    """알림을 탭했을 때 앱이 그 이슈를 바로 열 수 있게 FCM data payload를
+    만듦. 이슈 id는 재클러스터링마다 바뀔 수 있어서(_make_id) 알림을 한참 뒤에
+    누르면 id가 이미 없을 수 있음 — 그래서 keyword도 같이 보내서 앱이 id로
+    못 찾으면 키워드로 다시 찾게 함(앱 쪽 push_router.dart 참고)."""
+    if not issue or not issue.get("id"):
+        return None
+    return {"type": "issue", "issue_id": issue["id"], "keyword": issue["keyword"]}
+
+
+def _send_push(device: db.Device, title: str, body: str, session, data: dict[str, str] | None = None) -> bool:
     """실제 FCM 발송 — 다이제스트/관심 이슈 알림/오늘의 단어 알림이
     공유하는 공용 헬퍼(2026-09-26에 _send_digest에서 뽑아냄, 세 알림이
     각자 UnregisteredError 처리를 따로 갖고 있으면 하나 고칠 때 나머지를
@@ -333,6 +416,7 @@ def _send_push(device: db.Device, title: str, body: str, session) -> bool:
     # 그때 다시 확인.
     message = messaging.Message(
         notification=messaging.Notification(title=title, body=body),
+        data=data,
         token=device.push_token,
     )
     try:
@@ -347,11 +431,11 @@ def _send_push(device: db.Device, title: str, body: str, session) -> bool:
     return False
 
 
-def _send_digest(device: db.Device, text: str, session) -> bool:
+def _send_digest(device: db.Device, text: str, session, data: dict[str, str] | None = None) -> bool:
     """다이제스트 텍스트(첫 줄=제목, 나머지=본문 관례 — _build_digest_text
     참고)를 _send_push용으로 나눠서 보냄."""
     title, _, body = text.partition("\n")
-    return _send_push(device, title, body or title, session)
+    return _send_push(device, title, body or title, session, data=data)
 
 
 def _issue_matches_keyword(issue: dict, keyword: str) -> bool:
@@ -437,7 +521,7 @@ def _check_keyword_alerts(new_issue_ids: set[str]) -> list[int]:
             if not matched:
                 continue
             title, body = _keyword_alert_message(matched)
-            if _send_push(device, title, body, session):
+            if _send_push(device, title, body, session, data=_issue_push_data(matched[0])):
                 continue  # 토큰 만료로 기기 삭제됨
             sent_to.append(device.id)
         session.commit()
@@ -477,7 +561,7 @@ def _digest_check(force: bool = False) -> list[int]:
                     last_sent = last_sent.replace(tzinfo=timezone.utc)
                 if (now_utc - last_sent).total_seconds() < DIGEST_DEDUPE_WINDOW_SECONDS:
                     continue
-            if _send_digest(device, _build_digest_text(), session):
+            if _send_digest(device, _build_digest_text(), session, data=_issue_push_data(_top_issue())):
                 continue  # 토큰 만료로 기기 자체가 삭제됨 — last_digest_sent_at 갱신 대상 아님
             device.last_digest_sent_at = now_utc
             session.add(device)
@@ -735,6 +819,10 @@ class IssueSummary(BaseModel):
     # 처음 잡힌 시각만 노출. _cache는 재수집마다 새로 만들어지는 딕셔너리라
     # 여기 안 들어있고, refresh_cache()가 DB에서 읽어와 채워줌.
     first_seen_at: str | None = None
+    # 2026-10-13: "new"(직전엔 없던 새 이슈) / "surge"(한 시간 전 대비 급증) /
+    # None. surge일 땐 trend_delta가 늘어난 기사 수. _annotate_trends 참고.
+    trend: str | None = None
+    trend_delta: int | None = None
 
 
 class IssueDetail(IssueSummary):
@@ -752,6 +840,8 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
         article_count=c["article_count"],
         outlet_count=c["outlet_count"],
         first_seen_at=c.get("first_seen_at"),
+        trend=c.get("trend"),
+        trend_delta=c.get("trend_delta"),
     )
 
 
@@ -1339,7 +1429,7 @@ async def run_keyword_alert_check(device_id: int):
             if not matched:
                 return {"sent": False, "reason": "지금 캐시에서 매칭되는 이슈가 없어요"}
             title, body = _keyword_alert_message(matched)
-            _send_push(device, title, body, session)
+            _send_push(device, title, body, session, data=_issue_push_data(matched[0]))
             session.commit()
             return {"sent": True, "title": title, "body": body}
 
