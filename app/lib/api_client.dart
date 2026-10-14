@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models/issue.dart';
+import 'models/reaction.dart';
 import 'offline_cache.dart';
 
 /// backend/api.py 클라이언트.
@@ -137,6 +138,42 @@ class ApiClient {
     final res = await _client.get(uri);
     _checkOk(res);
     return IssueDetail.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 2026-10-13: 카드(대표 키워드)별 반응 집계를 한 번에 받음(최대 80개).
+  /// [clientId]는 install_id.dart의 임의 설치 식별자 — 내 반응(mine)을 알려주는 데만 씀.
+  Future<Map<String, ReactionSummary>> getReactions(List<String> keywords, String clientId) async {
+    final uri = Uri.parse('$baseUrl/reactions').replace(queryParameters: {
+      'keywords': keywords,
+      'client_id': clientId,
+    });
+    final res = await _client.get(uri);
+    _checkOk(res);
+    final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return map.map((k, v) => MapEntry(k, ReactionSummary.fromJson(v as Map<String, dynamic>)));
+  }
+
+  /// 내 반응을 정함([reaction]은 ReactionKind.key, null이면 지움). 서버가 그 카드의
+  /// 최신 집계를 돌려줌. 지금 목록에 없는 키워드면 404.
+  Future<ReactionSummary> setReaction({required String clientId, required String keyword, required String? reaction}) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/reactions/set'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'client_id': clientId, 'keyword': keyword, 'reaction': reaction}),
+    );
+    _checkOk(res);
+    return ReactionSummary.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  /// 앱이 켜져 있다는 신호(1분마다) — 서버가 "최근 N분간 M명"을 세어 돌려줌.
+  Future<Presence> presencePing(String clientId) async {
+    final res = await _client.post(
+      Uri.parse('$baseUrl/presence/ping'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'client_id': clientId}),
+    );
+    _checkOk(res);
+    return Presence.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
 
   /// 로그인 없이 기기를 서버에 등록(다이제스트 알림 설정 등에 씀).

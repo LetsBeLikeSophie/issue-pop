@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'api_client.dart';
 import 'favorites_store.dart';
 import 'firebase_options.dart';
+import 'presence_service.dart';
 import 'push_router.dart';
+import 'reaction_store.dart';
 import 'screens/home_screen.dart';
 import 'text_scale_store.dart';
 import 'theme.dart';
@@ -30,7 +32,10 @@ void main() async {
   await ThemeStore.instance.load();
   final api = ApiClient();
   final navigatorKey = GlobalKey<NavigatorState>();
+  ReactionStore.instance.init(api);
   runApp(IssuePopApp(api: api, navigatorKey: navigatorKey));
+  // "최근 10분간 N명이 봤어요" 신호 시작(서버가 최소 인원 미만이면 화면엔 안 보임)
+  PresenceService.instance.start(api);
   // 푸시 알림을 눌렀을 때 해당 이슈로 이동(push_router.dart)
   await PushRouter(navigatorKey: navigatorKey, api: api).init();
 }

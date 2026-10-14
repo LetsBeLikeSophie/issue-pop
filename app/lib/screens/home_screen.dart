@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../api_client.dart';
 import '../models/issue.dart';
+import '../models/reaction.dart';
 import '../offline_cache.dart';
+import '../presence_service.dart';
+import '../reaction_store.dart';
 import '../theme.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
@@ -136,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _trending = widget.api.getTrending(limit: 40);
       _index = widget.api.getIndex();
     });
+    ReactionStore.instance.refreshAll();
     try {
       await _trending;
       final t = await widget.api.getLastRefresh();
@@ -561,7 +565,38 @@ class _TopBar extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _LastRefreshLabel(at: lastRefreshAt),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 2026-10-13: 서버가 "최근 10분간 최소 3명 이상"이라고 확인해준 경우에만 보임
+                  // (숫자를 부풀리거나 지어내지 않음 — PresenceService 참고).
+                  ValueListenableBuilder<Presence?>(
+                    valueListenable: PresenceService.instance.state,
+                    builder: (context, presence, _) {
+                      if (presence == null || !presence.show) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              decoration: const BoxDecoration(color: Color(0xFF2E9E6B), shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '최근 ${presence.windowMinutes}분 ${presence.online}명',
+                              style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  _LastRefreshLabel(at: lastRefreshAt),
+                ],
+              ),
               const SizedBox(height: 2),
               Row(
                 mainAxisSize: MainAxisSize.min,

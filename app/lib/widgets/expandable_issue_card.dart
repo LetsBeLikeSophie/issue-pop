@@ -8,6 +8,7 @@ import '../theme.dart';
 import 'app_badge.dart';
 import 'app_card.dart';
 import 'in_app_browser.dart';
+import 'reaction_button.dart';
 
 /// 이슈 하나를 나타내는 카드 — "이슈판" 프로토타입 아티팩트의 카드
 /// 레이아웃을 그대로 앱에 옮긴 것(랭크·카테고리 배지·세리프 키워드·
@@ -277,6 +278,12 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
                                   ),
                                   const SizedBox(width: 8),
+                                  // 2026-10-13: 가장 많이 눌린 반응 하나만 보이고, 누르면 5개가 떠오름.
+                                  // 저장한 이슈(보관함)는 지금 목록에 없는 키워드일 수 있어서 제외.
+                                  if (!widget.archiveMode) ...[
+                                    ReactionButton(keyword: issue.keyword),
+                                    const SizedBox(width: 6),
+                                  ],
                                   Text(
                                     '${issue.articleCount}건',
                                     style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
