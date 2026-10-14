@@ -4,10 +4,15 @@ import '../models/reaction.dart';
 import '../reaction_store.dart';
 import '../theme.dart';
 
-/// 2026-10-13: 이슈 카드의 건수 줄에 붙는 반응 버튼. 접힌 카드에는 가장 많이 눌린
-/// 반응 하나(아이콘 + 수)만 작게 보이고(아직 반응이 없으면 반응 추가 아이콘만),
-/// 누르면 고정 반응 5개가 떠올라서 하나를 고름. 한 카드에 하나만 — 다른 걸 고르면
-/// 바뀌고, 이미 고른 걸 다시 누르면 취소됨. 내가 고른 게 있으면 버튼이 강조색.
+/// 2026-10-13: 이슈 카드 오른쪽 위, 카테고리 배지 아래(빈 공간)에 붙는 반응 버튼.
+/// 접힌 카드에는 가장 많이 눌린 반응 하나(아이콘 + 수)만 작게 보이고(아직 반응이
+/// 없으면 반응 추가 아이콘만), 누르면 고정 반응 5개가 떠올라서 하나를 고름. 한
+/// 카드에 하나만 — 다른 걸 고르면 바뀌고, 이미 고른 걸 다시 누르면 취소됨. 내가 고른
+/// 게 있으면 버튼이 강조색.
+///
+/// 2026-10-14: 눈에 보이는 크기는 작게 두되 눌리는 영역은 최소 44x40으로 키움(손가락으로
+/// 누르기 좋게). 보이는 아이콘의 오른쪽 끝이 배지 오른쪽 끝과 맞도록 눌리는 영역만
+/// 카드 안쪽 여백 쪽으로 밀어서 넓힘.
 class ReactionButton extends StatelessWidget {
   const ReactionButton({super.key, required this.keyword});
 
@@ -25,23 +30,28 @@ class ReactionButton extends StatelessWidget {
           builder: (buttonContext) => Semantics(
             button: true,
             label: '반응 고르기',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => _openPopup(buttonContext, keyword, s),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(top?.icon ?? Icons.add_reaction_outlined, size: 17, color: color),
-                    if (top != null) ...[
-                      const SizedBox(width: 3),
-                      Text(
-                        '${s.counts[top.key]}',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
-                      ),
+            child: Transform.translate(
+              offset: const Offset(10, -4),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _openPopup(buttonContext, keyword, s),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 44, minHeight: 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(top?.icon ?? Icons.add_reaction_outlined, size: 17, color: color),
+                      if (top != null) ...[
+                        const SizedBox(width: 3),
+                        Text(
+                          '${s.counts[top.key]}',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -62,9 +72,17 @@ Future<void> _openPopup(BuildContext buttonContext, String keyword, ReactionSumm
   final picked = await showMenu<String>(
     context: buttonContext,
     position: RelativeRect.fromRect(rect, Offset.zero & overlay.size),
+    // 앱의 다른 카드(AppCard)와 같은 톤: 흰 배경 + 옅은 라인 테두리 + 반지름 10. 그림자는 카드
+    // 위에 떠 있는 걸 구분할 정도로만 아주 약하게(예전엔 고도 6 + 머티리얼3 틴트로 너무 강했음).
     color: AppColors.surface,
-    elevation: 6,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    elevation: 2,
+    shadowColor: Colors.black.withValues(alpha: 0.18),
+    surfaceTintColor: Colors.transparent,
+    menuPadding: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(10),
+      side: BorderSide(color: AppColors.line),
+    ),
     constraints: const BoxConstraints(minWidth: 0, maxWidth: 320),
     items: [_ReactionMenuEntry(summary: summary)],
   );
@@ -89,7 +107,7 @@ class _ReactionMenuEntry extends PopupMenuEntry<String> {
   final ReactionSummary summary;
 
   @override
-  double get height => 84;
+  double get height => 104;
 
   @override
   bool represents(String? value) => false;
@@ -103,15 +121,16 @@ class _ReactionMenuEntryState extends State<_ReactionMenuEntry> {
   Widget build(BuildContext context) {
     final s = widget.summary;
     return SizedBox(
-      width: 300,
+      width: 304,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+        // 카드 안쪽 여백(12~14)과 맞춤.
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              padding: const EdgeInsets.only(left: 2, bottom: 8),
               child: Text('이 소식에 대한 내 반응', style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
             ),
             Row(

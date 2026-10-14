@@ -278,12 +278,6 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
                                   ),
                                   const SizedBox(width: 8),
-                                  // 2026-10-13: 가장 많이 눌린 반응 하나만 보이고, 누르면 5개가 떠오름.
-                                  // 저장한 이슈(보관함)는 지금 목록에 없는 키워드일 수 있어서 제외.
-                                  if (!widget.archiveMode) ...[
-                                    ReactionButton(keyword: issue.keyword),
-                                    const SizedBox(width: 6),
-                                  ],
                                   Text(
                                     '${issue.articleCount}건',
                                     style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
@@ -303,9 +297,19 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                         // 카드 박스 우측 상단으로 옮김 — 제목·키워드와 섞여
                         // 있던 걸 분리해서 "이 카드의 분류"가 한눈에 보이게.
                         const SizedBox(width: 8),
+                        // 2026-10-14: 카테고리 배지 아래의 빈 공간에 반응 버튼을 둠(건수 줄이 복잡해지지
+                        // 않게). 가장 많이 눌린 반응 하나만 보이고 누르면 5개가 떠오름. 저장한 이슈
+                        // (보관함)는 지금 목록에 없는 키워드일 수 있어서 제외.
                         Padding(
                           padding: const EdgeInsets.only(top: 3),
-                          child: AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
+                              if (!widget.archiveMode) ReactionButton(keyword: issue.keyword),
+                            ],
+                          ),
                         ),
                       ],
                     ),
