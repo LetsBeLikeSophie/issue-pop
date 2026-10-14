@@ -192,8 +192,11 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                     // 2026-09-25: 카테고리 배지가 카드 우측 끝에 너무
                     // 붙어 보인다는 피드백으로 오른쪽만 살짝 더 띄움.
                     padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: IntrinsicHeight(
+                      child: Row(
+                      // 2026-10-14: 오른쪽 열(배지 위 / 반응 버튼 아래)을 카드 높이만큼 늘려서
+                      // 반응 버튼을 우측 하단 건수 줄 높이에 붙이려고 stretch.
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (widget.rank != null) ...[
                           Padding(
@@ -260,7 +263,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 const SizedBox(height: 3),
                                 Text(widget.subtitle!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
                               ],
-                              SizedBox(height: widget.archiveMode ? 10 : 4),
+                              const SizedBox(height: 10),
                               // 2026-09-20: "클린 뉴스룸" 톤 리디자인(F안) —
                               // 헤드라인 아래 별도 줄로 도달 표시 + 건수를
                               // 양끝 정렬. IssueDetail(홈 "전체" 페이지처럼
@@ -277,14 +280,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         ? _ReachAvatars(outlets: issue.outlets, totalCount: issue.outletCount)
                                         : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
                                   ),
-                                  const SizedBox(width: 4),
-                                  // 2026-10-14: 반응 버튼은 우측 하단(건수 왼쪽). 가장 많이 눌린 반응 하나만 보이고
-                                  // 누르면 5개가 떠오름. 저장한 이슈(보관함)는 지금 목록에 없는
-                                  // 키워드일 수 있어서 제외.
-                                  if (!widget.archiveMode) ...[
-                                    ReactionButton(keyword: issue.keyword),
-                                    const SizedBox(width: 2),
-                                  ],
+                                  const SizedBox(width: 8),
                                   Text(
                                     '${issue.articleCount}건',
                                     style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
@@ -304,11 +300,27 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                         // 카드 박스 우측 상단으로 옮김 — 제목·키워드와 섞여
                         // 있던 걸 분리해서 "이 카드의 분류"가 한눈에 보이게.
                         const SizedBox(width: 8),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
+                        // 오른쪽 열: 위는 카테고리 배지, 아래(우측 하단)는 반응 버튼 — 사이는 여백.
+                        // 가장 많이 눌린 반응 하나만 보이고 누르면 5개가 떠오름. 저장한 이슈(보관함)는
+                        // 지금 목록에 없는 키워드일 수 있어서 제외.
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
+                            ),
+                            if (!widget.archiveMode)
+                              // 눌리는 영역(좌우 8)은 카드 여백 쪽으로 밀고, 건수 글자 줄 가운데에 오도록 살짝 내림.
+                              Transform.translate(
+                                offset: const Offset(8, 6),
+                                child: ReactionButton(keyword: issue.keyword),
+                              ),
+                          ],
                         ),
                       ],
+                    ),
                     ),
                   ),
                 ),
