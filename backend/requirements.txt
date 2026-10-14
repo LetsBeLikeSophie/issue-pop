@@ -16,3 +16,4 @@ firebase-admin>=6.5  # 다이제스트 등 실제 푸시 발송(FCM). 서버에
 # (torch 라이선스 폴더 경로가 260자 제한을 넘는 경우) 훨씬 짧은 경로에
 # 따로 설치하세요: pip install --target=pylibs sentence-transformers
 # embedding_utils.py가 backend/pylibs를 자동으로 sys.path에 추가함.
+

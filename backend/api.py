@@ -322,6 +322,9 @@ async def refresh_cache() -> None:
                 pruned_feedback = db.prune_old_feedback(session)
                 if pruned_feedback:
                     print(f"[prune] 보관기간(1년) 지난 문의 {pruned_feedback}건 정리함")
+                pruned_reactions = db.prune_old_reactions(session)
+                if pruned_reactions:
+                    print(f"[prune] 보관기간(1년) 지난 반응 {pruned_reactions}건 정리함")
                 pruned_devices = db.prune_inactive_devices(session)
                 if pruned_devices:
                     print(f"[prune] 1년 이상 비활성 기기 {pruned_devices}건 정리함")
@@ -1812,6 +1815,125 @@ async def list_feedback(_: None = Depends(_require_admin)):
         ]
 
 
+# ---------------------------------------------------------------- 반응 / 접속자 수 (2026-10-13)
+# 고정 반응 5개(뉴스에 어울리는 감정 + "더 알고 싶다"). 저장은 이름이 아니라 이 키로 함 —
+# 앱의 문구/아이콘을 바꿔도 데이터가 그대로 유효하게. 순서는 동률일 때 대표 반응을 고르는 우선순위.
+REACTION_KEYS = ("like", "angry", "worried", "sorry", "curious")
+REACTION_MAX_KEYWORDS_PER_QUERY = 80
+_CLIENT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+PRESENCE_WINDOW_SECONDS = 10 * 60  # "최근 10분간 N명" — 지금 이 순간으로 좁히면 숫자가 너무 작아짐
+PRESENCE_MIN_TO_SHOW = 3  # 이보다 적으면 서버가 show=false를 줌(숫자를 지어내지 않고 그냥 안 보여줌)
+_presence: dict[str, float] = {}
+_presence_last_purge = 0.0
+
+
+def _known_keywords() -> set[str]:
+    return {c["keyword"] for c in _cache.values()}
+
+
+def _reaction_summaries(session, keywords: list[str], client_id: str | None) -> dict[str, dict]:
+    """키워드별 {"counts": {키: 수}(0인 건 생략), "people": 반응한 사람 수(=합계, 한 사람 하나),
+    "top": 가장 많이 눌린 키(없으면 None, 동률이면 REACTION_KEYS 순), "mine": 내 반응 키(없으면 None)}."""
+    from sqlalchemy import func
+    from sqlmodel import select
+
+    out = {k: {"counts": {}, "people": 0, "top": None, "mine": None} for k in keywords}
+    if not keywords:
+        return out
+    R = db.Reaction
+    rows = session.exec(
+        select(R.keyword, R.reaction, func.count()).where(R.keyword.in_(keywords)).group_by(R.keyword, R.reaction)
+    ).all()
+    for kw, key, n in rows:
+        out[kw]["counts"][key] = n
+    for item in out.values():
+        counts = item["counts"]
+        item["people"] = sum(counts.values())
+        if counts:
+            item["top"] = max(REACTION_KEYS, key=lambda k: (counts.get(k, 0), -REACTION_KEYS.index(k)))
+    if client_id:
+        for kw, key in session.exec(select(R.keyword, R.reaction).where(R.keyword.in_(keywords), R.client_id == client_id)).all():
+            out[kw]["mine"] = key
+    return out
+
+
+@app.get("/reactions")
+async def get_reactions(
+    keywords: list[str] = Query(default=[]),
+    client_id: str | None = None,
+):
+    """카드(키워드)별 반응 집계. 앱이 화면에 보이는 카드들을 한 번에 물어봄(최대 80개)."""
+    keywords = list(dict.fromkeys(k.strip() for k in keywords if k.strip()))[:REACTION_MAX_KEYWORDS_PER_QUERY]
+    if client_id is not None and not _CLIENT_ID_RE.match(client_id):
+        raise HTTPException(status_code=422, detail="invalid client_id")
+    with db.get_session() as session:
+        return _reaction_summaries(session, keywords, client_id)
+
+
+class ReactionIn(BaseModel):
+    client_id: str
+    keyword: str
+    reaction: str | None = None  # None이면 내 반응 지우기
+
+
+@app.post("/reactions/set")
+@limiter.limit("40/minute")
+async def set_reaction(request: Request, body: ReactionIn):
+    """내 반응을 정하기(한 카드에 하나 — 다른 걸 고르면 바뀌고, None이면 지움)."""
+    from sqlalchemy.exc import IntegrityError
+    from sqlmodel import select
+
+    keyword = body.keyword.strip()
+    if not _CLIENT_ID_RE.match(body.client_id):
+        raise HTTPException(status_code=422, detail="invalid client_id")
+    if body.reaction is not None and body.reaction not in REACTION_KEYS:
+        raise HTTPException(status_code=422, detail="unknown reaction")
+    if keyword not in _known_keywords():
+        raise HTTPException(status_code=404, detail="keyword not found")
+    R = db.Reaction
+    with db.get_session() as session:
+        existing = session.exec(select(R).where(R.keyword == keyword, R.client_id == body.client_id)).first()
+        if body.reaction is None:
+            if existing is not None:
+                session.delete(existing)
+        elif existing is not None:
+            existing.reaction = body.reaction
+            session.add(existing)
+        else:
+            session.add(R(keyword=keyword, client_id=body.client_id, reaction=body.reaction))
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()  # 동시에 두 번 눌린 경우 — 마지막 요청이 이긴 걸로 두고 현재 상태를 돌려줌
+        return _reaction_summaries(session, [keyword], body.client_id)[keyword]
+
+
+class PresenceIn(BaseModel):
+    client_id: str
+
+
+@app.post("/presence/ping")
+@limiter.limit("12/minute")
+async def presence_ping(request: Request, body: PresenceIn):
+    """앱이 켜져 있는 동안 1분마다 보내는 신호 → 최근 10분 안에 신호를 보낸
+    서로 다른 설치 수. 서버 메모리에만 있고 DB는 안 씀(재시작하면 비워짐).
+    PRESENCE_MIN_TO_SHOW명 미만이면 show=false — 숫자를 부풀리거나 지어내지 않고
+    앱이 그냥 안 보여줌."""
+    global _presence_last_purge
+    if not _CLIENT_ID_RE.match(body.client_id):
+        raise HTTPException(status_code=422, detail="invalid client_id")
+    now_ts = time.time()
+    _presence[body.client_id] = now_ts
+    if now_ts - _presence_last_purge > 60:
+        _presence_last_purge = now_ts
+        cutoff = now_ts - PRESENCE_WINDOW_SECONDS
+        for cid in [c for c, ts in _presence.items() if ts < cutoff]:
+            del _presence[cid]
+    online = sum(1 for ts in _presence.values() if ts >= now_ts - PRESENCE_WINDOW_SECONDS)
+    return {"online": online, "show": online >= PRESENCE_MIN_TO_SHOW, "window_minutes": PRESENCE_WINDOW_SECONDS // 60}
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_policy():
     """앱스토어/플레이스토어 제출용 개인정보처리방침 — 정적 페이지라
@@ -1860,6 +1982,9 @@ async def privacy_policy():
         <td>위 기기 식별자에만 연결됨</td></tr>
     <tr><td>알림 설정(발송 시각, 조용한 시간대 등)</td><td>이용자가 설정 변경 시</td>
         <td>위 기기 식별자에만 연결됨</td></tr>
+    <tr><td>임의 설치 식별자와 카드 반응(좋아요·화나요 등)</td><td>앱 실행 시 / 카드에 반응을 고를 때</td>
+        <td>앱 설치마다 만든 임의의 값(이름·연락처와 무관)으로, 한 카드에 반응이 하나만 남도록 하고
+        "최근 N명이 봤어요" 집계에만 사용. 접속 집계는 서버 메모리에서만 잠시 사용하고 저장하지 않음</td></tr>
     <tr><td>문의 내용 및 답장받을 이메일(선택)</td><td>"문의하기" 이용 시</td>
         <td>이메일은 입력한 경우에만 수집되며, 답장 목적에만 사용</td></tr>
     <tr><td>접속 IP, 기기/브라우저 정보</td><td>서비스 이용 시 자동 생성</td>
@@ -1872,6 +1997,7 @@ async def privacy_policy():
   <ul>
     <li>알림 발송(관심 키워드 소식, 매일 트렌드 요약, 오늘의 단어)</li>
     <li>이용자가 등록한 관심 키워드·종목 관리</li>
+    <li>이슈 카드 반응 집계 및 "최근 N명이 봤어요" 표시</li>
     <li>문의 응대 및 답변 발송</li>
     <li>부정 이용 방지, 서비스 오류 확인 및 개선</li>
   </ul>
@@ -1881,7 +2007,7 @@ async def privacy_policy():
   일정 기간(최대 1년) 보관 후 파기하며, 관련 법령에서 별도 보관을
   요구하는 경우 그 기간을 따릅니다. 앱을 삭제하면 서버에 남아있던
   해당 기기의 알림 설정·관심 키워드도 더 이상 사용되지 않으며, 일정
-  기간 미접속 시 정기적으로 정리됩니다.</p>
+  기간 미접속 시 정기적으로 정리됩니다. 카드 반응은 등록 후 최대 1년 보관 후 삭제합니다.</p>
 
   <h2>4. 개인정보의 제3자 제공</h2>
   <p>이슈판은 이용자의 개인정보를 원칙적으로 외부에 제공하지 않습니다.

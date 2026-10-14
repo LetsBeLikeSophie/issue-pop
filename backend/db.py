@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Session, SQLModel, create_engine, delete, select
 
 DB_PATH = "news_trend.db"
@@ -289,6 +290,27 @@ def prune_old_embedding_cache(session: Session, retention_days: int = 3) -> int:
     return result.rowcount
 
 
+class Reaction(SQLModel, table=True):
+    """2026-10-13: 이슈 카드(대표 키워드 단위)에 다는 익명 반응(좋아요/화나요/
+    걱정돼요/안타까워요/궁금해요 중 하나).
+
+    키워드 텍스트로 묶는 이유: 이슈 id는 재클러스터링마다 바뀌어서(api._make_id)
+    id에 붙이면 반응이 끊김. client_id는 앱이 처음 실행할 때 만든 임의 설치
+    식별자(32자 hex) — 로그인/푸시 토큰과 무관하고 개인 식별 정보가 아님.
+    한 설치는 한 키워드에 반응을 하나만 가질 수 있음(UniqueConstraint) — 다른 걸
+    누르면 바뀜. reaction은 이름이 아니라 api.REACTION_KEYS의 고정 키("angry" 등)라
+    앱의 문구/아이콘을 바꿔도 저장된 데이터는 그대로 유효함."""
+
+    __tablename__ = "reactions"
+    __table_args__ = (UniqueConstraint("keyword", "client_id", name="uq_reaction_per_card"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    keyword: str = Field(index=True)
+    client_id: str = Field(index=True)
+    reaction: str
+    created_at: datetime = Field(default_factory=now)
+
+
 class Feedback(SQLModel, table=True):
     """베타 "고객의 소리" — 답장 기능 없는 일방향 제출함(2026-08-27).
     로그인 없이도 보낼 수 있게 device_id는 선택(있으면 어느 기기에서
@@ -485,6 +507,14 @@ def prune_old_issues(session: Session, retention_days: int = 3) -> int:
     stale_issue_ids = select(Issue.id).where(Issue.last_seen_at < cutoff)
     session.exec(delete(Article).where(Article.issue_id.in_(stale_issue_ids)))  # type: ignore[arg-type]
     result = session.exec(delete(Issue).where(Issue.last_seen_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
+def prune_old_reactions(session: Session, retention_days: int = 365) -> int:
+    """개인정보처리방침의 보관기간(1년)에 맞춰 오래된 반응을 지움."""
+    cutoff = now() - timedelta(days=retention_days)
+    result = session.exec(delete(Reaction).where(Reaction.created_at < cutoff))  # type: ignore[arg-type]
     session.commit()
     return result.rowcount
 
