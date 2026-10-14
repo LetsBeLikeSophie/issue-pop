@@ -260,7 +260,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 const SizedBox(height: 3),
                                 Text(widget.subtitle!, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
                               ],
-                              const SizedBox(height: 10),
+                              SizedBox(height: widget.archiveMode ? 10 : 4),
                               // 2026-09-20: "클린 뉴스룸" 톤 리디자인(F안) —
                               // 헤드라인 아래 별도 줄로 도달 표시 + 건수를
                               // 양끝 정렬. IssueDetail(홈 "전체" 페이지처럼
@@ -277,7 +277,14 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                         ? _ReachAvatars(outlets: issue.outlets, totalCount: issue.outletCount)
                                         : _ReachDots(count: issue.outletCount, max: widget.maxOutletCount),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 4),
+                                  // 2026-10-14: 반응 버튼은 우측 하단(건수 왼쪽). 가장 많이 눌린 반응 하나만 보이고
+                                  // 누르면 5개가 떠오름. 저장한 이슈(보관함)는 지금 목록에 없는
+                                  // 키워드일 수 있어서 제외.
+                                  if (!widget.archiveMode) ...[
+                                    ReactionButton(keyword: issue.keyword),
+                                    const SizedBox(width: 2),
+                                  ],
                                   Text(
                                     '${issue.articleCount}건',
                                     style: AppTypography.mono(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.accent),
@@ -297,19 +304,9 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                         // 카드 박스 우측 상단으로 옮김 — 제목·키워드와 섞여
                         // 있던 걸 분리해서 "이 카드의 분류"가 한눈에 보이게.
                         const SizedBox(width: 8),
-                        // 2026-10-14: 카테고리 배지 아래의 빈 공간에 반응 버튼을 둠(건수 줄이 복잡해지지
-                        // 않게). 가장 많이 눌린 반응 하나만 보이고 누르면 5개가 떠오름. 저장한 이슈
-                        // (보관함)는 지금 목록에 없는 키워드일 수 있어서 제외.
                         Padding(
                           padding: const EdgeInsets.only(top: 3),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
-                              if (!widget.archiveMode) ReactionButton(keyword: issue.keyword),
-                            ],
-                          ),
+                          child: AppBadge.outline(label: issue.category, color: CategoryColors.of(issue.category)),
                         ),
                       ],
                     ),

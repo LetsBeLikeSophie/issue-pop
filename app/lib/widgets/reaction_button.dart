@@ -4,15 +4,14 @@ import '../models/reaction.dart';
 import '../reaction_store.dart';
 import '../theme.dart';
 
-/// 2026-10-13: 이슈 카드 오른쪽 위, 카테고리 배지 아래(빈 공간)에 붙는 반응 버튼.
+/// 2026-10-13: 이슈 카드 우측 하단(건수 왼쪽)에 붙는 반응 버튼.
 /// 접힌 카드에는 가장 많이 눌린 반응 하나(아이콘 + 수)만 작게 보이고(아직 반응이
 /// 없으면 반응 추가 아이콘만), 누르면 고정 반응 5개가 떠올라서 하나를 고름. 한
 /// 카드에 하나만 — 다른 걸 고르면 바뀌고, 이미 고른 걸 다시 누르면 취소됨. 내가 고른
 /// 게 있으면 버튼이 강조색.
 ///
-/// 2026-10-14: 눈에 보이는 크기는 작게 두되 눌리는 영역은 최소 44x40으로 키움(손가락으로
-/// 누르기 좋게). 보이는 아이콘의 오른쪽 끝이 배지 오른쪽 끝과 맞도록 눌리는 영역만
-/// 카드 안쪽 여백 쪽으로 밀어서 넓힘.
+/// 2026-10-14: 눈에 보이는 크기는 작게 두되 눌리는 영역은 최소 40x30으로 키움. 카드가
+/// 너무 커지지 않도록 높이는 이 정도로만.
 class ReactionButton extends StatelessWidget {
   const ReactionButton({super.key, required this.keyword});
 
@@ -30,28 +29,25 @@ class ReactionButton extends StatelessWidget {
           builder: (buttonContext) => Semantics(
             button: true,
             label: '반응 고르기',
-            child: Transform.translate(
-              offset: const Offset(10, -4),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: () => _openPopup(buttonContext, keyword, s),
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 44, minHeight: 40),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(top?.icon ?? Icons.add_reaction_outlined, size: 17, color: color),
-                      if (top != null) ...[
-                        const SizedBox(width: 3),
-                        Text(
-                          '${s.counts[top.key]}',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
-                        ),
-                      ],
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _openPopup(buttonContext, keyword, s),
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 30),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(top?.icon ?? Icons.add_reaction_outlined, size: 17, color: color),
+                    if (top != null) ...[
+                      const SizedBox(width: 3),
+                      Text(
+                        '${s.counts[top.key]}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),
