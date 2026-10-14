@@ -96,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 자리에 넣음.
   DateTime? _lastRefreshAt;
   Timer? _clockTimer;
+  Timer? _retryTimer;
 
   /// 2026-10-13: 첫 이슈 목록을 받아오는 동안 덮어두는 로딩 화면(LaunchLoading).
   bool _showLaunch = true;
@@ -104,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _trending = widget.api.getTrending(limit: 40);
-    _index = widget.api.getIndex();
+    _index = widget.api.getIndex()..ignore(); // 카테고리 페이지를 열기 전엔 아무도 안 듣는 future — 실패해도 미처리 예외로 안 남게
     // 성공이든 실패든 첫 응답이 오면 로딩 화면을 걷음(실패는 각 화면의 에러/오프라인 표시가 담당).
     // 너무 빨리 끝나도 깜빡이지 않게 최소 0.5초는 보여줌.
     Future.wait([
@@ -121,6 +122,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() {});
     });
+    // 2026-10-14: 받아둔 데이터를 보여주는 중이면(서버 재시작/네트워크 끊김) 손 안 대도 복구되도록
+    // 30초마다 조용히 다시 불러옴. 성공하면 배너가 알아서 사라짐.
+    _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && OfflineCache.staleSince.value != null) _refresh();
+    });
   }
 
   @override
@@ -131,13 +137,14 @@ class _HomeScreenState extends State<HomeScreen> {
       s.dispose();
     }
     _clockTimer?.cancel();
+    _retryTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _refresh() async {
     setState(() {
       _trending = widget.api.getTrending(limit: 40);
-      _index = widget.api.getIndex();
+      _index = widget.api.getIndex()..ignore();
     });
     ReactionStore.instance.refreshAll();
     try {
@@ -210,7 +217,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ValueListenableBuilder<DateTime?>(
               valueListenable: OfflineCache.staleSince,
               builder: (context, since, _) =>
-                  since == null ? const SizedBox.shrink() : _OfflineBanner(since: since, onRetry: _refresh),
+                  since == null
+                      ? const SizedBox.shrink()
+                      : ValueListenableBuilder<bool>(
+                          valueListenable: OfflineCache.serverBusy,
+                          builder: (context, busy, _) => _OfflineBanner(since: since, serverBusy: busy, onRetry: _refresh),
+                        ),
             ),
             if (!isSearching)
               Padding(
@@ -439,9 +451,12 @@ class _IssueList extends StatelessWidget {
 /// 2026-10-13: 서버/네트워크 문제로 새 데이터를 못 받아서 기기에 남겨둔 마지막
 /// 데이터를 대신 보여주는 중일 때만 뜨는 안내(OfflineCache 참고).
 class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner({required this.since, required this.onRetry});
+  const _OfflineBanner({required this.since, required this.serverBusy, required this.onRetry});
 
   final DateTime since;
+
+  /// 서버가 재시작/갱신 중이라 못 받은 거면 true(OfflineCache.serverBusy).
+  final bool serverBusy;
   final Future<void> Function() onRetry;
 
   String _ago() {
@@ -460,11 +475,13 @@ class _OfflineBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
       child: Row(
         children: [
-          Icon(Icons.cloud_off, size: 15, color: AppColors.accent2),
+          Icon(serverBusy ? Icons.sync : Icons.cloud_off, size: 15, color: AppColors.accent2),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '연결이 안 돼요 · ${_ago()} 받아둔 이슈를 보여드려요',
+              serverBusy
+                  ? '서버를 업데이트하고 있어요 · ${_ago()} 받아둔 이슈를 보여드려요'
+                  : '연결이 안 돼요 · ${_ago()} 받아둔 이슈를 보여드려요',
               style: TextStyle(fontSize: 11.5, color: AppColors.ink),
             ),
           ),

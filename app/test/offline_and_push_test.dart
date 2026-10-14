@@ -35,6 +35,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     OfflineCache.staleSince.value = null;
+    OfflineCache.serverBusy.value = false;
   });
 
   test('네트워크가 끊기면 마지막으로 받은 trending을 돌려주고 staleSince를 채운다', () async {
@@ -68,6 +69,49 @@ void main() {
     final client = MockClient((req) async => _json({'detail': 'bad gateway'}, 502));
     final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
     await expectLater(api.getTrending(), throwsA(isA<ApiException>()));
+  });
+
+  test('서버가 502를 주면 받아둔 목록을 보여주면서 serverBusy를 켠다 — 빈 목록(첫 갱신 전)도 마찬가지', () async {
+    var mode = 'ok';
+    final client = MockClient((req) async {
+      if (mode == '502') return _json({'detail': 'bad gateway'}, 502);
+      if (mode == 'empty') return _json([]);
+      return _json([_issue('a1', '추미애', 13)]);
+    });
+    final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
+
+    await api.getTrending();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(OfflineCache.serverBusy.value, isFalse);
+
+    mode = '502';
+    expect((await api.getTrending()).single.keyword, '추미애');
+    expect(OfflineCache.serverBusy.value, isTrue);
+    expect(OfflineCache.staleSince.value, isNotNull);
+
+    mode = 'ok';
+    await api.getTrending();
+    expect(OfflineCache.serverBusy.value, isFalse);
+    expect(OfflineCache.staleSince.value, isNull);
+
+    mode = 'empty';
+    expect((await api.getTrending()).single.keyword, '추미애', reason: '서버가 빈 목록을 주면 받아둔 걸 보여줘야 함');
+    expect(OfflineCache.serverBusy.value, isTrue);
+  });
+
+  test('네트워크가 끊긴 거면 serverBusy는 꺼져 있다("연결이 안 돼요")', () async {
+    var online = true;
+    final client = MockClient((req) async {
+      if (!online) throw http.ClientException('연결 안 됨');
+      return _json([_issue('a1', '추미애', 13)]);
+    });
+    final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
+    await api.getTrending();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    online = false;
+    await api.getTrending();
+    expect(OfflineCache.staleSince.value, isNotNull);
+    expect(OfflineCache.serverBusy.value, isFalse);
   });
 
   testWidgets('알림으로 연 이슈 id가 404면 키워드로 지금 목록에서 찾아 펼친 채로 보여준다', (tester) async {
