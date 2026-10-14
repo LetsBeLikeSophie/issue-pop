@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import html
 import re
+from functools import lru_cache
 
 from kiwipiepy import Kiwi
 
@@ -77,7 +78,9 @@ _BYLINE_RE = re.compile(r"^\([^()]*=[^()]*\)\s*(?:\S+\s*기자\s*=\s*)?")
 # 인물/사건인데 이 태그 하나 때문에 한 클러스터로 뭉쳤음. 제목 끝의
 # "(종합)" 같은 갱신 표시도 같은 이유로 제거.
 _BRACKET_TAG_RE = re.compile(r"^(?:\[[^\[\]]+\]\s*)+")
-_UPDATE_SUFFIX_RE = re.compile(r"\((?:종합|속보|단독)\)\s*$")
+# 2026-10-15: "(종합2보)"/"(1보)"처럼 숫자가 붙은 갱신 표시도 같은 이유로 제거 — 안 지우면 "종합2보"가
+# 이슈 키워드로 뽑혔음(실제 라이브 데이터로 확인).
+_UPDATE_SUFFIX_RE = re.compile(r"\((?:종합\d*보?|\d+보|속보|단독)\)\s*$")
 
 # 2026-08-24: 한겨레 RSS의 summary 필드에 실제 요약 대신 썸네일 이미지용
 # HTML <table> 태그가 그대로 들어있는 걸 발견함(예: '<table border="0px"
@@ -126,6 +129,7 @@ def extract_proper_nouns(text: str) -> set[str]:
 
 _NUMBER_TAG = "SN"  # 숫자
 _UNIT_TAGS = {"NNB", "SW"}  # 의존명사(예: "도", "명", "건") / 기호(예: "%")
+_LATIN_UNITS = {"cm", "mm", "km", "m", "kg", "g", "mg", "ml", "l", "gb", "mb", "tb", "kb", "mw", "gw", "kw", "kwh", "ha"}
 
 
 _CHAIN_TAGS = {"NNG", "NNP", "XSN"}
@@ -169,6 +173,26 @@ def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
     return chains
 
 
+@lru_cache(maxsize=20000)
+def _strip_locative_seo(form: str) -> str:
+    """kiwi가 사전에 없는 말로 추측(oov)해서 "파리서"처럼 "서"까지 한 덩어리로 묶은 토큰에서 "서"를 뗌.
+
+    2026-10-15: "르노, 파리서 콘셉트 첫 공개"의 "파리서"는 "파리에서"를 줄여 쓴 것인데 kiwi가 한
+    단어(NNP)로 추측해서 그대로 키워드가 됐음. 앞부분("파리")이 사전에 있는 한 단어일 때만 뗌 —
+    "김민서" 같은 세 글자 인명(앞부분 "김민"은 사전에 없음)은 건드리지 않으려고.
+    """
+    if len(form) >= 3 and form.endswith("서"):
+        stem = form[:-1]
+        toks = kiwi.tokenize(stem)
+        if len(toks) == 1 and not toks[0].oov and toks[0].tag in ("NNG", "NNP"):
+            return stem
+    return form
+
+
+def _noun_form(t) -> str:
+    return _strip_locative_seo(t.form) if getattr(t, "oov", False) else t.form
+
+
 def extract_noun_ngrams(text: str) -> list[str]:
     """명사 유니그램 + 바로 붙어있는 명사쌍(바이그램) + 숫자·단위 조합.
 
@@ -202,10 +226,19 @@ def extract_noun_ngrams(text: str) -> list[str]:
     fused: dict[int, str] = {}
     for i in range(len(tokens) - 1):
         if tokens[i].tag in NOUN_TAGS and tokens[i + 1].tag == "XSN":
-            fused[i] = tokens[i].form + tokens[i + 1].form
+            fused[i] = _noun_form(tokens[i]) + tokens[i + 1].form
 
-    noun_idx = [i for i, t in enumerate(tokens) if t.tag in NOUN_TAGS]
-    result = [fused.get(i, tokens[i].form) for i in noun_idx]
+    # 2026-10-15: "178cm 테니스"의 "cm"처럼 숫자 바로 뒤에 붙은 영문 단위(SL)는 명사가 아님 —
+    # 그대로 두면 "cm테니스" 같은 키워드가 됐음(실제 라이브 데이터로 확인). 명사 후보에서만 뺌
+    # ("178cm"으로 합쳐 후보에 넣어봤더니 흔한 키 숫자가 인명보다 점수가 높게 나와서 안 넣음).
+    unit_idx = {
+        i
+        for i, t in enumerate(tokens)
+        if t.tag == "SL" and t.form.lower() in _LATIN_UNITS and i > 0 and tokens[i - 1].tag == _NUMBER_TAG
+        and t.start == tokens[i - 1].start + tokens[i - 1].len
+    }
+    noun_idx = [i for i, t in enumerate(tokens) if t.tag in NOUN_TAGS and i not in unit_idx]
+    result = [fused.get(i, _noun_form(tokens[i])) for i in noun_idx]
 
     for a, b in zip(noun_idx, noun_idx[1:]):
         if b != a + 1:
@@ -213,6 +246,13 @@ def extract_noun_ngrams(text: str) -> list[str]:
         if b in fused:
             # b는 실은 뒤에 접미사가 붙어 다른 단어("여대생")의 일부라서,
             # 그 앞부분("여대")만 떼어 a와 잘못 이어붙이지 않음.
+            continue
+        if tokens[b].form == "서" and tokens[b].start > 0:
+            # 2026-10-15: "합계출산율서"/"부산서"/"파리서"/"원정서" — 기사 제목이 "에서"를 "서"로
+            # 줄여 쓴 것("합계출산율에서", "부산에서")인데, kiwi가 이 "서"를 명사(NNG)로 분석하면
+            # 앞 단어에 이어붙어 엉뚱한 키워드가 됐음(실제 라이브 데이터로 확인). 진짜 "…서"
+            # 명사(계약서·보고서·신청서 등)는 kiwi가 한 토큰으로 인식해서 여기까지 안 옴 —
+            # 낱개 "서"는 거의 항상 이 줄임 조사라서 이어붙이지 않음.
             continue
         if len(tokens[a].form) == 1 and a > 0 and tokens[a - 1].tag == _NUMBER_TAG:
             # a는 숫자 바로 뒤에 붙은 한 글자 명사("10대"의 "대")라
@@ -230,8 +270,18 @@ def extract_noun_ngrams(text: str) -> list[str]:
         # 서구식 이름은 두 토큰 다 NNP(고유명사)로 잡히고, "국민"/"연금"
         # 같은 일반 복합명사는 NNG로 잡힘 — 둘 다 NNP일 때만 공백을 살림.
         gap = tokens[b].start - (tokens[a].start + tokens[a].len)
+        if gap > 0 and not (tokens[a].tag == "NNP" and tokens[b].tag == "NNP") and (
+            len(tokens[a].form) < 2 or len(tokens[b].form) < 2
+        ):
+            # 2026-10-15: 원문에서 띄어 쓴 두 명사는 두 쪽 다 두 글자 이상일 때만 붙임. 예전엔
+            # 띄어 쓴 것도 무조건 붙여서 "반도체 소부장"→"반도체소", "삼성전자 옆"→"삼성전자옆",
+            # "검거 전"→"검거전", "5년의 진화 담은"→"진화담", "맹그로브 숲"→"그로브숲", "교수 황당"→
+            # "교수황" 같은 뜻 없는 키워드가 나왔음(실제 라이브 데이터로 확인) — 띄어 쓴 뒤의 한 글자
+            # 명사는 대개 복합어가 아니라 다음 단어의 일부/접미사/의존명사임. "국민연금"처럼
+            # 붙여 쓴 복합어는 이 규칙과 무관(gap == 0).
+            continue
         sep = " " if (gap == 1 and tokens[a].tag == "NNP" and tokens[b].tag == "NNP") else ""
-        result.append(tokens[a].form + sep + tokens[b].form)
+        result.append(_noun_form(tokens[a]) + sep + _noun_form(tokens[b]))
 
     for i, t in enumerate(tokens[:-1]):
         if t.tag == _NUMBER_TAG and tokens[i + 1].tag in _UNIT_TAGS:

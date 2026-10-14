@@ -105,6 +105,47 @@ def test_keywords_are_short_and_on_topic():
     print("OK: 키워드 추출 정상 (보험료/요금인상/폭염특보/김승원 등)")
 
 
+def test_noun_ngram_rules():
+    """2026-10-15 실제 라이브 데이터에서 찾은 엉뚱한 키워드 패턴 회귀 테스트(text_utils.extract_noun_ngrams)."""
+    from text_utils import extract_noun_ngrams
+    from text_utils import clean_title
+
+    def grams(text: str) -> list[str]:
+        return extract_noun_ngrams(clean_title(text))
+
+    # "에서"를 "서"로 줄여 쓴 제목 — 앞 단어에 "서"가 이어붙으면 안 됨.
+    for text, bad in [
+        ("정부 인구정책, 합계출산율서 ‘삶의 질 제고’로 바꾼다", "합계출산율서"),
+        ("홍콩 영화업계, 부산서 국제 공동제작 협력 모색", "부산서"),
+        ("르노, 파리서 콘셉트 첫 공개", "파리서"),
+    ]:
+        g = grams(text)
+        assert bad not in g, f"'서' 줄임 조사가 키워드에 붙음: {bad!r} in {g!r}"
+    assert "합계출산율" in grams("정부 인구정책, 합계출산율서 ‘삶의 질 제고’로 바꾼다")
+
+    # 띄어 쓴 뒤의 한 글자 명사는 앞 단어와 이어붙이지 않음.
+    for text, bad in [
+        ("코스피 박스권 장세에도 반도체 소부장-건설 중소형주 탄력", "반도체소"),
+        ("제주 스토킹 여성 살해 60대 피의자 검거 전 음독", "검거전"),
+        ("SK이노, 베트남에 맹그로브 숲 조성", "그로브숲"),
+    ]:
+        g = grams(text)
+        assert bad not in g, f"띄어 쓴 한 글자 명사가 이어붙음: {bad!r} in {g!r}"
+
+    # 붙여 쓴 복합어와 두 글자 이상끼리 띄어 쓴 흔한 표현은 계속 붙음.
+    assert "국민연금" in grams("국민연금 개혁안 발표")
+    assert "국민연금" in grams("국민 연금 개혁안 발표")
+    assert "포스코노사" in grams("포스코 노사 또 합의 불발")
+
+    # 숫자 바로 뒤 영문 단위(cm)는 명사 후보가 아님.
+    assert "cm테니스" not in grams("178cm 테니스 여신, 선 넘은 상대에 대폭발")
+
+    # "(종합2보)" 같은 갱신 표시는 제목에서 지움.
+    assert "종합2보" not in clean_title("당국 금융사 침해사고 발생 총 16곳(종합2보)")
+
+    print("OK: 키워드 이어붙이기 규칙 (서 줄임 조사 / 띄어 쓴 한 글자 / 영문 단위 / 종합N보)")
+
+
 def test_no_cross_topic_contamination():
     """국민연금(보험료율) 이슈 클러스터에 전기요금/폭염 관련 기사가 섞여 들어가면 안 됨."""
     articles = load_sample_articles()
@@ -137,5 +178,6 @@ if __name__ == "__main__":
     test_sample_data_clusters_into_expected_issues()
     test_no_cross_topic_contamination()
     test_keywords_are_short_and_on_topic()
+    test_noun_ngram_rules()
     test_super_clusters_preserve_all_issues()
     print("\n모든 테스트 통과")
