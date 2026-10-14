@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import feedparser
+import requests
 
 from sources import RSS_SOURCES
 
@@ -84,7 +85,13 @@ def fetch_outlet(source: dict) -> list[dict]:
     여기서 에러를 흡수하고 로그만 남기는 방어적인 구조로 짰어요.
     """
     try:
-        parsed = feedparser.parse(source["url"], request_headers=_REQUEST_HEADERS)
+        # 2026-10-14: feedparser.parse(url)는 타임아웃이 없어서 매체 서버가 연결만 잡고 응답을 안
+        # 주면 스레드가 영원히 멈췄음 — 실제로 갱신 루프가 그 상태로 8시간 멈춰서 "업데이트 8시간
+        # 전"이 됨(py-spy로 ssl read에서 대기 중인 걸 확인). 그래서 requests로 직접 받으며
+        # 타임아웃(연결 5초/읽기 15초)을 걸고, 받은 바이트만 feedparser로 파싱함.
+        resp = requests.get(source["url"], headers=_REQUEST_HEADERS, timeout=(5, 15))
+        resp.raise_for_status()
+        parsed = feedparser.parse(resp.content)
     except Exception as e:  # noqa: BLE001 - 수집 단계는 매체 하나 실패로 전체를 멈추면 안 됨
         print(f"[fetch] {source['outlet']} 실패: {e}")
         return []

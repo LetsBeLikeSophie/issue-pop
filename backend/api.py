@@ -263,9 +263,14 @@ async def refresh_cache() -> None:
     global _cache, _last_refresh, _last_error, _weather_cache, _stock_news_cache, _stock_quote_cache, _usd_krw_rate
     async with _refresh_lock:
         try:
-            clusters = await asyncio.to_thread(run, live=True)
+            # 2026-10-14: 수집이 어딘가에서 멈춰도 갱신 루프(와 _refresh_lock)가 영원히 안 잡히게
+            # 전체 상한을 둠. 스레드 자체는 못 죽이지만 다음 주기에 다시 시도는 됨. 상한을 10분으로
+            # 했다가 재시작 직후 첫 갱신(임베딩 모델 로드 + 인코딩이 이 1GB VM에선 10분 가까이
+            # 걸림)이 딱 10분에 잘려서 빈 캐시로 떴음 — 그래서 30분(= 갱신 주기)으로 넉넉하게.
+            # 개별 RSS는 fetcher.py에서 요청 단위 타임아웃을 따로 걸어둠.
+            clusters = await asyncio.wait_for(asyncio.to_thread(run, live=True), timeout=30 * 60)
         except Exception as e:  # noqa: BLE001 - 한 번 실패해도 다음 주기에 재시도, 서버는 안 죽음
-            _last_error = str(e)
+            _last_error = str(e) or type(e).__name__
             return
         # 2026-09-26: "관심 이슈 알림" 대상(새로 생긴 이슈 id)을 구하려고
         # 갱신 전 id 집합을 남겨둠. 서버 막 시작해서 _cache가 아직 비어
