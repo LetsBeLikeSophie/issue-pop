@@ -329,7 +329,14 @@ async def refresh_cache() -> None:
                     print(f"[prune] 보관기간(1년) 지난 문의 {pruned_feedback}건 정리함")
                 pruned_reactions = db.prune_old_reactions(session)
                 if pruned_reactions:
-                    print(f"[prune] 보관기간(1년) 지난 반응 {pruned_reactions}건 정리함")
+                    print(f"[prune] 보관기간(7일) 지난 반응 {pruned_reactions}건 정리함")
+                # 2026-10-14: 정리 기준이 없어 계속 쌓이던 캐시 두 개도 정리(db.py 독스트링 참고).
+                pruned_translations = db.prune_old_translated_headlines(session)
+                if pruned_translations:
+                    print(f"[prune] 7일 지난 번역 캐시 {pruned_translations}건 정리함")
+                pruned_categories = db.prune_old_category_cache(session)
+                if pruned_categories:
+                    print(f"[prune] 30일 지난 카테고리 캐시 {pruned_categories}건 정리함")
                 pruned_devices = db.prune_inactive_devices(session)
                 if pruned_devices:
                     print(f"[prune] 1년 이상 비활성 기기 {pruned_devices}건 정리함")
@@ -2012,7 +2019,7 @@ async def privacy_policy():
   일정 기간(최대 1년) 보관 후 파기하며, 관련 법령에서 별도 보관을
   요구하는 경우 그 기간을 따릅니다. 앱을 삭제하면 서버에 남아있던
   해당 기기의 알림 설정·관심 키워드도 더 이상 사용되지 않으며, 일정
-  기간 미접속 시 정기적으로 정리됩니다. 카드 반응은 등록 후 최대 1년 보관 후 삭제합니다.</p>
+  기간 미접속 시 정기적으로 정리됩니다. 카드 반응은 등록 후 7일이 지나면 삭제합니다.</p>
 
   <h2>4. 개인정보의 제3자 제공</h2>
   <p>이슈판은 이용자의 개인정보를 원칙적으로 외부에 제공하지 않습니다.

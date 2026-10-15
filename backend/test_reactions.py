@@ -89,4 +89,23 @@ with db.get_session() as s:
     assert db.prune_old_reactions(s) == 1
     assert s.exec(select(db.Reaction).where(db.Reaction.client_id == "e" * 32)).first() is None
 
+# 10) 보관기간: 반응 7일(6일 된 건 남고 8일 된 건 지움), 번역 캐시 7일, 카테고리 캐시 30일
+with db.get_session() as s:
+    s.add(db.Reaction(keyword="추미애", client_id="f" * 32, reaction="like", created_at=db.now() - dt.timedelta(days=6)))
+    s.add(db.Reaction(keyword="추미애", client_id="g" * 32, reaction="like", created_at=db.now() - dt.timedelta(days=8)))
+    s.commit()
+    assert db.prune_old_reactions(s) == 1
+    assert s.exec(select(db.Reaction).where(db.Reaction.client_id == "f" * 32)).first() is not None
+    assert s.exec(select(db.Reaction).where(db.Reaction.client_id == "g" * 32)).first() is None
+
+    s.add(db.TranslatedHeadline(text_hash="new", original_text="a", translated_text="b", translated_at=db.now() - dt.timedelta(days=6)))
+    s.add(db.TranslatedHeadline(text_hash="old", original_text="a", translated_text="b", translated_at=db.now() - dt.timedelta(days=8)))
+    s.add(db.CategoryCache(keyword_key="새|키워드", category="정치", created_at=db.now() - dt.timedelta(days=29)))
+    s.add(db.CategoryCache(keyword_key="옛|키워드", category="정치", created_at=db.now() - dt.timedelta(days=31)))
+    s.commit()
+    assert db.prune_old_translated_headlines(s) == 1
+    assert db.prune_old_category_cache(s) == 1
+    assert s.get(db.TranslatedHeadline, "new") is not None and s.get(db.TranslatedHeadline, "old") is None
+    assert s.get(db.CategoryCache, "새|키워드") is not None and s.get(db.CategoryCache, "옛|키워드") is None
+
 print("test_reactions: ALL OK")

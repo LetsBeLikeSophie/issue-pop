@@ -511,10 +511,33 @@ def prune_old_issues(session: Session, retention_days: int = 3) -> int:
     return result.rowcount
 
 
-def prune_old_reactions(session: Session, retention_days: int = 365) -> int:
-    """개인정보처리방침의 보관기간(1년)에 맞춰 오래된 반응을 지움."""
+def prune_old_reactions(session: Session, retention_days: int = 7) -> int:
+    """개인정보처리방침의 보관기간(7일)에 맞춰 오래된 반응을 지움.
+
+    2026-10-14: 1년 → 7일. 반응은 대표 키워드 문구로 저장되는데 이슈 자체는 3일이면
+    DB에서 사라짐(prune_old_issues) — 반응만 1년 남으면 나중에 전혀 다른 뉴스에 같은
+    키워드(예: "LG")가 뜰 때 예전에 누른 반응이 "내 반응"으로 보이는 오류가 생기고,
+    개인정보 최소 수집 면에서도 짧은 게 낫다. 화제성 뉴스는 며칠 뒤 다시 안 올라옴."""
     cutoff = now() - timedelta(days=retention_days)
     result = session.exec(delete(Reaction).where(Reaction.created_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
+def prune_old_translated_headlines(session: Session, retention_days: int = 7) -> int:
+    """2026-10-14: 관심 종목 뉴스 번역 캐시(TranslatedHeadline)는 정리 기준이 없어서 계속
+    쌓였음(8천 건). 같은 헤드라인이 며칠 뒤 다시 올라올 일은 거의 없으니 7일이면 충분."""
+    cutoff = now() - timedelta(days=retention_days)
+    result = session.exec(delete(TranslatedHeadline).where(TranslatedHeadline.translated_at < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return result.rowcount
+
+
+def prune_old_category_cache(session: Session, retention_days: int = 30) -> int:
+    """2026-10-14: 카테고리 LLM 분류 캐시(CategoryCache)도 정리 기준이 없어서 계속 쌓였음(5만 건).
+    지워도 같은 키워드가 다시 나오면 LLM에 한 번 더 물을 뿐이라(건당 극소액) 30일이면 충분."""
+    cutoff = now() - timedelta(days=retention_days)
+    result = session.exec(delete(CategoryCache).where(CategoryCache.created_at < cutoff))  # type: ignore[arg-type]
     session.commit()
     return result.rowcount
 
