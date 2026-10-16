@@ -35,6 +35,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 2026-10-17: 알림 권한 온보딩 — 사용자가 알림에 동의하기 전에는 FCM에 등록(토큰 생성)하지 않음.
+             이미 허용한 기기는 앱 시작 때(main.dart의 restorePushIfAllowed) / 동의 직후(getFcmToken)에 다시 켬.
+             Firebase 문서가 권하는 대로 분석 수집 자동 설정도 함께 끔(이 앱은 Analytics를 안 씀). -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
 
         <!-- 2026-10-17: 홈 화면 "관심 종목" 위젯(StockWidgetProvider.kt). 외부 위젯 패키지/WorkManager 없이
              안드로이드 기본 AppWidgetProvider만 씀 — 9월에 home_widget 패키지가 크래시를 일으켜서 걷어냈던 것과

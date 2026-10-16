@@ -47,7 +47,9 @@ class DeviceRegistry {
 
     var token = prefs.getString(_tokenKey);
     if (token == null) {
-      token = await getFcmToken() ?? _randomToken();
+      // 2026-10-17: 권한을 묻지 않음 — 이미 허용한 기기면 진짜 토큰, 아니면 임시 랜덤 토큰으로 등록하고,
+      // 나중에 사용자가 알림을 켜면(enablePush) 같은 device_id로 진짜 토큰으로 갈아끼움.
+      token = await getFcmTokenIfAllowed() ?? _randomToken();
       await prefs.setString(_tokenKey, token);
     }
     final id = await api.registerDevice(token);
@@ -66,7 +68,7 @@ class DeviceRegistry {
   Future<void> _maybeUpgradeToken(SharedPreferences prefs, int deviceId) async {
     final current = prefs.getString(_tokenKey);
     if (current != null && current.length > _fallbackTokenLength) return;
-    final real = await getFcmToken();
+    final real = await getFcmTokenIfAllowed(); // 2026-10-17: 권한 팝업을 띄우지 않는 조회로 바꿈
     if (real == null || real == current) return;
     try {
       await api.updateDevicePushToken(deviceId, real);
@@ -156,6 +158,23 @@ class DeviceRegistry {
 
   Future<void> deleteWatch(int watchId) async {
     await api.deleteWatch(watchId);
+  }
+
+  /// 2026-10-17: 사용자가 알림 켜기에 동의한 뒤(notification_gate.dart) 호출 — OS 권한 팝업을 띄우고, 허용되면
+  /// 진짜 FCM 토큰을 받아 이 기기(같은 device_id)에 갈아끼움. 허용됐는지 돌려줌.
+  Future<bool> enablePush() async {
+    final token = await getFcmToken(); // 여기서만 권한 팝업이 뜸
+    await markNotificationAsked();
+    if (token == null) return false;
+    try {
+      final id = await _deviceId();
+      await api.updateDevicePushToken(id, token);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, token);
+    } catch (_) {
+      // 토큰 반영 실패는 다음 실행 때 _maybeUpgradeToken이 다시 시도함 — 권한 자체는 허용된 상태.
+    }
+    return true;
   }
 
   /// 2026-10-17: 위젯에 기기 id를 알려주려고 공개함(관심 종목 화면 → StockWidgetStore).

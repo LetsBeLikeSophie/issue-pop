@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../notification_gate.dart';
 
 import '../api_client.dart';
 import '../device_registry.dart';
@@ -61,8 +62,22 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
   }
 
   /// 2026-10-13: 추천 칩을 눌러 바로 등록(추가 시트를 안 열어도 됨).
+  /// 2026-10-17: 키워드를 등록하는 순간이 알림이 필요한 순간 — 아직 허용 전이면 한 번만 이유를 설명함.
+  /// 거절하거나 "나중에"를 골라도 키워드 등록은 그대로 진행(알림만 못 받음).
+  Future<void> _askNotificationsOnce() async {
+    if (!mounted) return;
+    await NotificationGate.ensure(
+      context,
+      _devices,
+      title: '새 이슈를 알림으로 받아볼까요?',
+      body: '등록한 키워드가 새 이슈로 뜨면 바로 알려드려요.',
+      quiet: true,
+    );
+  }
+
   Future<void> _quickAdd(String keyword) async {
     await _devices.addWatch(keyword);
+    await _askNotificationsOnce();
     await _refresh();
     if (!mounted) return;
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -92,6 +107,7 @@ class _KeywordWatchScreenState extends State<KeywordWatchScreen> {
     );
     if (keyword == null) return;
     await _devices.addWatch(keyword);
+    await _askNotificationsOnce();
     await _refresh();
   }
 

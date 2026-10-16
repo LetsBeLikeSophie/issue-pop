@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../notification_gate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
@@ -89,10 +90,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Future<void> _refreshNotificationStatus() async {
     final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    // 2026-10-17: Android는 "아직 안 물어봄"도 denied로 돌려줘서, 우리가 권한을 물어본 적이 있을 때만
+    // "거부됨"(배너 + 스위치 잠금)으로 봄 — 처음 설치한 사람에게 아무것도 안 했는데 "거부됨"이 뜨면 안 됨.
+    final state = await notificationState();
     if (!mounted) return;
     setState(() {
       _lastKnownNotificationStatus = settings.authorizationStatus;
-      _notificationsDenied = settings.authorizationStatus == AuthorizationStatus.denied;
+      _notificationsDenied = state == NotificationState.denied;
     });
   }
 
@@ -140,7 +144,20 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     }
   }
 
+  /// 알림이 필요한 스위치를 켤 때: 필요하면 이유 설명 → 동의 시 권한 요청. 받을 수 없으면 false(스위치 안 켬).
+  Future<bool> _allowNotifications(String reason) async {
+    final ok = await NotificationGate.ensure(
+      context,
+      _devices,
+      title: '알림을 받아볼까요?',
+      body: reason,
+    );
+    await _refreshNotificationStatus();
+    return ok;
+  }
+
   Future<void> _toggleDigest(bool on) async {
+    if (on && !await _allowNotifications('매일 정해진 시간에 오늘의 주요 이슈를 요약해서 알려드려요.')) return;
     final settings = DigestSettings(hour: on ? 9 : null, minute: 0); // 켜면 기본 9시 정각으로 시작
     // 화살표 본문은 대입식의 값(Future 자체)을 그대로 반환해서 "setState()
     // callback argument returned a Future" 오류가 남 — 필드는 바뀌지만
@@ -415,7 +432,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                               value: s?.enabled ?? false,
                               onChanged: s == null || _notificationsDenied == true
                                   ? null
-                                  : (v) => _updateWordOfDayAlert((c) => c.copyWith(enabled: v)),
+                                  : (v) async {
+                                      if (v && !await _allowNotifications('매일 새로운 단어 하나를 알려드려요.')) return;
+                                      await _updateWordOfDayAlert((c) => c.copyWith(enabled: v));
+                                    },
                               showDivider: s?.enabled ?? false,
                             ),
                             if (s != null && s.enabled)
@@ -449,7 +469,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                               value: s?.enabled ?? false,
                               onChanged: s == null || _notificationsDenied == true
                                   ? null
-                                  : (v) => _updateKeywordAlert((c) => c.copyWith(enabled: v)),
+                                  : (v) async {
+                                      if (v && !await _allowNotifications('등록한 관심 키워드가 새 이슈로 뜨면 바로 알려드려요.')) return;
+                                      await _updateKeywordAlert((c) => c.copyWith(enabled: v));
+                                    },
                               showDivider: s?.enabled ?? false,
                             ),
                             if (s != null && s.enabled) ...[

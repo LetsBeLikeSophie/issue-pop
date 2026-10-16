@@ -8,6 +8,7 @@ import 'api_client.dart';
 import 'favorites_store.dart';
 import 'firebase_options.dart';
 import 'presence_service.dart';
+import 'push_token.dart';
 import 'push_router.dart';
 import 'reaction_store.dart';
 import 'screens/home_screen.dart';
@@ -28,6 +29,8 @@ void main() async {
   } else if (Platform.isAndroid) {
     await Firebase.initializeApp();
   }
+  // 2026-10-17: FCM 자동 초기화는 꺼둠(AndroidManifest) — 이미 알림을 허용한 기기만 여기서 다시 켬.
+  if (kIsWeb || Platform.isAndroid) await restorePushIfAllowed();
   await FavoritesStore.instance.load();
   await TextScaleStore.instance.load();
   await ThemeStore.instance.load();
