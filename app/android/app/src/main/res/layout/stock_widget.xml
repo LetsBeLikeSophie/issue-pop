@@ -37,7 +37,9 @@
             android:textSize="10sp" />
     </LinearLayout>
 
-    <View
+    <!-- 구분선. RemoteViews(위젯)는 허용된 뷰만 쓸 수 있어서 일반 View는 "위젯을 추가할 수 없음"으로 실패함
+         (+11에서 겪음) — 허용 목록에 있는 FrameLayout으로 그림. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="5dp"
