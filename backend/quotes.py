@@ -32,7 +32,9 @@ def fetch_quote(ticker: str) -> dict | None:
         data = res.json()
         if not data.get("c"):
             return None
-        return {"price": data["c"], "change": data["d"], "percent": data["dp"]}
+        # 2026-10-17: "time"은 이 시세가 거래된 시각(Finnhub의 t, epoch 초) — 위젯이 "언제 데이터인지"를
+        # 보여주려고 추가함(장이 닫혀 있으면 마지막 거래 시각, 열려 있으면 최근 거래). 없으면 None.
+        return {"price": data["c"], "change": data["d"], "percent": data["dp"], "time": data.get("t") or None}
     except Exception:  # noqa: BLE001 - 한 티커 실패가 전체 갱신을 막으면 안 됨
         return None
 

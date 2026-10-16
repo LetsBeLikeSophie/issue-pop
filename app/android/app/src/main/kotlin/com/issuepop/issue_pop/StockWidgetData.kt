@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
 import org.json.JSONObject
@@ -12,6 +13,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * 2026-10-17: 홈 화면 "관심 종목" 위젯의 데이터/그리기 공용 코드.
@@ -19,9 +21,9 @@ import java.util.Locale
  * 9월에 만들었던 "오늘의 단어" 위젯은 home_widget 패키지가 끌고 온 WorkManager 초기화 때문에
  * 앱이 반복해서 크래시해서 통째로 걷어냈음(git 63ce2a3). 이번에는 같은 일이 안 생기게:
  *  - 외부 패키지/WorkManager를 전혀 안 씀 — 안드로이드 기본 AppWidgetProvider + 이 파일의
- *    HttpURLConnection만으로 서버(/devices/{id}/stocks)에서 직접 받아옴.
- *  - 앱 시작 코드(main.dart/MainActivity)와 완전히 분리 — 이 코드가 실패해도 앱 실행에는 영향 없음.
- *  - 모든 진입점(onUpdate/설정 화면)은 try/catch로 감싸서 예외가 프로세스를 죽이지 않게 함.
+ *    HttpURLConnection만으로 서버(/devices/{id}/stocks, /fx/usd-krw)에서 직접 받아옴.
+ *  - 앱 시작 코드(main.dart)와 분리 — 이 코드가 실패해도 앱 실행에는 영향 없음.
+ *  - 모든 진입점(onUpdate/채널)은 try/catch로 감싸서 예외가 프로세스를 죽이지 않게 함.
  */
 object StockWidgetData {
   const val API_BASE = "https://api.issue-pop.com"
@@ -31,7 +33,11 @@ object StockWidgetData {
   private const val FLUTTER_PREFS = "FlutterSharedPreferences"
   private const val FLUTTER_DEVICE_ID_KEY = "flutter.device_id_v1" // lib/device_registry.dart의 _idKey
 
-  data class Watch(val ticker: String, val name: String, val price: Double?, val percent: Double?)
+  /** [quoteTime]: 이 시세가 거래된 시각(초, 서버가 Finnhub에서 받은 값) — 모르면 null. */
+  data class Watch(val ticker: String, val name: String, val price: Double?, val percent: Double?, val quoteTime: Long?)
+
+  /** 서버에서 한 번에 받아온 결과(종목들 + 환율). 환율을 못 받았으면 usdKrw는 null → 원화는 안 보여줌. */
+  data class Snapshot(val watches: List<Watch>, val usdKrw: Double?)
 
   /**
    * 기기 id. 앱이 MethodChannel로 넘겨준 값(saveConfig)을 먼저 쓰고, 없으면 Flutter가 저장해둔
@@ -52,30 +58,42 @@ object StockWidgetData {
     edit.apply()
   }
 
-  /** 이 기기에 설정된 관심 종목 전체(가격 포함). 실패하면 예외 — 호출하는 쪽이 잡음. */
-  fun fetchWatches(deviceId: Long): List<Watch> {
-    val conn = URL("$API_BASE/devices/$deviceId/stocks").openConnection() as HttpURLConnection
+  private fun httpGet(path: String): String {
+    val conn = URL("$API_BASE$path").openConnection() as HttpURLConnection
     try {
       conn.connectTimeout = 4000
       conn.readTimeout = 5000
       conn.setRequestProperty("Accept", "application/json")
       if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
-      val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-      val arr = JSONArray(body)
-      return (0 until arr.length()).map { i ->
-        val o = arr.getJSONObject(i)
-        val q = o.optJSONObject("quote")
-        Watch(
-            ticker = o.getString("ticker"),
-            name = o.optString("name", ""),
-            price = q?.takeIf { it.has("price") && !it.isNull("price") }?.getDouble("price"),
-            percent = q?.takeIf { it.has("percent") && !it.isNull("percent") }?.getDouble("percent"),
-        )
-      }
+      return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
     } finally {
       conn.disconnect()
     }
   }
+
+  /** 이 기기에 설정된 관심 종목 전체(가격 포함). 실패하면 예외 — 호출하는 쪽이 잡음. */
+  fun fetchWatches(deviceId: Long): List<Watch> {
+    val arr = JSONArray(httpGet("/devices/$deviceId/stocks"))
+    return (0 until arr.length()).map { i ->
+      val o = arr.getJSONObject(i)
+      val q = o.optJSONObject("quote")
+      Watch(
+          ticker = o.getString("ticker"),
+          name = o.optString("name", ""),
+          price = q?.takeIf { it.has("price") && !it.isNull("price") }?.getDouble("price"),
+          percent = q?.takeIf { it.has("percent") && !it.isNull("percent") }?.getDouble("percent"),
+          quoteTime = q?.takeIf { it.has("time") && !it.isNull("time") }?.getLong("time"),
+      )
+    }
+  }
+
+  /** USD→KRW 환율. 실패하면 null(원화 표시만 빠짐). */
+  private fun fetchUsdKrw(): Double? =
+      try {
+        JSONObject(httpGet("/fx/usd-krw")).getDouble("usd_krw")
+      } catch (e: Exception) {
+        null
+      }
 
   // --- 위젯에 보일 종목(앱의 관심 종목 화면에서 정함 — 위젯이 몇 개든 모두 같은 종목) ---
 
@@ -92,7 +110,7 @@ object StockWidgetData {
 
   // --- 마지막으로 그린 내용(네트워크가 안 될 때 대신 보여줌) ---
 
-  private fun saveCache(context: Context, appWidgetId: Int, rows: List<Watch>, at: Long) {
+  private fun saveCache(context: Context, appWidgetId: Int, rows: List<Watch>, usdKrw: Double?) {
     val arr = JSONArray()
     rows.forEach {
       arr.put(
@@ -101,14 +119,15 @@ object StockWidgetData {
               .put("name", it.name)
               .put("price", it.price ?: JSONObject.NULL)
               .put("percent", it.percent ?: JSONObject.NULL)
+              .put("time", it.quoteTime ?: JSONObject.NULL)
       )
     }
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        .putString("cache_$appWidgetId", JSONObject().put("at", at).put("rows", arr).toString())
+        .putString("cache_$appWidgetId", JSONObject().put("usdKrw", usdKrw ?: JSONObject.NULL).put("rows", arr).toString())
         .apply()
   }
 
-  private fun loadCache(context: Context, appWidgetId: Int): Pair<List<Watch>, Long>? {
+  private fun loadCache(context: Context, appWidgetId: Int): Pair<List<Watch>, Double?>? {
     val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("cache_$appWidgetId", null) ?: return null
     return try {
       val o = JSONObject(raw)
@@ -120,9 +139,10 @@ object StockWidgetData {
             r.optString("name", ""),
             if (r.isNull("price")) null else r.getDouble("price"),
             if (r.isNull("percent")) null else r.getDouble("percent"),
+            if (r.isNull("time")) null else r.getLong("time"),
         )
       }
-      rows to o.getLong("at")
+      rows to (if (o.isNull("usdKrw")) null else o.getDouble("usdKrw"))
     } catch (e: Exception) {
       null
     }
@@ -136,42 +156,66 @@ object StockWidgetData {
     return (if (chosen.isNotEmpty()) chosen else watches).take(MAX_PICKS)
   }
 
+  private class RowIds(val row: Int, val ticker: Int, val name: Int, val usd: Int, val krw: Int, val pct: Int)
+
   private val rowIds = listOf(
-      intArrayOf(R.id.sw_r1, R.id.sw_r1_ticker, R.id.sw_r1_name, R.id.sw_r1_price, R.id.sw_r1_pct),
-      intArrayOf(R.id.sw_r2, R.id.sw_r2_ticker, R.id.sw_r2_name, R.id.sw_r2_price, R.id.sw_r2_pct),
-      intArrayOf(R.id.sw_r3, R.id.sw_r3_ticker, R.id.sw_r3_name, R.id.sw_r3_price, R.id.sw_r3_pct),
+      RowIds(R.id.sw_r1, R.id.sw_r1_ticker, R.id.sw_r1_name, R.id.sw_r1_usd, R.id.sw_r1_krw, R.id.sw_r1_pct),
+      RowIds(R.id.sw_r2, R.id.sw_r2_ticker, R.id.sw_r2_name, R.id.sw_r2_usd, R.id.sw_r2_krw, R.id.sw_r2_pct),
+      RowIds(R.id.sw_r3, R.id.sw_r3_ticker, R.id.sw_r3_name, R.id.sw_r3_usd, R.id.sw_r3_krw, R.id.sw_r3_pct),
   )
 
-  private fun formatPrice(p: Double?) = if (p == null) "-" else String.format(Locale.US, "$%,.2f", p)
+  private fun formatUsd(p: Double?) = if (p == null) "-" else String.format(Locale.US, "$%,.2f", p)
+
+  private fun formatKrw(usd: Double?, rate: Double?): String =
+      if (usd == null || rate == null) "" else String.format(Locale.US, "₩%,d", Math.round(usd * rate))
 
   private fun formatPercent(p: Double?) = if (p == null) "-" else String.format(Locale.US, "%s%.1f%%", if (p >= 0) "+" else "", p)
 
-  private fun buildViews(context: Context, rows: List<Watch>, message: String?, time: String?): RemoteViews {
+  /** 이 시세가 언제 데이터인지(서울 시간) — "시세 10/17 05:00". 보여줄 종목들 중 가장 최근 값. */
+  private fun dataTimeLabel(rows: List<Watch>): String {
+    val t = rows.mapNotNull { it.quoteTime }.maxOrNull() ?: return ""
+    val fmt = SimpleDateFormat("M/d HH:mm", Locale.KOREA).apply { timeZone = TimeZone.getTimeZone("Asia/Seoul") }
+    return "시세 " + fmt.format(Date(t * 1000))
+  }
+
+  private fun buildViews(context: Context, rows: List<Watch>, usdKrw: Double?, message: String?, timeSuffix: String = ""): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.stock_widget)
-    views.setTextViewText(R.id.sw_header_time, time ?: "")
+    views.setTextViewText(R.id.sw_header_time, dataTimeLabel(rows) + timeSuffix)
     if (message != null) {
       views.setTextViewText(R.id.sw_message, message)
-      views.setViewVisibility(R.id.sw_message, android.view.View.VISIBLE)
+      views.setViewVisibility(R.id.sw_message, View.VISIBLE)
     } else {
-      views.setViewVisibility(R.id.sw_message, android.view.View.GONE)
+      views.setViewVisibility(R.id.sw_message, View.GONE)
     }
     rowIds.forEachIndexed { i, ids ->
       val w = rows.getOrNull(i)
       if (w == null) {
-        views.setViewVisibility(ids[0], android.view.View.GONE)
+        views.setViewVisibility(ids.row, View.GONE)
         return@forEachIndexed
       }
-      views.setViewVisibility(ids[0], android.view.View.VISIBLE)
-      views.setTextViewText(ids[1], w.ticker)
-      views.setTextViewText(ids[2], w.name)
-      views.setTextViewText(ids[3], formatPrice(w.price))
-      views.setTextViewText(ids[4], formatPercent(w.percent))
-      val color = when {
-        w.percent == null -> context.getColor(R.color.sw_ink_soft)
-        w.percent >= 0 -> context.getColor(R.color.sw_up)
-        else -> context.getColor(R.color.sw_down)
+      views.setViewVisibility(ids.row, View.VISIBLE)
+      views.setTextViewText(ids.ticker, w.ticker)
+      views.setTextViewText(ids.name, w.name)
+      views.setTextViewText(ids.usd, formatUsd(w.price))
+      val krw = formatKrw(w.price, usdKrw)
+      views.setTextViewText(ids.krw, krw)
+      views.setViewVisibility(ids.krw, if (krw.isEmpty()) View.GONE else View.VISIBLE)
+      views.setTextViewText(ids.pct, formatPercent(w.percent))
+      val p = w.percent
+      when {
+        p == null -> {
+          views.setTextColor(ids.pct, context.getColor(R.color.sw_ink_soft))
+          views.setInt(ids.pct, "setBackgroundResource", R.drawable.stock_widget_pill_flat)
+        }
+        p >= 0 -> {
+          views.setTextColor(ids.pct, context.getColor(R.color.sw_up))
+          views.setInt(ids.pct, "setBackgroundResource", R.drawable.stock_widget_pill_up)
+        }
+        else -> {
+          views.setTextColor(ids.pct, context.getColor(R.color.sw_down))
+          views.setInt(ids.pct, "setBackgroundResource", R.drawable.stock_widget_pill_down)
+        }
       }
-      views.setTextColor(ids[4], color)
     }
     // 위젯 아무 데나 누르면 앱 열기.
     val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -182,33 +226,33 @@ object StockWidgetData {
     return views
   }
 
-  /** 새로 받은 watches로 이 위젯을 그리고 마지막 내용을 저장. */
-  fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int, watches: List<Watch>) {
-    val rows = pickRows(watches, savedPicks(context))
-    val now = System.currentTimeMillis()
-    saveCache(context, appWidgetId, rows, now)
+  /** 새로 받은 결과로 이 위젯을 그리고 마지막 내용을 저장. */
+  private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int, snap: Snapshot) {
+    val rows = pickRows(snap.watches, savedPicks(context))
+    saveCache(context, appWidgetId, rows, snap.usdKrw)
     val message = if (rows.isEmpty()) "앱에서 관심 종목을 먼저 추가해주세요" else null
-    manager.updateAppWidget(appWidgetId, buildViews(context, rows, message, timeLabel(now)))
+    manager.updateAppWidget(appWidgetId, buildViews(context, rows, snap.usdKrw, message))
   }
 
   /** 이 위젯 하나를 서버에서 새로 받아 갱신. 실패하면 마지막 내용(없으면 안내 문구)을 그림. */
   fun refresh(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
     val deviceId = deviceId(context)
     if (deviceId == null) {
-      manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), "앱을 한 번 열면 종목이 나와요", null))
+      manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), null, "앱을 한 번 열면 종목이 나와요"))
       return
     }
     try {
-      render(context, manager, appWidgetId, fetchWatches(deviceId))
+      val watches = fetchWatches(deviceId)
+      // 환율은 못 받아도 달러 시세는 보여줌(이전에 받아둔 환율이 있으면 그걸로).
+      val rate = fetchUsdKrw() ?: loadCache(context, appWidgetId)?.second
+      render(context, manager, appWidgetId, Snapshot(watches, rate))
     } catch (e: Exception) {
       val cached = loadCache(context, appWidgetId)
       if (cached != null) {
-        manager.updateAppWidget(appWidgetId, buildViews(context, cached.first, null, timeLabel(cached.second) + " (이전)"))
+        manager.updateAppWidget(appWidgetId, buildViews(context, cached.first, cached.second, null, " · 연결 안 됨"))
       } else {
-        manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), "종목을 불러오지 못했어요", null))
+        manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), null, "종목을 불러오지 못했어요"))
       }
     }
   }
-
-  private fun timeLabel(at: Long) = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(at))
 }
