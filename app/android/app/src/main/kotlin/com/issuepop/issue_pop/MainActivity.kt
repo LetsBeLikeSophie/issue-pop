@@ -17,9 +17,27 @@ import io.flutter.plugin.common.MethodChannel
  */
 class MainActivity : FlutterActivity() {
   private val settingsChannel = "issuepop/settings"
+  private val stockWidgetChannel = "issuepop/stock_widget"
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    // 2026-10-17: 관심 종목 위젯용 — 기기 id와 위젯에 보일 종목을 받아 저장하고 위젯을 바로 갱신.
+    // 전부 try/catch라 여기서 실패해도 앱은 영향 없음(StockWidgetData.kt 참고).
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, stockWidgetChannel).setMethodCallHandler { call, result ->
+      if (call.method == "sync") {
+        try {
+          val deviceId = call.argument<Number>("deviceId")?.toLong()
+          val tickers = call.argument<List<String>>("tickers") ?: emptyList()
+          StockWidgetData.saveConfig(applicationContext, deviceId, tickers)
+          StockWidgetProvider.requestUpdate(applicationContext)
+          result.success(true)
+        } catch (e: Throwable) {
+          result.success(false)
+        }
+      } else {
+        result.notImplemented()
+      }
+    }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, settingsChannel).setMethodCallHandler { call, result ->
       if (call.method == "openNotificationSettings") {
         try {

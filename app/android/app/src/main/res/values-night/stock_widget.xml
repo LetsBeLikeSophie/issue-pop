@@ -7,5 +7,4 @@
     <color name="sw_ink_faint">#838B78</color>
     <color name="sw_up">#E86A6A</color>
     <color name="sw_down">#6B9BEA</color>
-    <style name="StockWidgetConfigTheme" parent="@android:style/Theme.DeviceDefault.Dialog" />
 </resources>

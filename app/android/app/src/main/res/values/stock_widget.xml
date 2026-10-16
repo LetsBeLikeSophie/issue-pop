@@ -10,5 +10,4 @@
     <color name="sw_up">#D64545</color>
     <color name="sw_down">#3B6FD6</color>
     <string name="stock_widget_description">설정한 관심 종목의 현재가와 등락률을 보여줘요</string>
-    <style name="StockWidgetConfigTheme" parent="@android:style/Theme.DeviceDefault.Light.Dialog" />
 </resources>

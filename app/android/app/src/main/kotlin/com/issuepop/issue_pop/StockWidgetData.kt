@@ -33,10 +33,23 @@ object StockWidgetData {
 
   data class Watch(val ticker: String, val name: String, val price: Double?, val percent: Double?)
 
-  /** 앱이 등록해둔 기기 id. 앱을 한 번도 안 열었으면 null. */
+  /**
+   * 기기 id. 앱이 MethodChannel로 넘겨준 값(saveConfig)을 먼저 쓰고, 없으면 Flutter가 저장해둔
+   * SharedPreferences에서 직접 읽어봄. 둘 다 없으면(앱을 한 번도 안 열었음) null.
+   */
   fun deviceId(context: Context): Long? {
+    val own = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    if (own.contains("device_id")) return own.getLong("device_id", 0L)
     val value = context.getSharedPreferences(FLUTTER_PREFS, Context.MODE_PRIVATE).all[FLUTTER_DEVICE_ID_KEY]
     return (value as? Number)?.toLong()
+  }
+
+  /** 앱(관심 종목 화면)이 정한 기기 id와 위젯에 보일 종목을 저장. tickers가 비면 기본(앞 3개). */
+  fun saveConfig(context: Context, deviceId: Long?, tickers: List<String>) {
+    val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+    if (deviceId != null) edit.putLong("device_id", deviceId)
+    edit.putString("picks", tickers.joinToString(","))
+    edit.apply()
   }
 
   /** 이 기기에 설정된 관심 종목 전체(가격 포함). 실패하면 예외 — 호출하는 쪽이 잡음. */
@@ -64,25 +77,16 @@ object StockWidgetData {
     }
   }
 
-  // --- 위젯별로 고른 종목(위젯 인스턴스마다 따로) ---
+  // --- 위젯에 보일 종목(앱의 관심 종목 화면에서 정함 — 위젯이 몇 개든 모두 같은 종목) ---
 
-  fun savedPicks(context: Context, appWidgetId: Int): List<String> {
-    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("picks_$appWidgetId", null)
+  fun savedPicks(context: Context): List<String> {
+    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("picks", null)
     return raw?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-  }
-
-  fun savePicks(context: Context, appWidgetId: Int, tickers: List<String>) {
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-        .putString("picks_$appWidgetId", tickers.joinToString(","))
-        .apply()
   }
 
   fun clear(context: Context, appWidgetIds: IntArray) {
     val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-    appWidgetIds.forEach {
-      edit.remove("picks_$it")
-      edit.remove("cache_$it")
-    }
+    appWidgetIds.forEach { edit.remove("cache_$it") }
     edit.apply()
   }
 
@@ -180,7 +184,7 @@ object StockWidgetData {
 
   /** 새로 받은 watches로 이 위젯을 그리고 마지막 내용을 저장. */
   fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int, watches: List<Watch>) {
-    val rows = pickRows(watches, savedPicks(context, appWidgetId))
+    val rows = pickRows(watches, savedPicks(context))
     val now = System.currentTimeMillis()
     saveCache(context, appWidgetId, rows, now)
     val message = if (rows.isEmpty()) "앱에서 관심 종목을 먼저 추가해주세요" else null

@@ -13,6 +13,7 @@ import '../widgets/in_app_browser.dart';
 import '../widgets/removable_chip.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/scroll_spotlight.dart';
+import '../stock_widget_store.dart';
 
 /// 2026-09-06: 관심 종목(브랜드) 뉴스. 저장한 이슈(Archive)와 같은 패턴 —
 /// 홈 화면 피드에는 아무것도 안 섞고, 상단바 아이콘 하나로만 진입함(홈
@@ -40,6 +41,11 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   double? _usdKrwRate;
   bool _showKrw = false;
 
+  /// 2026-10-17: 홈 화면 위젯에 보일 종목(StockWidgetStore). null이면 한 번도 안 정한 상태 —
+  /// 관심 종목 앞 3개가 기본.
+  List<String>? _savedPicks;
+  String _lastSynced = '';
+
   void _toggleCurrency() {
     if (_usdKrwRate == null) return; // 환율을 아직 못 받아왔으면 토글해도 의미 없음
     setState(() => _showKrw = !_showKrw);
@@ -49,6 +55,9 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   void initState() {
     super.initState();
     _watches = _devices.listStockWatches();
+    StockWidgetStore.loadPicks().then((p) {
+      if (mounted) setState(() => _savedPicks = p);
+    });
     widget.api.getUsdKrwRate().then((rate) {
       if (mounted && rate != null) setState(() => _usdKrwRate = rate);
     });
@@ -65,6 +74,39 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
       _watches = _devices.listStockWatches();
     });
     await _watches;
+  }
+
+  /// 위젯에 보일 종목을 위젯에 알림(바로 갱신). 같은 내용이면 다시 안 보냄.
+  Future<void> _syncWidget(List<String> picks) async {
+    final key = picks.join(',');
+    if (key == _lastSynced) return;
+    _lastSynced = key;
+    try {
+      await StockWidgetStore.syncToWidget(deviceId: await _devices.currentDeviceId(), tickers: picks);
+    } catch (_) {}
+  }
+
+  Future<void> _setPicks(List<String> picks) async {
+    setState(() => _savedPicks = picks);
+    await StockWidgetStore.savePicks(picks);
+    await _syncWidget(picks);
+  }
+
+  void _dropOnTray(String ticker, List<String> current) {
+    if (current.contains(ticker)) return;
+    if (current.length >= StockWidgetStore.maxPicks) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('위젯에는 최대 ${StockWidgetStore.maxPicks}개까지 보여요. 하나를 빼고 넣어주세요'),
+            duration: const Duration(milliseconds: 2200),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+    _setPicks([...current, ticker]);
   }
 
   Future<void> _removeTicker(int watchId) async {
@@ -119,6 +161,13 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                   }
 
                   final watches = snapshot.data ?? [];
+                  final widgetPicks = StockWidgetStore.effective(_savedPicks, watches.map((w) => w.ticker).toList());
+                  if (watches.isNotEmpty) {
+                    // 종목을 추가/삭제했거나 기본값이 바뀌었을 때도 위젯에 알려줌(같은 내용이면 무시됨).
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _syncWidget(widgetPicks);
+                    });
+                  }
                   if (watches.isEmpty) {
                     return const EmptyState(
                       icon: Icons.show_chart,
@@ -146,25 +195,53 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                         children: [
                           _StockSummaryBar(watches: watches),
                           const SizedBox(height: 16),
+                          _WidgetTray(
+                            picks: widgetPicks,
+                            customized: _savedPicks != null,
+                            onDrop: (t) => _dropOnTray(t, widgetPicks),
+                            onRemove: (t) => _setPicks(widgetPicks.where((x) => x != t).toList()),
+                          ),
+                          const SizedBox(height: 10),
                           Wrap(
                             spacing: 6,
                             runSpacing: 6,
                             children: [
                               for (final w in watches)
-                                RemovableChip(
-                                  label: w.ticker,
-                                  trailing: w.quote == null
-                                      ? null
-                                      : Text(
-                                          _formatPercent(w.quote!.percent),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: w.quote!.percent >= 0 ? AppColors.stockUp : AppColors.stockDown,
+                                // 2026-10-17: 길게 눌러서 위의 "위젯에 표시" 칸으로 끌어다 놓으면 위젯에 보임.
+                                LongPressDraggable<String>(
+                                  data: w.ticker,
+                                  maxSimultaneousDrags: 1,
+                                  feedback: Material(
+                                    color: Colors.transparent,
+                                    child: _DragPill(label: w.ticker),
+                                  ),
+                                  childWhenDragging: Opacity(
+                                    opacity: 0.35,
+                                    child: RemovableChip(label: w.ticker, onRemove: () {}),
+                                  ),
+                                  child: RemovableChip(
+                                    label: w.ticker,
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (w.quote != null)
+                                          Text(
+                                            _formatPercent(w.quote!.percent),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: w.quote!.percent >= 0 ? AppColors.stockUp : AppColors.stockDown,
+                                            ),
                                           ),
-                                        ),
-                                  onTap: () => _spotlight.scrollTo(w.ticker),
-                                  onRemove: () => _removeTicker(w.id),
+                                        if (widgetPicks.contains(w.ticker)) ...[
+                                          const SizedBox(width: 3),
+                                          Icon(Icons.widgets_outlined, size: 11, color: AppColors.accent),
+                                        ],
+                                      ],
+                                    ),
+                                    onTap: () => _spotlight.scrollTo(w.ticker),
+                                    onRemove: () => _removeTicker(w.id),
+                                  ),
                                 ),
                             ],
                           ),
@@ -189,6 +266,92 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 2026-10-17: 홈 화면 위젯에 보일 종목을 담는 칸 — 아래 티커 칩을 길게 눌러 끌어다 놓으면 들어가고,
+/// 칸 안의 칩의 X로 뺌. 한 번도 안 정했을 땐 기본(맨 앞 3개)이 채워져 있음.
+class _WidgetTray extends StatelessWidget {
+  const _WidgetTray({required this.picks, required this.customized, required this.onDrop, required this.onRemove});
+
+  final List<String> picks;
+
+  /// 사용자가 한 번이라도 직접 정했는지(아니면 기본값이 채워진 상태).
+  final bool customized;
+  final void Function(String ticker) onDrop;
+  final void Function(String ticker) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<String>(
+      onAcceptWithDetails: (d) => onDrop(d.data),
+      builder: (context, candidates, _) {
+        final hovering = candidates.isNotEmpty;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: hovering ? AppColors.accentSoft : AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: hovering ? AppColors.accent : AppColors.line, width: hovering ? 1.5 : 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.widgets_outlined, size: 15, color: AppColors.inkSoft),
+                  const SizedBox(width: 6),
+                  Text(
+                    '홈 화면 위젯에 표시 (최대 ${StockWidgetStore.maxPicks}개)',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.inkSoft),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (picks.isEmpty)
+                Text(
+                  '아래 종목을 길게 눌러 여기로 끌어다 놓으세요. 비워두면 맨 앞 ${StockWidgetStore.maxPicks}개가 보여요.',
+                  style: TextStyle(fontSize: 12, color: AppColors.inkFaint, height: 1.4),
+                )
+              else
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [for (final t in picks) RemovableChip(label: t, onRemove: () => onRemove(t))],
+                ),
+              if (!customized && picks.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '기본으로 맨 앞 ${StockWidgetStore.maxPicks}개가 위젯에 보여요. 아래 종목을 길게 눌러 끌어다 놓으면 바꿀 수 있어요.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint, height: 1.4),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 끌고 다니는 동안 손가락 아래에 따라오는 알약.
+class _DragPill extends StatelessWidget {
+  const _DragPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 2))],
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
     );
   }
 }

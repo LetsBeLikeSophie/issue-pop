@@ -158,6 +158,9 @@ class DeviceRegistry {
     await api.deleteWatch(watchId);
   }
 
+  /// 2026-10-17: 위젯에 기기 id를 알려주려고 공개함(관심 종목 화면 → StockWidgetStore).
+  Future<int> currentDeviceId() => _deviceId();
+
   Future<List<StockWatch>> listStockWatches() async {
     final id = await _deviceId();
     return api.listStockWatches(id);
