@@ -35,6 +35,26 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 2026-10-17: 홈 화면 "관심 종목" 위젯(StockWidgetProvider.kt). 외부 위젯 패키지/WorkManager 없이
+             안드로이드 기본 AppWidgetProvider만 씀 — 9월에 home_widget 패키지가 크래시를 일으켜서 걷어냈던 것과
+             같은 일이 없게 하려고. 종목 고르는 화면은 StockWidgetConfigureActivity(위젯 추가 시 시스템이 띄움). -->
+        <receiver android:name=".StockWidgetProvider" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/stock_widget_info"/>
+        </receiver>
+        <activity
+            android:name=".StockWidgetConfigureActivity"
+            android:exported="true"
+            android:theme="@style/StockWidgetConfigTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE"/>
+            </intent-filter>
+        </activity>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

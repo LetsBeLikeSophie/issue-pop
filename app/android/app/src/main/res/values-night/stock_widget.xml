@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sw_bg">#242920</color>
+    <color name="sw_line">#3A4033</color>
+    <color name="sw_ink">#EDEFE7</color>
+    <color name="sw_ink_soft">#B7BDAE</color>
+    <color name="sw_ink_faint">#838B78</color>
+    <color name="sw_up">#E86A6A</color>
+    <color name="sw_down">#6B9BEA</color>
+    <style name="StockWidgetConfigTheme" parent="@android:style/Theme.DeviceDefault.Dialog" />
+</resources>
