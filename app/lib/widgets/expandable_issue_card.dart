@@ -313,8 +313,10 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                             ),
                             if (!widget.archiveMode)
                               // 눌리는 영역(좌우 8)은 카드 여백 쪽으로 밀고, 건수 글자 줄 가운데에 오도록 살짝 내림.
+                              // 세로는 6→3.5: 아이콘 얼굴 원이 상자 가운데보다 아래쪽에 그려져서(오른쪽 위에
+                              // +가 붙어 있음) 6으로 내리면 "N건" 글자보다 아래로 내려가 보였음(실제 화면 실측).
                               Transform.translate(
-                                offset: const Offset(8, 6),
+                                offset: const Offset(8, 3.5),
                                 child: ReactionButton(keyword: issue.keyword),
                               ),
                           ],
