@@ -218,6 +218,40 @@ class CategoryColors {
 /// CATEGORY_KEYWORDS 정의 순서와 맞춤. "문화"는 2026-08-24에 새로 추가됨.
 const kCategoryOrder = ['정치', '경제', '사회', '국제', '스포츠', '연예', 'IT/과학', '문화', '기타'];
 
+/// 2026-10-18: 첫 실행 때 글꼴(google_fonts가 실행 중에 내려받음)이 하나씩 도착하면서 화면 글자가 뚝뚝 바뀌어 보이던 문제 —
+/// 앱이 쓰는 글꼴/굵기를 시작하자마자 미리 요청해두고, 홈 화면은 다 받아질 때까지(최대 [_maxWait]) 로딩 화면을 계속 보여줌.
+/// 한 번 받은 글꼴은 기기에 저장돼서 다음 실행부터는 바로 끝남(첫 실행에만 조금 더 걸림). 네트워크가 안 되면 기다리다
+/// 시간이 지나면 기본 글꼴로 그냥 진행. 앱에서 새 굵기를 쓰게 되면 아래 목록에도 추가할 것.
+class AppFonts {
+  AppFonts._();
+
+  static const _maxWait = Duration(seconds: 10);
+  static Future<void>? _ready;
+
+  /// 테스트에서는 실제 글꼴 내려받기를 기다리지 않게 끔.
+  @visibleForTesting
+  static bool waitForFonts = true;
+
+  static Future<void> preload() => _ready ??= _load();
+
+  /// 홈 화면이 로딩 화면을 걷기 전에 기다릴 Future.
+  static Future<void> get ready => waitForFonts ? preload() : Future<void>.value();
+
+  static Future<void> _load() async {
+    try {
+      await GoogleFonts.pendingFonts([
+        for (final w in [FontWeight.w400, FontWeight.w500, FontWeight.w600, FontWeight.w700, FontWeight.w800])
+          GoogleFonts.notoSansKr(fontWeight: w),
+        for (final w in [FontWeight.w600, FontWeight.w700, FontWeight.w800]) GoogleFonts.notoSerifKr(fontWeight: w),
+        for (final w in [FontWeight.w400, FontWeight.w500, FontWeight.w600, FontWeight.w700])
+          GoogleFonts.ibmPlexMono(fontWeight: w),
+      ]).timeout(_maxWait);
+    } catch (_) {
+      // 못 받아도(오프라인 등) 앱은 기본 글꼴로 진행.
+    }
+  }
+}
+
 class AppTypography {
   AppTypography._();
 

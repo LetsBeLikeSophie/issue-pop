@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 2026-10-17: updatePeriodMillis는 안드로이드가 허용하는 최소값(30분). 서버 시세 갱신 주기와 같음.
-     세로 크기는 고정(종목 3개가 두 줄씩 딱 맞게) — 가로만 조절 가능. -->
+<!-- 2026-10-18: 세로로 늘리면 종목이 더 보임(최대 5개, 높이에 맞춰 StockWidgetData가 개수를 정함). 가로/세로 모두 조절 가능.
+     updatePeriodMillis는 안드로이드가 허용하는 최소값(30분). 서버 시세 갱신 주기와 같음. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="126dp"
+    android:minHeight="110dp"
     android:minResizeWidth="250dp"
+    android:minResizeHeight="110dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/stock_widget"
-    android:resizeMode="horizontal"
+    android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/stock_widget_description" />

@@ -111,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 너무 빨리 끝나도 깜빡이지 않게 최소 0.5초는 보여줌.
     Future.wait([
       _trending.then<void>((_) {}, onError: (_) {}),
+      AppFonts.ready, // 2026-10-18: 글꼴이 다 도착하기 전에 걷으면 글자가 뚝뚝 바뀌어 보임(theme.dart AppFonts)
       Future<void>.delayed(const Duration(milliseconds: 500)),
     ]).then((_) {
       if (mounted) setState(() => _showLaunch = false);

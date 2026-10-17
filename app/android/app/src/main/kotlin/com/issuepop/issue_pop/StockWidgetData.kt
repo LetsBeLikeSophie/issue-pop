@@ -27,7 +27,7 @@ import java.util.TimeZone
  */
 object StockWidgetData {
   const val API_BASE = "https://api.issue-pop.com"
-  const val MAX_PICKS = 3
+  const val MAX_PICKS = 5
 
   private const val PREFS = "stock_widget"
   private const val FLUTTER_PREFS = "FlutterSharedPreferences"
@@ -162,7 +162,26 @@ object StockWidgetData {
       RowIds(R.id.sw_r1, R.id.sw_r1_ticker, R.id.sw_r1_name, R.id.sw_r1_usd, R.id.sw_r1_krw, R.id.sw_r1_pct),
       RowIds(R.id.sw_r2, R.id.sw_r2_ticker, R.id.sw_r2_name, R.id.sw_r2_usd, R.id.sw_r2_krw, R.id.sw_r2_pct),
       RowIds(R.id.sw_r3, R.id.sw_r3_ticker, R.id.sw_r3_name, R.id.sw_r3_usd, R.id.sw_r3_krw, R.id.sw_r3_pct),
+      RowIds(R.id.sw_r4, R.id.sw_r4_ticker, R.id.sw_r4_name, R.id.sw_r4_usd, R.id.sw_r4_krw, R.id.sw_r4_pct),
+      RowIds(R.id.sw_r5, R.id.sw_r5_ticker, R.id.sw_r5_name, R.id.sw_r5_usd, R.id.sw_r5_krw, R.id.sw_r5_pct),
   )
+
+  /** 줄 사이 구분선(두 번째 줄부터 위에 하나씩). */
+  private val dividerIds = listOf(R.id.sw_d2, R.id.sw_d3, R.id.sw_d4, R.id.sw_d5)
+
+  /**
+   * 위젯 높이(dp)에 들어가는 종목 줄 수 — 세로로 늘릴수록 더 보임. 머리글 + 여백이 약 42dp, 줄 하나(+구분선)가 약 32dp.
+   * 아슬아슬하게 한 줄 모자랄 때(예: 세 줄이 134dp인데 130dp가 주어진 경우)도 줄이 사라지지 않게 8dp 여유를 둠.
+   * 높이를 못 알아내면(옵션 없음) 3줄. 1~MAX_PICKS로 제한.
+   */
+  fun visibleRows(manager: AppWidgetManager, appWidgetId: Int): Int {
+    return try {
+      val heightDp = manager.getAppWidgetOptions(appWidgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+      if (heightDp <= 0) 3 else ((heightDp - 42 + 8) / 32).coerceIn(1, MAX_PICKS)
+    } catch (e: Exception) {
+      3
+    }
+  }
 
   /**
    * 서버가 내려주는 이름은 "애플 Apple" 모양(한글 + 영어). 위젯은 한글이 있으면 한글만 큰 글자로 보여주고(영어는 티커 칩이
@@ -189,7 +208,14 @@ object StockWidgetData {
     return "시세 " + fmt.format(Date(t * 1000))
   }
 
-  private fun buildViews(context: Context, rows: List<Watch>, usdKrw: Double?, message: String?, timeSuffix: String = ""): RemoteViews {
+  private fun buildViews(
+      context: Context,
+      rows: List<Watch>,
+      usdKrw: Double?,
+      message: String?,
+      timeSuffix: String = "",
+      visibleRows: Int = MAX_PICKS,
+  ): RemoteViews {
     val views = RemoteViews(context.packageName, R.layout.stock_widget)
     views.setTextViewText(R.id.sw_header_time, dataTimeLabel(rows) + timeSuffix)
     if (message != null) {
@@ -198,8 +224,12 @@ object StockWidgetData {
     } else {
       views.setViewVisibility(R.id.sw_message, View.GONE)
     }
+    dividerIds.forEachIndexed { i, id ->
+      // i번째 구분선은 (i+2)번째 줄 위 — 그 줄이 보일 때만 보임.
+      views.setViewVisibility(id, if (i + 1 < rows.size.coerceAtMost(visibleRows)) View.VISIBLE else View.GONE)
+    }
     rowIds.forEachIndexed { i, ids ->
-      val w = rows.getOrNull(i)
+      val w = if (i < visibleRows) rows.getOrNull(i) else null
       if (w == null) {
         views.setViewVisibility(ids.row, View.GONE)
         return@forEachIndexed
@@ -244,7 +274,7 @@ object StockWidgetData {
     val rows = pickRows(snap.watches, savedPicks(context))
     saveCache(context, appWidgetId, rows, snap.usdKrw)
     val message = if (rows.isEmpty()) "앱에서 관심 종목을 먼저 추가해주세요" else null
-    manager.updateAppWidget(appWidgetId, buildViews(context, rows, snap.usdKrw, message))
+    manager.updateAppWidget(appWidgetId, buildViews(context, rows, snap.usdKrw, message, visibleRows = visibleRows(manager, appWidgetId)))
   }
 
   /** 이 위젯 하나를 서버에서 새로 받아 갱신. 실패하면 마지막 내용(없으면 안내 문구)을 그림. */
@@ -262,7 +292,10 @@ object StockWidgetData {
     } catch (e: Exception) {
       val cached = loadCache(context, appWidgetId)
       if (cached != null) {
-        manager.updateAppWidget(appWidgetId, buildViews(context, cached.first, cached.second, null, " · 연결 안 됨"))
+        manager.updateAppWidget(
+            appWidgetId,
+            buildViews(context, cached.first, cached.second, null, " · 연결 안 됨", visibleRows(manager, appWidgetId)),
+        )
       } else {
         manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), null, "종목을 불러오지 못했어요"))
       }

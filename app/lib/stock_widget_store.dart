@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class StockWidgetStore {
   StockWidgetStore._();
 
-  static const maxPicks = 3;
+  static const maxPicks = 5;
   static const _picksKey = 'stock_widget_picks_v1';
   static const _deviceIdKey = 'device_id_v1'; // device_registry.dart의 _idKey
   static const _channel = MethodChannel('issuepop/stock_widget');

@@ -35,6 +35,7 @@ void main() async {
   await FavoritesStore.instance.load();
   await TextScaleStore.instance.load();
   await ThemeStore.instance.load();
+  AppFonts.preload(); // 글꼴 내려받기를 바로 시작(기다리지는 않음 — 홈 화면의 로딩 화면이 기다림)
   final api = ApiClient();
   final navigatorKey = GlobalKey<NavigatorState>();
   ReactionStore.instance.init(api);

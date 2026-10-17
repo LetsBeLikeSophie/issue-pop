@@ -49,6 +49,25 @@ class StockWidgetProvider : AppWidgetProvider() {
     }
   }
 
+  /** 위젯 크기를 바꿨을 때(세로로 늘리면 더 많은 종목) — 새 크기에 맞게 바로 다시 그림. */
+  override fun onAppWidgetOptionsChanged(
+      context: Context,
+      appWidgetManager: AppWidgetManager,
+      appWidgetId: Int,
+      newOptions: android.os.Bundle?,
+  ) {
+    super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+    val pending = goAsync()
+    thread {
+      try {
+        StockWidgetData.refresh(context, appWidgetManager, appWidgetId)
+      } catch (e: Throwable) {
+      } finally {
+        pending.finish()
+      }
+    }
+  }
+
   override fun onDeleted(context: Context, appWidgetIds: IntArray) {
     try {
       StockWidgetData.clear(context, appWidgetIds)

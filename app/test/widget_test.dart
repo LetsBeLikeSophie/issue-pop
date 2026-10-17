@@ -6,11 +6,15 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:issue_pop/api_client.dart';
 import 'package:issue_pop/main.dart';
+import 'package:issue_pop/theme.dart';
 import 'package:issue_pop/widgets/launch_loading.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({'onboarding_seen_v1': true}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({'onboarding_seen_v1': true});
+    AppFonts.waitForFonts = false; // 테스트에서는 실제 글꼴 내려받기를 기다리지 않음
+  });
 
   testWidgets('앱이 크래시 없이 홈 화면을 그린다 (처음엔 로딩 화면 → 응답이 오면 걷힘)', (WidgetTester tester) async {
     // 실제 서버 대신 빈 목록을 돌려주는 가짜 서버(요청이 즉시 끝나서, 로딩 화면의 최소 노출 시간만 기다리면 됨).

@@ -321,10 +321,12 @@ class _WidgetTray extends StatelessWidget {
                   runSpacing: 6,
                   children: [for (final t in picks) RemovableChip(label: t, onRemove: () => onRemove(t))],
                 ),
-              if (!customized && picks.isNotEmpty) ...[
+              if (picks.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  '기본으로 맨 앞 ${StockWidgetStore.maxPicks}개가 위젯에 보여요. 아래 종목을 길게 눌러 끌어다 놓으면 바꿀 수 있어요.',
+                  customized
+                      ? '위젯을 세로로 늘리면 더 많은 종목이 보여요(최대 ${StockWidgetStore.maxPicks}개).'
+                      : '기본으로 맨 앞 ${StockWidgetStore.maxPicks}개가 위젯에 보여요. 아래 종목을 길게 눌러 끌어다 놓으면 바꿀 수 있고, 위젯을 세로로 늘리면 더 많이 보여요.',
                   style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint, height: 1.4),
                 ),
               ],
