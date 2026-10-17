@@ -46,10 +46,11 @@ void main() {
 
   testWidgets('아직 안 물어봤으면 설명을 먼저 보여주고, 허용하기를 눌러야 OS 권한을 요청한다', (tester) async {
     await run(tester);
-    expect(find.text('이유 설명'), findsOneWidget);
+    expect(find.textContaining('이유 설명'), findsOneWidget);
+    expect(find.textContaining("창에서 '허용'을 눌러주세요"), findsOneWidget);
     expect(requested, 0, reason: '설명 화면 단계에서는 OS 권한을 요청하면 안 됨');
 
-    await tester.tap(find.text('허용하기'));
+    await tester.tap(find.text('알림 받기'));
     await tester.pumpAndSettle();
     expect(requested, 1);
     expect(result, isTrue);
@@ -63,14 +64,14 @@ void main() {
     expect(result, isFalse);
 
     await run(tester, quiet: true);
-    expect(find.text('이유 설명'), findsNothing, reason: '방금 거절했으니 곁다리로는 다시 안 물어야 함');
+    expect(find.textContaining('이유 설명'), findsNothing, reason: '방금 거절했으니 곁다리로는 다시 안 물어야 함');
     expect(result, isFalse);
   });
 
   testWidgets('이미 허용됐으면 설명 없이 true', (tester) async {
     state = NotificationState.allowed;
     await run(tester);
-    expect(find.text('이유 설명'), findsNothing);
+    expect(find.textContaining('이유 설명'), findsNothing);
     expect(result, isTrue);
   });
 

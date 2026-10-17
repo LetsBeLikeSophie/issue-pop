@@ -68,7 +68,14 @@ class NotificationGate {
     if (!context.mounted) return false;
     final ok = await showAppBottomSheet<bool>(
       context,
-      builder: (_) => _GateSheet(title: title, body: body, primary: '허용하기', secondary: '나중에'),
+      // 2026-10-18: 버튼을 "허용하기"로 두면 바로 뒤에 뜨는 시스템 권한 창의 "허용"과 같은 말이 두 번 나와 어색해서 "알림 받기"로
+      // 바꾸고, 두 번째 창이 정상이라는 걸 미리 알려줌(시스템 창은 앱이 대신 누를 수 없어서 반드시 뜸).
+      builder: (_) => _GateSheet(
+        title: title,
+        body: "$body\n\n다음에 나오는 창에서 '허용'을 눌러주세요.",
+        primary: '알림 받기',
+        secondary: '나중에',
+      ),
     );
     if (ok != true) {
       await _rememberDecline();
