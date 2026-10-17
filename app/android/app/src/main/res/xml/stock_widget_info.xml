@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 2026-10-17: updatePeriodMillis는 안드로이드가 허용하는 최소값(30분). 서버 시세 갱신 주기와 같음.
-     세로 크기는 고정(종목 3줄이 딱 맞게) — 가로만 조절 가능. -->
+     세로 크기는 고정(종목 3개가 두 줄씩 딱 맞게) — 가로만 조절 가능. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="126dp"
     android:minResizeWidth="250dp"
     android:targetCellWidth="4"
     android:targetCellHeight="2"

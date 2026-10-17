@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 2026-10-17: 관심 종목 위젯 — 흰 카드 + 얇은 라인(앱 카드와 같은 톤). 머리글: "Issue Pop" 워드마크(Pop에 노란 형광펜) ·
-     관심 종목 · 시세 시각, 그 아래 남색 가는 선 하나. 종목 최대 3줄(고정 높이로 촘촘하게).
+     관심 종목 · 시세 시각, 그 아래 남색 가는 선 하나. 종목 최대 3개, 한 종목은 두 줄(윗줄: 티커 칩 · 달러 · 등락률 알약 /
+     아랫줄: 이름 · 원화 — 보조 정보를 아래로 내려 윗줄 글자를 키움). 줄 높이는 고정해서 간격이 벌어지지 않게 함.
      RemoteViews가 허용하는 뷰(LinearLayout/FrameLayout/TextView)만 씀 — 일반 View는 "위젯을 추가할 수 없음"이 됨. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/sw_root"
@@ -10,9 +11,9 @@
     android:gravity="center_vertical"
     android:orientation="vertical"
     android:paddingStart="13dp"
-    android:paddingTop="8dp"
+    android:paddingTop="5dp"
     android:paddingEnd="13dp"
-    android:paddingBottom="8dp">
+    android:paddingBottom="5dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -26,7 +27,7 @@
             android:fontFamily="serif"
             android:text="Issue "
             android:textColor="@color/sw_ink"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
@@ -38,7 +39,7 @@
             android:paddingEnd="3dp"
             android:text="Pop"
             android:textColor="#14161C"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
@@ -47,7 +48,7 @@
             android:paddingStart="8dp"
             android:text="관심 종목"
             android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            android:textSize="10.5sp" />
 
         <TextView
             android:id="@+id/sw_header_time"
@@ -55,23 +56,24 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="end"
+            android:includeFontPadding="false"
             android:maxLines="1"
             android:textColor="@color/sw_ink_faint"
-            android:textSize="9sp" />
+            android:textSize="10sp" />
     </LinearLayout>
 
     <!-- 남색은 이 가는 선에만. RemoteViews는 일반 View를 못 써서 FrameLayout으로 그림. -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="2dp"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="4dp"
         android:layout_marginBottom="3dp"
         android:background="@color/sw_accent" />
 
     <TextView
         android:id="@+id/sw_message"
         android:layout_width="match_parent"
-        android:layout_height="69dp"
+        android:layout_height="92dp"
         android:gravity="center"
         android:text="불러오는 중…"
         android:textColor="@color/sw_ink_soft"
@@ -80,222 +82,300 @@
     <LinearLayout
         android:id="@+id/sw_r1"
         android:layout_width="match_parent"
-        android:layout_height="23dp"
+        android:layout_height="30dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/sw_r1_ticker"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/stock_widget_chip"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="40dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textColor="@color/sw_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/sw_r1_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="6dp"
-            android:paddingEnd="4dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r1_ticker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/stock_widget_chip"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="46dp"
+                android:paddingStart="6dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="0dp"
+                android:textColor="@color/sw_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/sw_r1_usd"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:textColor="@color/sw_ink"
-            android:textSize="12sp" />
+            <TextView
+                android:id="@+id/sw_r1_usd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingEnd="2dp"
+                android:textColor="@color/sw_ink"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/sw_r1_krw"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:paddingStart="5dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r1_pct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="50dp"
+                android:paddingStart="5dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="5dp"
+                android:paddingBottom="0dp"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/sw_r1_pct"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="44dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp">
+
+            <TextView
+                android:id="@+id/sw_r1_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+
+            <TextView
+                android:id="@+id/sw_r1_krw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="58dp"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+        </LinearLayout>
     </LinearLayout>
+
+    <!-- 종목 사이 가는 구분선(RemoteViews는 일반 View를 못 써서 FrameLayout) -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/sw_line" />
 
     <LinearLayout
         android:id="@+id/sw_r2"
         android:layout_width="match_parent"
-        android:layout_height="23dp"
+        android:layout_height="30dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/sw_r2_ticker"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/stock_widget_chip"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="40dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textColor="@color/sw_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/sw_r2_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="6dp"
-            android:paddingEnd="4dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r2_ticker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/stock_widget_chip"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="46dp"
+                android:paddingStart="6dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="0dp"
+                android:textColor="@color/sw_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/sw_r2_usd"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:textColor="@color/sw_ink"
-            android:textSize="12sp" />
+            <TextView
+                android:id="@+id/sw_r2_usd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingEnd="2dp"
+                android:textColor="@color/sw_ink"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/sw_r2_krw"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:paddingStart="5dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r2_pct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="50dp"
+                android:paddingStart="5dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="5dp"
+                android:paddingBottom="0dp"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/sw_r2_pct"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="44dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp">
+
+            <TextView
+                android:id="@+id/sw_r2_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+
+            <TextView
+                android:id="@+id/sw_r2_krw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="58dp"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+        </LinearLayout>
     </LinearLayout>
+
+    <!-- 종목 사이 가는 구분선(RemoteViews는 일반 View를 못 써서 FrameLayout) -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/sw_line" />
 
     <LinearLayout
         android:id="@+id/sw_r3"
         android:layout_width="match_parent"
-        android:layout_height="23dp"
+        android:layout_height="30dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/sw_r3_ticker"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/stock_widget_chip"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="40dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textColor="@color/sw_accent"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/sw_r3_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="6dp"
-            android:paddingEnd="4dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r3_ticker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/stock_widget_chip"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="46dp"
+                android:paddingStart="6dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="0dp"
+                android:textColor="@color/sw_accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/sw_r3_usd"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:textColor="@color/sw_ink"
-            android:textSize="12sp" />
+            <TextView
+                android:id="@+id/sw_r3_usd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingEnd="2dp"
+                android:textColor="@color/sw_ink"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/sw_r3_krw"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:paddingStart="5dp"
-            android:textColor="@color/sw_ink_faint"
-            android:textSize="10sp" />
+            <TextView
+                android:id="@+id/sw_r3_pct"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:fontFeatureSettings="tnum"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:minWidth="50dp"
+                android:paddingStart="5dp"
+                android:paddingTop="0dp"
+                android:paddingEnd="5dp"
+                android:paddingBottom="0dp"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/sw_r3_pct"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:fontFamily="sans-serif-medium"
-            android:fontFeatureSettings="tnum"
-            android:gravity="center"
-            android:maxLines="1"
-            android:minWidth="44dp"
-            android:paddingStart="5dp"
-            android:paddingTop="1dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="1dp"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp">
+
+            <TextView
+                android:id="@+id/sw_r3_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+
+            <TextView
+                android:id="@+id/sw_r3_krw"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFeatureSettings="tnum"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="58dp"
+                android:textColor="@color/sw_ink_faint"
+                android:textSize="10.5sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>
