@@ -144,7 +144,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
     final ticker = await showAppBottomSheet<String>(
       context,
       isScrollControlled: true,
-      builder: (_) => _TickerSearchSheet(api: widget.api, currentTickers: currentTickers),
+      builder: (_) => _TickerSearchSheet(api: widget.api, currentTickers: currentTickers, onSubmit: _addTicker),
     );
     if (ticker == null) return;
     // 2026-10-18: 서버가 시세/뉴스를 가져오는 동안(수 초) 아무 표시가 없어서 되고 있는지 몰랐다는 피드백 — 등록하자마자 알려줌.
@@ -159,9 +159,22 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
           ),
         );
     }
-    await _devices.addStockWatch(ticker);
     _pollTries = 0;
     await _refresh();
+  }
+
+  /// 2026-10-18: 시트에서 티커를 고르거나 입력하면 여기서 실제로 등록함(서버가 없는 티커는 422로 거절) — 성공하면 null, 실패하면 시트에
+  /// 보여줄 문구를 돌려줌. 시트를 닫고 나서 실패하면 이유를 알 수 없고 이미 추가된 것처럼 보이던 문제를 막으려고.
+  Future<String?> _addTicker(String ticker) async {
+    try {
+      await _devices.addStockWatch(ticker);
+      return null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 422) return '찾을 수 없는 종목이에요. 티커를 다시 확인해주세요';
+      return '추가하지 못했어요. 잠시 후 다시 시도해주세요';
+    } catch (_) {
+      return '추가하지 못했어요. 잠시 후 다시 시도해주세요';
+    }
   }
 
   @override
@@ -783,9 +796,12 @@ String? _formatPubDate(String? raw) {
 /// 화면과 같은 패턴) — 그래도 목록에 없는 티커를 직접 입력해서
 /// 추가하는 것도 여전히 가능함(직접 입력 후 완료 버튼).
 class _TickerSearchSheet extends StatefulWidget {
-  const _TickerSearchSheet({required this.api, required this.currentTickers});
+  const _TickerSearchSheet({required this.api, required this.currentTickers, required this.onSubmit});
 
   final ApiClient api;
+
+  /// 고른 티커를 실제로 등록해보고 실패 문구(없으면 null)를 돌려주는 함수 — 성공해야 시트가 닫힘.
+  final Future<String?> Function(String ticker) onSubmit;
 
   /// 이미 등록한 티커 — 미리보기/검색 결과에서 빼서 중복 추가를 막음.
   final Set<String> currentTickers;
@@ -803,6 +819,9 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
   /// ("있는 건 추가 안 되어야 할 것 같다"는 피드백으로 추가).
   String? _errorText;
 
+  /// 등록 요청 중(서버가 티커를 확인하는 동안) — 중복 탭 방지 + 스피너.
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -815,11 +834,25 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
     super.dispose();
   }
 
-  void _submit([String? ticker]) {
+  Future<void> _submit([String? ticker]) async {
+    if (_busy) return;
     final value = (ticker ?? _controller.text).trim().toUpperCase();
     if (value.isEmpty) return;
     if (widget.currentTickers.contains(value)) {
       setState(() => _errorText = '이미 추가된 종목이에요');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _errorText = null;
+    });
+    final error = await widget.onSubmit(value);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _busy = false;
+        _errorText = error;
+      });
       return;
     }
     Navigator.of(context).pop(value);
@@ -867,7 +900,12 @@ class _TickerSearchSheetState extends State<_TickerSearchSheet> {
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton(onPressed: () => _submit(), icon: Icon(Icons.add_circle, color: AppColors.accent)),
+              _busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4)),
+                    )
+                  : IconButton(onPressed: () => _submit(), icon: Icon(Icons.add_circle, color: AppColors.accent)),
             ],
           ),
           if (_errorText != null) ...[

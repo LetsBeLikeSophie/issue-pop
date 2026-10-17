@@ -33,7 +33,8 @@ api.app.router.lifespan_context = _no_lifespan
 SLOW = 1.2  # 가짜 뉴스 가져오기에 걸리는 시간(초)
 api._stock_news_cache.clear()
 api._stock_quote_cache.clear()
-api.quotes.fetch_quote = lambda t: {"price": 100.0, "change": 1.0, "percent": 1.0, "time": 1}
+api.quotes.fetch_quote = lambda t: None if t == "NOPE" else {"price": 100.0, "change": 1.0, "percent": 1.0, "time": 1}
+api.stocks._fetch_sec_catalog = lambda: [{"ticker": "KNWN", "name": "Known Corp"}]  # 외부(SEC) 호출 없이
 
 
 def _slow_news(ticker, limit=5):
@@ -72,6 +73,15 @@ with TestClient(api.app) as client:
     assert cur["ZZZZ"]["loading"] is False
     assert cur["ZZZZ"]["quote"]["price"] == 100.0
     assert cur["ZZZZ"]["news"] and cur["ZZZZ"]["news"][0]["title"] == "ZZZZ 뉴스"
+
+    # 3-1) 없는 티커(카탈로그에도 없고 시세도 없음)는 등록 자체를 거절 — 목록에도 안 생김
+    bad = client.post("/stocks", json={"device_id": device_id, "ticker": "nope"})
+    assert bad.status_code == 422, bad.text
+    assert "NOPE" not in {w["ticker"] for w in client.get(f"/devices/{device_id}/stocks").json()}
+
+    # 3-2) 카탈로그에 있는 티커는 시세 조회 없이 바로 등록
+    ok = client.post("/stocks", json={"device_id": device_id, "ticker": "KNWN"})
+    assert ok.status_code == 200, ok.text
 
     # 4) 이미 캐시에 있는 티커를 다시 추가하면(다른 기기가 이미 등록) 기다릴 것도 없음 → loading=false
     r2 = client.post("/stocks", json={"device_id": device_id, "ticker": "ZZZZ"})

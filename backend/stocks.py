@@ -270,6 +270,12 @@ def display_name(ticker: str, english: str) -> str:
     return f"{ko} {english}"
 
 
+def is_known_ticker(ticker: str) -> bool:
+    """우리 카탈로그(직접 고른 인기 종목 + SEC 상장 목록)에 있는 티커인지. SEC 목록을 못 받아온 상태면(빈 목록) 인기 종목만 알아봄."""
+    t = ticker.upper()
+    return t in TICKER_META or any(e["ticker"] == t for e in _fetch_sec_catalog())
+
+
 def ticker_meta(ticker: str) -> tuple[str, str]:
     """티커 하나의 (표시명, 섹터) — POST /stocks·자동 시드에서 씀.
     2026-09-07: TICKER_META(수동 큐레이션)에 없으면 티커 그대로를

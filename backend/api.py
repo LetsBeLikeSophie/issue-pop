@@ -1303,6 +1303,14 @@ async def add_stock_watch(body: StockWatchIn):
     ticker = body.ticker.strip().upper()
     if not ticker:
         raise HTTPException(status_code=422, detail="ticker must not be empty")
+    # 2026-10-18: 없는 티커는 등록하지 않음 — 예전엔 아무 문자열이나 등록돼서 가격이 영영 안 뜨는 카드가 생겼음("없는 게 추가되면 안
+    # 되지"). 카탈로그(인기 종목 + SEC 상장 목록)에 있으면 바로 통과, 직접 입력한 티커는 시세를 한 번 조회해서(빠름) 실제로 거래되는
+    # 종목인지 확인함(Finnhub은 없는 심볼에 가격 0을 돌려줘서 fetch_quote가 None). 이미 시세 캐시에 있으면 다른 기기가 확인한 것.
+    if not stocks.is_known_ticker(ticker) and ticker not in _stock_quote_cache:
+        checked = await asyncio.to_thread(quotes.fetch_quote, ticker)
+        if checked is None:
+            raise HTTPException(status_code=422, detail="unknown ticker")
+        _stock_quote_cache[ticker] = checked
     with db.get_session() as session:
         from sqlmodel import select
 
