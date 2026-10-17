@@ -1251,6 +1251,8 @@ async def list_stock_watches(device_id: int):
                     "sector": sector,
                     "news": _stock_news_cache.get(w.ticker, []),
                     "quote": _stock_quote_cache.get(w.ticker),
+                    # 2026-10-18: 방금 추가해서 시세/뉴스를 아직 가져오는 중이면 true — 앱이 스피너를 보이고 몇 초 뒤 다시 받아감.
+                    "loading": w.ticker in _warming_tickers,
                 }
             )
         return result
@@ -1267,6 +1269,28 @@ async def get_usd_krw_rate(response: Response):
     # 2026-09-26: 서버도 하루 단위로만 갱신하니 엣지에서도 그만큼 캐싱 가능.
     response.headers["Cache-Control"] = "public, max-age=3600"
     return {"usd_krw": _usd_krw_rate}
+
+
+# 2026-10-18: 새로 추가한 티커의 시세/뉴스를 가져오는 중인 티커(시세·뉴스를 다 받으면 빠짐). 목록 응답의 "loading"으로 앱에 알려줌.
+_warming_tickers: set[str] = set()
+_warm_tasks: set = set()  # create_task 결과를 붙잡아 두는 용도(안 그러면 끝나기 전에 수거될 수 있음)
+
+
+async def _warm_ticker(ticker: str) -> None:
+    """새 티커 하나의 시세(빠름)와 뉴스+번역(느림 — 수 초~10초)을 채움. POST /stocks가 이걸 기다리면 종목 추가가 한참 걸려서
+    아무 반응이 없어 보였음(2026-10-18 실사용 피드백) — 이제 등록만 하고 바로 응답하고, 이 작업은 뒤에서 돌림. 시세를 먼저
+    받아서 가격이 먼저 뜨고 뉴스는 나중에 채워짐. 이미 다른 기기가 등록해 캐시에 있으면 다시 안 부름(할당량 절약)."""
+    try:
+        if ticker not in _stock_quote_cache:
+            quote = await asyncio.to_thread(quotes.fetch_quote, ticker)
+            if quote is not None:
+                _stock_quote_cache[ticker] = quote
+        if ticker not in _stock_news_cache:
+            _stock_news_cache[ticker] = await asyncio.to_thread(stocks.fetch_one_with_translation, ticker)
+    except Exception:  # noqa: BLE001 - 한 티커 실패가 서버에 영향 주면 안 됨(다음 30분 갱신 때 다시 시도됨)
+        pass
+    finally:
+        _warming_tickers.discard(ticker)
 
 
 class StockWatchIn(BaseModel):
@@ -1300,19 +1324,27 @@ async def add_stock_watch(body: StockWatchIn):
         if existing is None:
             session.add(watch)
         session.commit()
-        if existing is None:
-            session.refresh(watch)
+        # 2026-10-18: 이미 있던 종목을 다시 추가하면(existing) refresh를 안 해서, 세션이 닫힌 뒤 watch.id를 읽을 때
+        # DetachedInstanceError(500)가 났음(commit이 속성을 만료시킴) — 새로 만든 경우와 똑같이 항상 refresh.
+        session.refresh(watch)
         name, sector = stocks.ticker_meta(ticker)
-    # 2026-09-06: 다음 30분 갱신 주기까지 기다리지 않고 이 티커 하나만
-    # 바로 가져옴("추가하면 그 뉴스는 바로 안 받아와지냐"는 피드백) —
-    # 이미 다른 기기가 등록해서 캐시에 있으면 다시 안 부름(할당량 절약).
-    if ticker not in _stock_news_cache:
-        _stock_news_cache[ticker] = await asyncio.to_thread(stocks.fetch_one_with_translation, ticker)
-    if ticker not in _stock_quote_cache:
-        quote = await asyncio.to_thread(quotes.fetch_quote, ticker)
-        if quote is not None:
-            _stock_quote_cache[ticker] = quote
-    return {"id": watch.id, "device_id": watch.device_id, "ticker": ticker, "name": name, "sector": sector}
+    # 2026-09-06: 다음 30분 갱신 주기까지 기다리지 않고 이 티커 하나만 바로 가져옴("추가하면 그 뉴스는 바로 안 받아와지냐"는
+    # 피드백). 2026-10-18: 그걸 응답 전에 하면 오래 걸려서(뉴스 번역 때문) 뒤에서 돌리고 바로 응답함 — _warm_ticker 참고.
+    loading = False
+    if (ticker not in _stock_news_cache or ticker not in _stock_quote_cache) and ticker not in _warming_tickers:
+        _warming_tickers.add(ticker)
+        task = asyncio.create_task(_warm_ticker(ticker))
+        _warm_tasks.add(task)
+        task.add_done_callback(_warm_tasks.discard)
+        loading = True
+    return {
+        "id": watch.id,
+        "device_id": watch.device_id,
+        "ticker": ticker,
+        "name": name,
+        "sector": sector,
+        "loading": loading or ticker in _warming_tickers,
+    }
 
 
 @app.delete("/stocks/{watch_id}")

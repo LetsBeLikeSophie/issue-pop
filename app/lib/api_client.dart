@@ -569,6 +569,7 @@ class StockWatch {
     required this.sector,
     required this.news,
     this.quote,
+    this.loading = false,
   });
 
   final int id;
@@ -576,6 +577,9 @@ class StockWatch {
   final String name;
   final String sector;
   final List<StockNewsItem> news;
+
+  /// 2026-10-18: 방금 추가해서 서버가 시세/뉴스를 아직 가져오는 중(서버의 "loading"). 앱은 스피너를 보이고 몇 초 뒤 다시 받아감.
+  final bool loading;
 
   /// 2026-09-07: Finnhub 현재가/변동(quotes.py) — 키 없거나 API 실패
   /// 시 null, 그때는 가격 없이 뉴스만 보여주면 됨.
@@ -593,6 +597,7 @@ class StockWatch {
                 .toList() ??
             const [],
         quote: json['quote'] != null ? StockQuote.fromJson(json['quote'] as Map<String, dynamic>) : null,
+        loading: json['loading'] == true,
       );
 }
 

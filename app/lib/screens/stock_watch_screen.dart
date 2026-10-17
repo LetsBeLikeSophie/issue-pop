@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../api_client.dart';
@@ -46,6 +48,24 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
   List<String>? _savedPicks;
   String _lastSynced = '';
 
+  /// 2026-10-18: 방금 추가한 종목은 서버가 시세/뉴스를 뒤에서 가져오는 중(StockWatch.loading) — 끝날 때까지 3초마다 조용히 다시 받아옴.
+  Timer? _pollTimer;
+  int _pollTries = 0;
+
+  void _schedulePoll(List<StockWatch> watches) {
+    if (!watches.any((w) => w.loading) || _pollTries >= 12 || (_pollTimer?.isActive ?? false)) return;
+    _pollTimer = Timer(const Duration(seconds: 3), () async {
+      _pollTries++;
+      try {
+        final list = await _devices.listStockWatches();
+        if (!mounted) return;
+        setState(() => _watches = Future.value(list));
+      } catch (_) {
+        // 다음 주기에 다시.
+      }
+    });
+  }
+
   void _toggleCurrency() {
     if (_usdKrwRate == null) return; // 환율을 아직 못 받아왔으면 토글해도 의미 없음
     setState(() => _showKrw = !_showKrw);
@@ -65,6 +85,7 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _spotlight.dispose();
     super.dispose();
   }
@@ -126,7 +147,20 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
       builder: (_) => _TickerSearchSheet(api: widget.api, currentTickers: currentTickers),
     );
     if (ticker == null) return;
+    // 2026-10-18: 서버가 시세/뉴스를 가져오는 동안(수 초) 아무 표시가 없어서 되고 있는지 몰랐다는 피드백 — 등록하자마자 알려줌.
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('$ticker 추가했어요. 시세와 뉴스를 불러오는 중이에요'),
+            duration: const Duration(milliseconds: 2400),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    }
     await _devices.addStockWatch(ticker);
+    _pollTries = 0;
     await _refresh();
   }
 
@@ -165,7 +199,10 @@ class _StockWatchScreenState extends State<StockWatchScreen> {
                   if (watches.isNotEmpty) {
                     // 종목을 추가/삭제했거나 기본값이 바뀌었을 때도 위젯에 알려줌(같은 내용이면 무시됨).
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _syncWidget(widgetPicks);
+                      if (mounted) {
+                        _syncWidget(widgetPicks);
+                        _schedulePoll(watches);
+                      }
                     });
                   }
                   if (watches.isEmpty) {
@@ -338,8 +375,8 @@ class _WidgetTray extends StatelessWidget {
   }
 }
 
-/// 2026-10-18: 종목 이름을 홈 이슈 카드의 제목과 같은 글꼴로 — 홈은 "대표 키워드(세리프 17 굵게) · 보조 키워드(세리프 14)"인데
-/// 관심 종목만 본문 글꼴 13.5라 따로 놀았음. 서버가 주는 "애플 Apple"에서 한글 이름을 크게, 영어는 보조로 뒤에 붙임.
+/// 2026-10-18: 종목 이름을 홈 이슈 카드의 제목과 같은 세리프(17 굵게)로 — 관심 종목만 본문 글꼴 13.5라 따로 놀았음. 서버가 주는
+/// "애플 Apple"에서 한글 이름을 크게, 영어는 그 아래 작게(한 줄에 이어 붙이면 가격/등락률과 함께 줄바꿈되고 잘려서 번잡했음).
 /// 한글이 없는 종목은 전체를 큰 글자로.
 class _StockName extends StatelessWidget {
   const _StockName({required this.name});
@@ -352,22 +389,27 @@ class _StockName extends StatelessWidget {
     final lastKo = tokens.lastIndexWhere((t) => t.runes.any((r) => r >= 0xAC00 && r <= 0xD7A3));
     final ko = lastKo < 0 ? name : tokens.take(lastKo + 1).join(' ');
     final en = lastKo < 0 ? '' : tokens.skip(lastKo + 1).join(' ');
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(
-            text: ko,
-            style: AppTypography.serif(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
-          ),
-          if (en.isNotEmpty)
-            TextSpan(
-              text: ' · $en',
-              style: AppTypography.serif(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.inkSoft),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          ko,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.serif(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
+        ),
+        if (en.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              en,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint),
             ),
-        ],
-      ),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
+          ),
+      ],
     );
   }
 }
@@ -475,21 +517,35 @@ class _StockCardState extends State<_StockCard> {
                       // 티커 칩(RemovableChip, accent 톤)과 같은 티커인데
                       // 색이 달라 보였음 — accent로 맞춤.
                       AppBadge.filled(label: watch.ticker, background: AppColors.accentSoft, foreground: AppColors.accent),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 10),
                       Expanded(child: _StockName(name: watch.name)),
-                      if (quote != null) ...[
+                      if (watch.loading && quote == null) ...[
+                        // 2026-10-18: 방금 추가해서 서버가 시세/뉴스를 가져오는 중 — 아무 표시가 없으면 되고 있는지 알 수 없다는 피드백.
                         const SizedBox(width: 8),
-                        // 2026-09-26: 가격/등락률을 세로로 쌓았더니 답답해
-                        // 보인다는 피드백으로 가로로 나란히 바꿈. 가격 탭은
-                        // 통화 토글(카드 펼치기와는 별개 동작)이라 안쪽에
-                        // 따로 InkWell을 둬서, 바깥 헤더 탭(펼치기)과 안
-                        // 겹치게 함.
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                            ),
+                            const SizedBox(height: 4),
+                            Text('불러오는 중', style: TextStyle(fontSize: 10.5, color: AppColors.inkFaint)),
+                          ],
+                        ),
+                      ] else if (quote != null) ...[
+                        const SizedBox(width: 8),
+                        // 2026-10-18: 이름·가격·등락률이 한 줄에 다 있어 번잡하고 이름이 줄바꿈/잘리던 문제 — 가격 위, 등락률 아래로
+                        // 쌓아서 이름이 가운데 폭을 넉넉히 씀. 가격 탭은 통화 토글(카드 펼치기와는 별개 동작)이라 안쪽에 따로 InkWell을
+                        // 둬서 바깥 헤더 탭(펼치기)과 안 겹치게 함.
                         InkWell(
                           onTap: widget.usdKrwRate == null ? null : widget.onTapPrice,
                           borderRadius: BorderRadius.circular(6),
-                          child: Row(
+                          child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
                                 widget.showKrw && widget.usdKrwRate != null
@@ -497,7 +553,7 @@ class _StockCardState extends State<_StockCard> {
                                     : _formatUsd(quote.price),
                                 style: AppTypography.mono(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(height: 3),
                               AppBadge.filled(
                                 label: _formatPercent(quote.percent),
                                 background: quote.percent >= 0 ? AppColors.stockUpSoft : AppColors.stockDownSoft,
