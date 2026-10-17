@@ -49,6 +49,21 @@ class StockWidgetStore {
     }
   }
 
+  /// 위젯을 눌러 앱이 열렸을 때 이동할 화면. 앱이 꺼져 있다 켜진 경우(콜드 스타트)는 네이티브가 들고 있다가
+  /// 여기서 한 번 가져가고, 이미 떠 있던 경우는 네이티브가 "route"로 바로 알려줌. 지금은 "stocks"(관심 종목)만 있음.
+  static void listenForRoute(void Function(String route) onRoute) {
+    if (!_supported) return;
+    try {
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'route' && call.arguments is String) onRoute(call.arguments as String);
+        return null;
+      });
+      _channel.invokeMethod<String>('takeLaunchRoute').then((route) {
+        if (route != null) onRoute(route);
+      }).catchError((_) {});
+    } catch (_) {}
+  }
+
   /// 앱을 켤 때: 이미 등록된 기기 id가 있으면 위젯에 알려줌(위젯만 먼저 추가한 경우에도 종목이 나오게).
   static Future<void> syncKnownDeviceId() async {
     if (!_supported) return;

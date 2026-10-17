@@ -12,6 +12,7 @@ import 'push_token.dart';
 import 'push_router.dart';
 import 'reaction_store.dart';
 import 'screens/home_screen.dart';
+import 'screens/stock_watch_screen.dart';
 import 'stock_widget_store.dart';
 import 'text_scale_store.dart';
 import 'theme.dart';
@@ -42,6 +43,13 @@ void main() async {
   PresenceService.instance.start(api);
   // 홈 화면 위젯에 기기 id 전달(실패해도 앱엔 영향 없음 — stock_widget_store.dart)
   StockWidgetStore.syncKnownDeviceId();
+  // 홈 화면 위젯을 눌러 열었을 때 "관심 종목" 화면으로 이동(첫 프레임 뒤에 — 콜드 스타트에서도 Navigator가 붙은 뒤)
+  StockWidgetStore.listenForRoute((route) {
+    if (route != 'stocks') return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => StockWatchScreen(api: api)));
+    });
+  });
   // 푸시 알림을 눌렀을 때 해당 이슈로 이동(push_router.dart)
   await PushRouter(navigatorKey: navigatorKey, api: api).init();
 }

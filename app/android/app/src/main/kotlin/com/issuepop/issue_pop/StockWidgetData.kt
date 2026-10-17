@@ -217,8 +217,10 @@ object StockWidgetData {
         }
       }
     }
-    // 위젯 아무 데나 누르면 앱 열기.
-    val launch = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    // 위젯 아무 데나 누르면 앱을 열고 "관심 종목" 화면으로 이동(MainActivity가 extra를 Dart에 전달).
+    val launch = Intent(context, MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        .putExtra(MainActivity.EXTRA_ROUTE, "stocks")
     views.setOnClickPendingIntent(
         R.id.sw_root,
         PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),

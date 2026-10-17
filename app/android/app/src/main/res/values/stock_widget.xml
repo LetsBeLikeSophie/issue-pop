@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 2026-10-17: 홈 화면 "관심 종목" 위젯(StockWidgetProvider.kt)용 색/문구. 색은 앱 theme.dart의 네이비
-     "화이트" 프리셋과 같은 값 — 카드 + 얇은 라인 테두리, 등락률은 앱의 알약(soft 배경 + 진한 글자)과 같은 모양.
-     상승=빨강/하락=파랑은 앱 규칙과 동일. -->
+<!-- 2026-10-17: 홈 화면 "관심 종목" 위젯(StockWidgetProvider.kt)용 색/문구. 앱 아이콘(남색 #17356B 바탕 + 흰 메모지 +
+     노란 형광펜)과 같은 톤: 남색 틀 안에 흰 "메모지" 판, 머리글엔 "Issue Pop" 워드마크(Pop에 형광펜).
+     등락률은 앱의 알약(soft 배경 + 진한 글자), 상승=빨강/하락=파랑은 앱 규칙과 동일. -->
 <resources>
+    <color name="sw_navy">#17356B</color>
+    <color name="sw_yellow">#FFD54A</color>
+    <color name="sw_on_navy">#FFFFFF</color>
+    <color name="sw_on_navy_soft">#B3FFFFFF</color>
     <color name="sw_bg">#FFFFFF</color>
     <color name="sw_line">#E7E8EB</color>
     <color name="sw_ink">#14161C</color>
     <color name="sw_ink_soft">#4B4D55</color>
     <color name="sw_ink_faint">#9A9CA3</color>
     <color name="sw_accent">#17356B</color>
+    <color name="sw_chip">#EEF1F6</color>
     <color name="sw_up">#D64545</color>
     <color name="sw_up_soft">#F6DEDE</color>
     <color name="sw_down">#3B6FD6</color>

@@ -16,15 +16,48 @@ import io.flutter.plugin.common.MethodChannel
  * WorkManager류 크래시와는 무관함.
  */
 class MainActivity : FlutterActivity() {
+  companion object {
+    /** 위젯 등이 앱을 열면서 "어느 화면으로 갈지" 알려주는 intent extra. */
+    const val EXTRA_ROUTE = "issuepop_route"
+  }
+
   private val settingsChannel = "issuepop/settings"
   private val stockWidgetChannel = "issuepop/stock_widget"
+
+  // 아직 Dart가 가져가지 않은 이동 요청(앱이 꺼진 상태에서 위젯으로 켰을 때) — Dart가 시작 후 "takeLaunchRoute"로 가져감.
+  private var pendingRoute: String? = null
+  private var stockWidgetMethodChannel: MethodChannel? = null
+
+  override fun onCreate(savedInstanceState: android.os.Bundle?) {
+    super.onCreate(savedInstanceState)
+    try {
+      pendingRoute = intent?.getStringExtra(EXTRA_ROUTE)
+    } catch (e: Throwable) {
+    }
+  }
+
+  // 앱이 이미 떠 있을 때 위젯을 누르면(singleTop) 여기로 옴 — 바로 Dart에 이동하라고 알림.
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    try {
+      val route = intent.getStringExtra(EXTRA_ROUTE) ?: return
+      val channel = stockWidgetMethodChannel
+      if (channel != null) channel.invokeMethod("route", route) else pendingRoute = route
+    } catch (e: Throwable) {
+    }
+  }
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
     // 2026-10-17: 관심 종목 위젯용 — 기기 id와 위젯에 보일 종목을 받아 저장하고 위젯을 바로 갱신.
     // 전부 try/catch라 여기서 실패해도 앱은 영향 없음(StockWidgetData.kt 참고).
-    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, stockWidgetChannel).setMethodCallHandler { call, result ->
-      if (call.method == "sync") {
+    stockWidgetMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, stockWidgetChannel)
+    stockWidgetMethodChannel!!.setMethodCallHandler { call, result ->
+      if (call.method == "takeLaunchRoute") {
+        val route = pendingRoute
+        pendingRoute = null
+        result.success(route)
+      } else if (call.method == "sync") {
         try {
           val deviceId = call.argument<Number>("deviceId")?.toLong()
           val tickers = call.argument<List<String>>("tickers") ?: emptyList()
