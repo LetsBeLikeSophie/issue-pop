@@ -78,8 +78,8 @@ TICKER_META: dict[str, tuple[str, str]] = {
     "AAPL": ("Apple", "기술"),
     "MSFT": ("Microsoft", "기술"),
     "NVDA": ("Nvidia", "기술"),
-    "GOOGL": ("Alphabet 구글", "기술"),
-    "GOOG": ("Alphabet 구글 Class C", "기술"),
+    "GOOGL": ("Alphabet", "기술"),
+    "GOOG": ("Alphabet Class C", "기술"),
     "META": ("Meta", "기술"),
     "AVGO": ("Broadcom", "기술"),
     "ORCL": ("Oracle", "기술"),
@@ -188,7 +188,7 @@ TICKER_META: dict[str, tuple[str, str]] = {
     "HON": ("Honeywell", "산업재"),
     "UPS": ("UPS", "산업재"),
     "LMT": ("Lockheed Martin", "산업재"),
-    "RTX": ("RTX 레이시온", "산업재"),
+    "RTX": ("RTX Raytheon", "산업재"),
     "DE": ("Deere & Company", "산업재"),
     "UNP": ("Union Pacific", "산업재"),
     "MMM": ("3M", "산업재"),
@@ -210,6 +210,66 @@ TICKER_META: dict[str, tuple[str, str]] = {
 }
 
 
+# 2026-10-17: 한글 종목명. 종목명이 영어("Apple")뿐이라 홈 화면 위젯/카드에서 알아보기 어렵다는 피드백으로
+# 추가함. 공식 한글 표기 기준은 없어서(증권사마다 조금씩 다름) 국내 증권사 앱에서 흔히 쓰는 표기로 통일함.
+# 위 TICKER_META(직접 고른 인기 종목)와 키가 정확히 같아야 함 — test_stock_names.py가 확인.
+# 여기 없는 종목(SEC 목록으로 추가한 것)은 영어 이름 그대로 나옴.
+TICKER_KO: dict[str, str] = {
+    # 기술
+    "AAPL": "애플", "MSFT": "마이크로소프트", "NVDA": "엔비디아", "GOOGL": "알파벳(구글)",
+    "GOOG": "알파벳 C(구글)", "META": "메타", "AVGO": "브로드컴", "ORCL": "오라클",
+    "CRM": "세일즈포스", "ADBE": "어도비", "AMD": "AMD", "INTC": "인텔", "CSCO": "시스코",
+    "QCOM": "퀄컴", "TXN": "텍사스 인스트루먼트", "IBM": "IBM", "NOW": "서비스나우",
+    "INTU": "인튜이트", "UBER": "우버", "SHOP": "쇼피파이", "SNOW": "스노우플레이크",
+    "PLTR": "팔란티어", "PYPL": "페이팔", "SQ": "블록(스퀘어)", "NFLX": "넷플릭스",
+    "SPOT": "스포티파이", "ABNB": "에어비앤비", "MU": "마이크론", "AMAT": "어플라이드 머티리얼즈",
+    "ASML": "ASML", "TSM": "TSMC", "SAP": "SAP", "NET": "클라우드플레어",
+    "PANW": "팔로알토 네트웍스", "CRWD": "크라우드스트라이크", "DDOG": "데이터독",
+    # 소비재
+    "AMZN": "아마존", "KO": "코카콜라", "PEP": "펩시코", "WMT": "월마트", "COST": "코스트코",
+    "PG": "프록터앤드갬블", "HD": "홈디포", "MCD": "맥도날드", "NKE": "나이키", "SBUX": "스타벅스",
+    "DIS": "디즈니", "CL": "콜게이트-팜올리브", "TGT": "타깃", "LOW": "로우스", "EL": "에스티 로더",
+    "MDLZ": "몬델리즈", "MNST": "몬스터 베버리지", "YUM": "염 브랜즈", "CMG": "치폴레",
+    "BKNG": "부킹 홀딩스", "MAR": "메리어트", "LULU": "룰루레몬", "TJX": "TJX",
+    # 자동차
+    "TSLA": "테슬라", "F": "포드", "GM": "제너럴 모터스", "RIVN": "리비안", "LCID": "루시드",
+    "TM": "도요타", "HMC": "혼다",
+    # 금융
+    "JPM": "JP모건", "BAC": "뱅크오브아메리카", "WFC": "웰스파고", "C": "씨티그룹",
+    "GS": "골드만삭스", "MS": "모건스탠리", "V": "비자", "MA": "마스터카드",
+    "AXP": "아메리칸 익스프레스", "BLK": "블랙록", "SCHW": "찰스 슈왑", "SPGI": "S&P 글로벌",
+    "COIN": "코인베이스", "BRK-B": "버크셔 해서웨이",
+    # 헬스케어
+    "JNJ": "존슨앤드존슨", "UNH": "유나이티드헬스", "PFE": "화이자", "MRK": "머크",
+    "ABBV": "애브비", "LLY": "일라이 릴리", "TMO": "써모 피셔", "ABT": "애보트", "DHR": "다나허",
+    "BMY": "브리스톨 마이어스 스퀴브", "AMGN": "암젠", "GILD": "길리어드 사이언스",
+    "ISRG": "인튜이티브 서지컬", "MRNA": "모더나", "CVS": "CVS 헬스",
+    # 에너지
+    "XOM": "엑슨모빌", "CVX": "셰브론", "COP": "코노코필립스", "SLB": "슐럼버거",
+    "OXY": "옥시덴탈 페트롤리엄", "NEE": "넥스트에라 에너지",
+    # 산업재
+    "BA": "보잉", "CAT": "캐터필러", "GE": "제너럴 일렉트릭", "HON": "허니웰", "UPS": "UPS",
+    "LMT": "록히드 마틴", "RTX": "RTX(레이시온)", "DE": "존 디어", "UNP": "유니언 퍼시픽", "MMM": "3M",
+    # 통신
+    "VZ": "버라이즌", "T": "AT&T", "TMUS": "티모바일", "CMCSA": "컴캐스트",
+    # 소재
+    "LIN": "린데", "SHW": "셔윈-윌리엄스", "NEM": "뉴몬트",
+    # 부동산
+    "PLD": "프롤로지스", "AMT": "아메리칸 타워",
+    # 유틸리티
+    "DUK": "듀크 에너지", "SO": "서던 컴퍼니",
+}
+
+
+def display_name(ticker: str, english: str) -> str:
+    """화면에 보여줄 이름 — 한글명이 있으면 "애플 Apple"(한글 먼저: 위젯처럼 좁은 곳에서 뒤가 잘려도 한글은 남게,
+    그리고 앱의 종목 검색이 한글/영어 어느 쪽으로 찾아도 걸리게). 한글명이 없거나 영어와 같으면 영어만."""
+    ko = TICKER_KO.get(ticker.upper())
+    if not ko or ko.lower() == english.lower():
+        return english
+    return f"{ko} {english}"
+
+
 def ticker_meta(ticker: str) -> tuple[str, str]:
     """티커 하나의 (표시명, 섹터) — POST /stocks·자동 시드에서 씀.
     2026-09-07: TICKER_META(수동 큐레이션)에 없으면 티커 그대로를
@@ -218,7 +278,8 @@ def ticker_meta(ticker: str) -> tuple[str, str]:
     찾아서 추가했는데 정작 목록엔 "SPCE"로만 뜨는 불일치가 생김."""
     t = ticker.upper()
     if t in TICKER_META:
-        return TICKER_META[t]
+        name, sector = TICKER_META[t]
+        return (display_name(t, name), sector)
     sec_names = {e["ticker"]: e["name"] for e in _fetch_sec_catalog()}
     return (sec_names.get(t, t), "기타")
 
@@ -302,6 +363,7 @@ def catalog() -> list[dict]:
     for t in ordered:
         if t in TICKER_META:
             name, sector = TICKER_META[t]
+            name = display_name(t, name)
         else:
             name, sector = sec_names.get(t, t), "기타"
         result.append({"ticker": t, "name": name, "sector": sector})
