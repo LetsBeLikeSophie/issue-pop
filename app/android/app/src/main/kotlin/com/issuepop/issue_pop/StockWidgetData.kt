@@ -164,6 +164,17 @@ object StockWidgetData {
       RowIds(R.id.sw_r3, R.id.sw_r3_ticker, R.id.sw_r3_name, R.id.sw_r3_usd, R.id.sw_r3_krw, R.id.sw_r3_pct),
   )
 
+  /**
+   * 서버가 내려주는 이름은 "애플 Apple" 모양(한글 + 영어). 위젯은 한글이 있으면 한글만 큰 글자로 보여주고(영어는 티커 칩이
+   * 이미 알려줌), 한글이 없는 종목은 영어 이름 그대로. 마지막 한글 단어까지를 한글 이름으로 봄 —
+   * "S&P 글로벌 S&P Global" → "S&P 글로벌", "RTX(레이시온) RTX Raytheon" → "RTX(레이시온)".
+   */
+  fun shortName(name: String): String {
+    val tokens = name.split(" ")
+    val lastKo = tokens.indexOfLast { t -> t.any { it in '가'..'힣' } }
+    return if (lastKo < 0) name else tokens.take(lastKo + 1).joinToString(" ")
+  }
+
   private fun formatUsd(p: Double?) = if (p == null) "-" else String.format(Locale.US, "$%,.2f", p)
 
   private fun formatKrw(usd: Double?, rate: Double?): String =
@@ -195,7 +206,7 @@ object StockWidgetData {
       }
       views.setViewVisibility(ids.row, View.VISIBLE)
       views.setTextViewText(ids.ticker, w.ticker)
-      views.setTextViewText(ids.name, w.name)
+      views.setTextViewText(ids.name, shortName(w.name))
       views.setTextViewText(ids.usd, formatUsd(w.price))
       val krw = formatKrw(w.price, usdKrw)
       views.setTextViewText(ids.krw, krw)
