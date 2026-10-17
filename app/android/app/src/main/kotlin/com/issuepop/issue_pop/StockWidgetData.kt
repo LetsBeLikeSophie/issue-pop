@@ -171,14 +171,14 @@ object StockWidgetData {
   private val dividerIds = listOf(R.id.sw_d2, R.id.sw_d3, R.id.sw_d4, R.id.sw_d5)
 
   /**
-   * 위젯 높이(dp)에 들어가는 종목 줄 수 — 세로로 늘릴수록 더 보임. 머리글 + 여백이 약 42dp, 줄 하나(+구분선)가 약 32dp.
+   * 위젯 높이(dp)에 들어가는 종목 줄 수 — 세로로 늘릴수록 더 보임. 머리글 + 여백이 약 46dp, 줄 하나(+구분선)가 약 32dp.
    * 아슬아슬하게 한 줄 모자랄 때(예: 세 줄이 134dp인데 130dp가 주어진 경우)도 줄이 사라지지 않게 8dp 여유를 둠.
    * 높이를 못 알아내면(옵션 없음) 3줄. 1~MAX_PICKS로 제한.
    */
   fun visibleRows(manager: AppWidgetManager, appWidgetId: Int): Int {
     return try {
       val heightDp = manager.getAppWidgetOptions(appWidgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
-      if (heightDp <= 0) 3 else ((heightDp - 42 + 8) / 32).coerceIn(1, MAX_PICKS)
+      if (heightDp <= 0) 3 else ((heightDp - 46 + 8) / 32).coerceIn(1, MAX_PICKS)
     } catch (e: Exception) {
       3
     }

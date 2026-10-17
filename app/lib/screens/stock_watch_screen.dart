@@ -338,6 +338,40 @@ class _WidgetTray extends StatelessWidget {
   }
 }
 
+/// 2026-10-18: 종목 이름을 홈 이슈 카드의 제목과 같은 글꼴로 — 홈은 "대표 키워드(세리프 17 굵게) · 보조 키워드(세리프 14)"인데
+/// 관심 종목만 본문 글꼴 13.5라 따로 놀았음. 서버가 주는 "애플 Apple"에서 한글 이름을 크게, 영어는 보조로 뒤에 붙임.
+/// 한글이 없는 종목은 전체를 큰 글자로.
+class _StockName extends StatelessWidget {
+  const _StockName({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = name.split(' ');
+    final lastKo = tokens.lastIndexWhere((t) => t.runes.any((r) => r >= 0xAC00 && r <= 0xD7A3));
+    final ko = lastKo < 0 ? name : tokens.take(lastKo + 1).join(' ');
+    final en = lastKo < 0 ? '' : tokens.skip(lastKo + 1).join(' ');
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: ko,
+            style: AppTypography.serif(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink),
+          ),
+          if (en.isNotEmpty)
+            TextSpan(
+              text: ' · $en',
+              style: AppTypography.serif(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.inkSoft),
+            ),
+        ],
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
 /// 끌고 다니는 동안 손가락 아래에 따라오는 알약.
 class _DragPill extends StatelessWidget {
   const _DragPill({required this.label});
@@ -442,9 +476,7 @@ class _StockCardState extends State<_StockCard> {
                       // 색이 달라 보였음 — accent로 맞춤.
                       AppBadge.filled(label: watch.ticker, background: AppColors.accentSoft, foreground: AppColors.accent),
                       const SizedBox(width: 7),
-                      Expanded(
-                        child: Text(watch.name, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                      ),
+                      Expanded(child: _StockName(name: watch.name)),
                       if (quote != null) ...[
                         const SizedBox(width: 8),
                         // 2026-09-26: 가격/등락률을 세로로 쌓았더니 답답해
@@ -497,7 +529,7 @@ class _StockCardState extends State<_StockCard> {
                       news.first.titleKo ?? news.first.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4),
+                      style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.45),
                     ),
                   ],
                 ],
@@ -507,7 +539,7 @@ class _StockCardState extends State<_StockCard> {
           if (!hasNews)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 11.5, color: AppColors.inkFaint)),
+              child: Text('아직 받아온 뉴스가 없어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
             )
           else
             AnimatedSize(
@@ -626,7 +658,14 @@ class _NewsRow extends StatelessWidget {
           children: [
             Text(
               translated ?? item.title,
-              style: TextStyle(fontSize: 11.5, color: AppColors.inkSoft, height: 1.4, decoration: TextDecoration.underline),
+              style: TextStyle(
+                fontSize: 12.5,
+                color: AppColors.accent,
+                height: 1.5,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.accent.withValues(alpha: 0.35),
+                decorationThickness: 1,
+              ),
             ),
             // 번역 성공하면 원문(영어)을 옅은 글씨로 아래에 같이 보여줌 —
             // 번역 실패(키 없음/API 오류)하면 이 줄 없이 원문만 위에 나옴.

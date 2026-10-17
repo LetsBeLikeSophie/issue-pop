@@ -107,11 +107,11 @@ object IssueWidgetData {
   )
   private val dividerIds = listOf(R.id.iw_d2, R.id.iw_d3, R.id.iw_d4, R.id.iw_d5)
 
-  /** 위젯 높이(dp)에 들어가는 줄 수 — 머리글+여백 약 42dp, 줄(+구분선) 약 38dp, 8dp 여유. 모르면 3. */
+  /** 위젯 높이(dp)에 들어가는 줄 수 — 머리글+여백 약 46dp, 줄(+구분선) 약 38dp, 8dp 여유. 모르면 3. */
   fun visibleRows(manager: AppWidgetManager, appWidgetId: Int): Int =
       try {
         val h = manager.getAppWidgetOptions(appWidgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
-        if (h <= 0) 3 else ((h - 42 + 8) / 38).coerceIn(1, MAX_ROWS)
+        if (h <= 0) 3 else ((h - 46 + 8) / 38).coerceIn(1, MAX_ROWS)
       } catch (e: Exception) {
         3
       }
