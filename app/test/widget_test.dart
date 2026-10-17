@@ -24,6 +24,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(LaunchLoading), findsOneWidget, reason: '첫 응답 전엔 로딩 화면이 덮여 있어야 함');
+    // 로딩 화면에는 준비된 팁 중 하나가 보여야 함.
+    expect(find.byWidgetPredicate((w) => w is Text && launchTips.contains(w.data)), findsOneWidget);
 
     // 최소 노출 시간(0.5초) + 페이드아웃(0.28초)이 지나면 로딩 화면이 사라지고 홈이 보임.
     await tester.pump(const Duration(seconds: 1));
