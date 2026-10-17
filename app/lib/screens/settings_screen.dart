@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -50,6 +52,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool? _notificationsDenied;
   AuthorizationStatus? _lastKnownNotificationStatus;
 
+  /// 2026-10-17: 서버가 꺼져 있거나(재시작 중) 연결이 안 돼서 알림 설정을 못 불러왔을 때 — 첫 설치처럼 기기에 저장해둔
+  /// 값이 없으면 설정을 서버에서 받아와야 하는데, 이때 스위치가 아무 설명 없이 회색이 되던 문제. 안내를 보여주고
+  /// 스위치를 잠근 채로 몇 초마다 조용히 다시 불러옴(성공하면 안내가 사라지고 스위치가 풀림).
+  bool _loadFailed = false;
+  Timer? _retryTimer;
+
   /// 2026-09-27: 캐시가 없는 첫 실행에서는 토글들이 네트워크 왕복 후에야
   /// 뜨는 통에 화면이 잠깐 비어 보이다 툭 튀어나오는 느낌이 있었음 —
   /// 설정값이 다 준비된 다음에 화면을 그리게 함(로컬 캐시가 있으면
@@ -70,11 +78,36 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     // 아직 답하기 전 상태를 그대로 읽어버림 — "허용"을 눌러도 배너가 계속
     // "거부됨"으로 남아있던 버그. _initialLoad가 끝난 뒤에 체크하면 그
     // 안에서 이미 권한 요청까지 다 끝난 뒤라 실제 답변이 반영된 상태를 읽음.
-    _initialLoad.then((_) => _refreshNotificationStatus());
+    _initialLoad.then((_) => _refreshNotificationStatus(), onError: (_) {
+      if (!mounted) return;
+      setState(() => _loadFailed = true);
+      _retryTimer ??= Timer.periodic(const Duration(seconds: 8), (_) => _retryLoad());
+      _refreshNotificationStatus();
+    });
+  }
+
+  /// 위 _loadFailed 상태에서 설정을 다시 불러옴. 화면 전체를 로딩으로 되돌리지 않고(깜빡임 방지) 다 받아졌을 때만 갈아끼움.
+  Future<void> _retryLoad() async {
+    try {
+      final (digest, keywordAlert, wordOfDayAlert) =
+          await (_devices.getDigest(), _devices.getKeywordAlert(), _devices.getWordOfDayAlert()).wait;
+      if (!mounted) return;
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      setState(() {
+        _digest = Future.value(digest);
+        _keywordAlert = Future.value(keywordAlert);
+        _wordOfDayAlert = Future.value(wordOfDayAlert);
+        _loadFailed = false;
+      });
+    } catch (_) {
+      // 다음 주기에 다시 시도.
+    }
   }
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -319,6 +352,27 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
       children: [
+                  if (_loadFailed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                        decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(14)),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off, size: 18, color: AppColors.accent),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '서버에 연결하지 못했어요. 잠시 후 자동으로 다시 불러와요',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.ink, height: 1.4),
+                              ),
+                            ),
+                            TextButton(onPressed: _retryLoad, child: const Text('지금 다시')),
+                          ],
+                        ),
+                      ),
+                    ),
                   Builder(
                     builder: (context) {
                       if (_notificationsDenied != true) return const SizedBox.shrink();
@@ -396,7 +450,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                             _ToggleRow(
                               label: '오늘의 이슈팝',
                               value: hour != null,
-                              onChanged: snapshot.connectionState == ConnectionState.waiting || _notificationsDenied == true
+                              onChanged: snapshot.connectionState == ConnectionState.waiting || _loadFailed || _notificationsDenied == true
                                   ? null
                                   : _toggleDigest,
                               showDivider: hour != null,
@@ -430,7 +484,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                             _ToggleRow(
                               label: '오늘의 단어',
                               value: s?.enabled ?? false,
-                              onChanged: s == null || _notificationsDenied == true
+                              onChanged: s == null || _loadFailed || _notificationsDenied == true
                                   ? null
                                   : (v) async {
                                       if (v && !await _allowNotifications('매일 새로운 단어 하나를 알려드려요.')) return;
@@ -467,7 +521,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                             _ToggleRow(
                               label: '관심 키워드',
                               value: s?.enabled ?? false,
-                              onChanged: s == null || _notificationsDenied == true
+                              onChanged: s == null || _loadFailed || _notificationsDenied == true
                                   ? null
                                   : (v) async {
                                       if (v && !await _allowNotifications('등록한 관심 키워드가 새 이슈로 뜨면 바로 알려드려요.')) return;

@@ -13,6 +13,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/error_retry.dart';
 import '../widgets/expandable_issue_card.dart';
 import '../widgets/launch_loading.dart';
+import 'onboarding_screen.dart';
 import '../widgets/scroll_spotlight.dart';
 import '../widgets/share_card.dart';
 import 'archive_screen.dart';
@@ -113,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Future<void>.delayed(const Duration(milliseconds: 500)),
     ]).then((_) {
       if (mounted) setState(() => _showLaunch = false);
+      _maybeShowIntro();
     });
     _pageController = PageController();
     _pageSpotlights = List.generate(_pageSpecs.length, (_) => ScrollSpotlightController());
@@ -127,6 +129,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted && OfflineCache.staleSince.value != null) _refresh();
     });
+  }
+
+  /// 2026-10-17: 처음 설치했을 때만 짧은 소개를 한 번 보여줌(onboarding_screen.dart).
+  Future<void> _maybeShowIntro() async {
+    if (!await OnboardingScreen.shouldShow() || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const OnboardingScreen()),
+    );
   }
 
   @override

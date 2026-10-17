@@ -334,6 +334,9 @@ async def refresh_cache() -> None:
                 pruned_translations = db.prune_old_translated_headlines(session)
                 if pruned_translations:
                     print(f"[prune] 7일 지난 번역 캐시 {pruned_translations}건 정리함")
+                pruned_audits = db.prune_old_cluster_audits(session)
+                if pruned_audits:
+                    print(f"[prune] 30일 지난 클러스터 감사 기록 {pruned_audits}건 정리함")
                 pruned_categories = db.prune_old_category_cache(session)
                 if pruned_categories:
                     print(f"[prune] 30일 지난 카테고리 캐시 {pruned_categories}건 정리함")

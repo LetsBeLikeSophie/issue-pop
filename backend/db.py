@@ -524,6 +524,18 @@ def prune_old_reactions(session: Session, retention_days: int = 7) -> int:
     return result.rowcount
 
 
+def prune_old_cluster_audits(session: Session, retention_days: int = 30) -> int:
+    """2026-10-17: 클러스터 품질 감사 기록(ClusterAuditFinding/ClusterAuditRun)은 정리 기준이 없어서 매일 쌓였음.
+    개발자가 훑어보는 점검 메모라 30일이면 충분. date는 KST "YYYY-MM-DD" 문자열이라 같은 형식의 기준 날짜와
+    문자열로 비교함(오늘 실행했다는 표시 ClusterAuditRun은 오늘 날짜라 항상 남음). 지운 기록 수(발견 + 실행 표시)를 돌려줌."""
+    kst = timezone(timedelta(hours=9))
+    cutoff = (datetime.now(kst) - timedelta(days=retention_days)).strftime("%Y-%m-%d")
+    f = session.exec(delete(ClusterAuditFinding).where(ClusterAuditFinding.date < cutoff))  # type: ignore[arg-type]
+    r = session.exec(delete(ClusterAuditRun).where(ClusterAuditRun.date < cutoff))  # type: ignore[arg-type]
+    session.commit()
+    return f.rowcount + r.rowcount
+
+
 def prune_old_translated_headlines(session: Session, retention_days: int = 7) -> int:
     """2026-10-14: 관심 종목 뉴스 번역 캐시(TranslatedHeadline)는 정리 기준이 없어서 계속
     쌓였음(8천 건). 같은 헤드라인이 며칠 뒤 다시 올라올 일은 거의 없으니 7일이면 충분."""

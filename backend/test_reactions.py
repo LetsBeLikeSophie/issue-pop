@@ -108,4 +108,18 @@ with db.get_session() as s:
     assert s.get(db.TranslatedHeadline, "new") is not None and s.get(db.TranslatedHeadline, "old") is None
     assert s.get(db.CategoryCache, "새|키워드") is not None and s.get(db.CategoryCache, "옛|키워드") is None
 
+# 11) 클러스터 감사 기록 30일 보관(KST 날짜 문자열 기준)
+with db.get_session() as s:
+    kst = dt.timezone(dt.timedelta(hours=9))
+    old_day = (dt.datetime.now(kst) - dt.timedelta(days=31)).strftime("%Y-%m-%d")
+    new_day = (dt.datetime.now(kst) - dt.timedelta(days=29)).strftime("%Y-%m-%d")
+    for day in (old_day, new_day):
+        s.add(db.ClusterAuditFinding(date=day, issue_id="x", keyword="k", category="정치", problem_type="t", detail="d"))
+        s.add(db.ClusterAuditRun(date=day, finding_count=1))
+    s.commit()
+    assert db.prune_old_cluster_audits(s) == 2
+    assert s.exec(select(db.ClusterAuditFinding).where(db.ClusterAuditFinding.date == old_day)).first() is None
+    assert s.exec(select(db.ClusterAuditFinding).where(db.ClusterAuditFinding.date == new_day)).first() is not None
+    assert s.get(db.ClusterAuditRun, old_day) is None and s.get(db.ClusterAuditRun, new_day) is not None
+
 print("test_reactions: ALL OK")
