@@ -39,7 +39,7 @@ void main() {
     await tester.tap(find.text('열기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('같은 이슈는 한 장으로'), findsOneWidget);
+    expect(find.text('오늘의 이슈를 한눈에'), findsOneWidget);
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
     expect(find.text('관심 있는 것만 골라서'), findsOneWidget);
