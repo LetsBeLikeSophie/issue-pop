@@ -16,5 +16,7 @@
     <color name="sw_down">#3B6FD6</color>
     <color name="sw_down_soft">#DCE6F8</color>
     <color name="sw_flat_soft">#EEF1F6</color>
+    <string name="issue_widget_description">오늘 가장 많이 보도된 이슈를 순위로 보여줘요</string>
+    <string name="word_widget_description">오늘의 단어와 뜻풀이를 보여줘요</string>
     <string name="stock_widget_description">설정한 관심 종목의 시세를 달러와 원화로 보여줘요</string>
 </resources>

@@ -58,7 +58,8 @@ object StockWidgetData {
     edit.apply()
   }
 
-  private fun httpGet(path: String): String {
+  /** 위젯들이 같이 쓰는 서버 GET(타임아웃 4초/5초). 실패하면 예외. */
+  internal fun httpGet(path: String): String {
     val conn = URL("$API_BASE$path").openConnection() as HttpURLConnection
     try {
       conn.connectTimeout = 4000

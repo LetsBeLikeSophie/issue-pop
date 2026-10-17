@@ -12,6 +12,7 @@ import 'push_token.dart';
 import 'push_router.dart';
 import 'reaction_store.dart';
 import 'screens/home_screen.dart';
+import 'screens/issue_screen.dart';
 import 'screens/stock_watch_screen.dart';
 import 'stock_widget_store.dart';
 import 'text_scale_store.dart';
@@ -46,9 +47,21 @@ void main() async {
   StockWidgetStore.syncKnownDeviceId();
   // 홈 화면 위젯을 눌러 열었을 때 "관심 종목" 화면으로 이동(첫 프레임 뒤에 — 콜드 스타트에서도 Navigator가 붙은 뒤)
   StockWidgetStore.listenForRoute((route) {
-    if (route != 'stocks') return;
+    final WidgetBuilder? builder;
+    if (route == 'stocks') {
+      builder = (_) => StockWatchScreen(api: api);
+    } else if (route.startsWith('issue:')) {
+      // "오늘의 이슈" 위젯의 줄 — "issue:<이슈 id>|<대표 키워드>". id가 재묶음으로 바뀌어도 키워드로 찾음(IssueScreen).
+      final rest = route.substring('issue:'.length);
+      final bar = rest.indexOf('|');
+      final id = bar < 0 ? rest : rest.substring(0, bar);
+      final keyword = bar < 0 ? null : rest.substring(bar + 1);
+      builder = (_) => IssueScreen(api: api, issueId: id, keyword: keyword);
+    } else {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => StockWatchScreen(api: api)));
+      navigatorKey.currentState?.push(MaterialPageRoute(builder: builder!));
     });
   });
   // 푸시 알림을 눌렀을 때 해당 이슈로 이동(push_router.dart)

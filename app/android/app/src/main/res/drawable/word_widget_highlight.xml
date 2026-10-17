@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 2026-10-18: 오늘의 단어 형광펜 — 앱/아이콘처럼 글자 아래쪽 절반만(위는 투명). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:height="14dp"
+        android:gravity="bottom">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/sw_yellow" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+</layer-list>

@@ -48,6 +48,24 @@
         <!-- 2026-10-17: 홈 화면 "관심 종목" 위젯(StockWidgetProvider.kt). 외부 위젯 패키지/WorkManager 없이
              안드로이드 기본 AppWidgetProvider만 씀 — 9월에 home_widget 패키지가 크래시를 일으켜서 걷어냈던 것과
              같은 일이 없게 하려고. 위젯에 보일 종목은 앱의 관심 종목 화면에서 정함(MainActivity의 채널). -->
+        <!-- 2026-10-18: 같은 방식으로 만든 위젯 두 개 더 — 오늘의 이슈(IssueWidget.kt), 오늘의 단어(WordWidget.kt). 위젯 목록에서
+             "Issue Pop" 아래에 종류별로 따로 보임. -->
+        <receiver android:name=".IssueWidgetProvider" android:exported="true" android:label="오늘의 이슈">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/issue_widget_info"/>
+        </receiver>
+        <receiver android:name=".WordWidgetProvider" android:exported="true" android:label="오늘의 단어">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/word_widget_info"/>
+        </receiver>
         <receiver android:name=".StockWidgetProvider" android:exported="true" android:label="관심 종목">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
