@@ -935,7 +935,10 @@ async def get_sources(response: Response):
     화면에 다시 노출하지 않음). 코드 배포로만 바뀌는 정적 목록이라
     길게 캐싱해도 안전함."""
     response.headers["Cache-Control"] = "public, max-age=3600"
-    return [{"outlet": s["outlet"], "category": s["category"]} for s in sources.RSS_SOURCES]
+    return [
+        {"outlet": s["outlet"], "category": s["category"], "homepage": sources.OUTLET_HOMEPAGE.get(s["outlet"])}
+        for s in sources.RSS_SOURCES
+    ]
 
 
 @app.get("/categories")

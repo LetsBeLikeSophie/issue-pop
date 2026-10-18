@@ -14,17 +14,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 막으면 안 됨).
 const _webVapidKey = 'BBmIysMB6lZKqHoa6bk2R4E3i08n9QqCi-PQPjyDiabUlW5Fcnt3mePH3qjojLTh3HK1lpcyXmajHQFcw7T-Qj4';
 
-/// 2026-09-28: getFcmToken()이 실패해도 예외를 조용히 삼켜버려서(원래
-/// catch(_)), 실제 알림이 하루종일 안 가던 기기(77번)가 왜 계속 임시
-/// 랜덤 토큰에 머무는지 전혀 알 방법이 없었음 — adb 없이도 실기기에서
-/// 원인을 볼 수 있게, 마지막 시도 결과를 여기 남겨두고 설정 화면
-/// "지원" 섹션에서 보여줌(settings_screen.dart의 진단 정보 참고).
-class FcmDiagnostics {
-  FcmDiagnostics._();
-  static String? lastStatus;
-  static String? lastError;
-}
-
 const _settingsChannel = MethodChannel('issuepop/settings');
 
 /// 2026-09-28: "알림 설정 열기" 버튼용 — MainActivity.kt에 만들어둔
@@ -113,22 +102,15 @@ Future<String?> getFcmToken() async {
   try {
     final settings = await FirebaseMessaging.instance.requestPermission();
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      FcmDiagnostics.lastStatus = '권한 거부됨(${settings.authorizationStatus.name})';
-      FcmDiagnostics.lastError = null;
       return null;
     }
     await _enableAutoInit();
     final token = kIsWeb
         ? (_webVapidKey.isEmpty ? null : await FirebaseMessaging.instance.getToken(vapidKey: _webVapidKey))
         : await FirebaseMessaging.instance.getToken();
-    FcmDiagnostics.lastStatus = '권한 ${settings.authorizationStatus.name}, 토큰 '
-        '${token == null ? '못 받음(null)' : '받음(${token.length}자)'}';
-    FcmDiagnostics.lastError = token == null ? 'FirebaseMessaging.getToken()이 null을 돌려줌' : null;
     return token;
   } catch (e) {
     debugPrint('[FCM] getFcmToken 실패: $e');
-    FcmDiagnostics.lastStatus = '예외 발생';
-    FcmDiagnostics.lastError = e.toString();
     return null;
   }
 }

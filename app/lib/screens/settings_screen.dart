@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -16,6 +15,7 @@ import '../theme_store.dart';
 import '../widgets/app_badge.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
+import '../widgets/in_app_browser.dart';
 import '../widgets/screen_header.dart';
 
 /// 2026-09-05: 계정/구독/의견보내기/앱정보를 전부 뺌 — 로그인은 붙여도
@@ -50,7 +50,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   /// 그냥 읽어오는 것 — 서버 왕복 전혀 없음) 매번 다시 불러도 비용이
   /// 없음. null=아직 확인 전, true=거부됨(토글 비활성화), false=허용됨.
   bool? _notificationsDenied;
-  AuthorizationStatus? _lastKnownNotificationStatus;
 
   /// 2026-10-17: 서버가 꺼져 있거나(재시작 중) 연결이 안 돼서 알림 설정을 못 불러왔을 때 — 첫 설치처럼 기기에 저장해둔
   /// 값이 없으면 설정을 서버에서 받아와야 하는데, 이때 스위치가 아무 설명 없이 회색이 되던 문제. 안내를 보여주고
@@ -122,13 +121,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   Future<void> _refreshNotificationStatus() async {
-    final settings = await FirebaseMessaging.instance.getNotificationSettings();
     // 2026-10-17: Android는 "아직 안 물어봄"도 denied로 돌려줘서, 우리가 권한을 물어본 적이 있을 때만
     // "거부됨"(배너 + 스위치 잠금)으로 봄 — 처음 설치한 사람에게 아무것도 안 했는데 "거부됨"이 뜨면 안 됨.
     final state = await notificationState();
     if (!mounted) return;
     setState(() {
-      _lastKnownNotificationStatus = settings.authorizationStatus;
       _notificationsDenied = state == NotificationState.denied;
     });
   }
@@ -286,27 +283,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       isScrollControlled: true,
       builder: (_) => _ContactSheet(
         onSubmit: (message, email) => _devices.submitFeedback(message, contactEmail: email),
-      ),
-    );
-  }
-
-  /// 2026-09-28: "알림이 하루종일 안 온다"를 실기기 로그 없이도 점검할
-  /// 수 있게 — 지금 권한 상태/토큰 상태/마지막 토큰 발급 시도 결과를
-  /// 한 화면에 모아 보여줌. FcmDiagnostics(push_token.dart)는 그 세션
-  /// 안에서 가장 최근 시도한 결과만 담고 있어서, 이 화면을 보기 전에
-  /// 한 번은 앱을 열어(설정 화면 진입 시 기기 등록/토큰 갱신이 돎)
-  /// 실제로 시도가 있었어야 값이 참.
-  Future<void> _showNotificationDiagnostics() async {
-    await _refreshNotificationStatus();
-    final tokenInfo = await _devices.tokenDiagnostic();
-    if (!mounted) return;
-    await showAppBottomSheet<void>(
-      context,
-      builder: (_) => _NotificationDiagnosticsSheet(
-        permissionStatus: _lastKnownNotificationStatus,
-        tokenInfo: tokenInfo,
-        lastAttemptStatus: FcmDiagnostics.lastStatus,
-        lastError: FcmDiagnostics.lastError,
       ),
     );
   }
@@ -656,15 +632,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         _PlainRow(
                           label: '개인정보처리방침',
                           onTap: _openPrivacyPolicy,
-                          showDivider: true,
-                        ),
-                        // 2026-09-28: "알림이 하루종일 안 온다"를 실기기
-                        // 로그(adb) 없이도 점검할 수 있게 — 지금 저장된
-                        // 토큰이 진짜 FCM 토큰인지, 마지막 발급 시도에서
-                        // 뭐가 잘못됐는지를 바로 보여줌.
-                        _PlainRow(
-                          label: '알림 진단 정보',
-                          onTap: _showNotificationDiagnostics,
                           showDivider: false,
                         ),
                       ],
@@ -685,7 +652,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                             Text(
                               outlets.isEmpty
                                   ? '이슈판이 정보를 받아오는 언론사들이에요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
-                                  : '이슈판이 정보를 받아오는 ${outlets.length}개 언론사예요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.',
+                                  : '이슈판이 정보를 받아오는 ${outlets.length}개 언론사예요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요. 언론사를 누르면 홈페이지가 열려요.',
                               style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
                             ),
                             if (outlets.isNotEmpty) ...[
@@ -694,7 +661,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                                 spacing: 6,
                                 runSpacing: 6,
                                 children: [
-                                  for (final o in outlets) AppBadge.outline(label: o.outlet, color: AppColors.inkFaint),
+                                  for (final o in outlets)
+                                    // 2026-10-18: 언론사 알약을 누르면 그 언론사 홈페이지를 엶(서버가 homepage를 안 주면 그냥 표시만).
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(999),
+                                      onTap: o.homepage == null ? null : () => openInAppBrowser(Uri.parse(o.homepage!)),
+                                      child: AppBadge.outline(label: o.outlet, color: AppColors.inkFaint),
+                                    ),
                                 ],
                               ),
                             ],
@@ -967,80 +940,6 @@ String _formatTime(int hour, int minute) {
   final base = _formatHour(hour);
   if (minute == 0) return base;
   return '$base ${minute.toString().padLeft(2, '0')}분';
-}
-
-/// 2026-09-10: "발송 기능이 아직 없는데 그럼 뭐가 발송되는지 보고 싶다"는
-/// 요청으로 추가 — 실제 푸시처럼 보이게 알림 배너 흉내를 낸 카드 안에
-/// GET /digest/preview가 지금 이 순간 만들어내는 텍스트를 그대로 보여줌.
-/// 실제 발송(FCM)과는 무관한 조회 전용이라 기기 목록을 건드리거나
-/// last_digest_sent_at을 바꾸지 않음.
-/// 2026-09-28: "알림이 하루종일 안 온다"를 실기기 로그(adb) 없이도
-/// 점검할 수 있게 만든 진단 화면 — 권한 상태/토큰 상태/마지막 토큰
-/// 발급 시도 결과를 그대로 보여줌. 문의하기로 이 내용을 복사해 보내면
-/// 원인 파악이 훨씬 빨라짐.
-class _NotificationDiagnosticsSheet extends StatelessWidget {
-  const _NotificationDiagnosticsSheet({
-    required this.permissionStatus,
-    required this.tokenInfo,
-    required this.lastAttemptStatus,
-    required this.lastError,
-  });
-
-  final AuthorizationStatus? permissionStatus;
-  final String tokenInfo;
-  final String? lastAttemptStatus;
-  final String? lastError;
-
-  String _permissionLabel(AuthorizationStatus? status) {
-    switch (status) {
-      case AuthorizationStatus.authorized:
-        return '허용됨';
-      case AuthorizationStatus.denied:
-        return '거부됨';
-      case AuthorizationStatus.provisional:
-        return '임시 허용(조용한 알림)';
-      case AuthorizationStatus.notDetermined:
-        return '아직 물어본 적 없음';
-      case null:
-        return '확인 실패';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSheetBody(
-      title: '알림 진단 정보',
-      subtitle: '알림이 안 온다면 이 값들을 확인해보세요. 문의하기에 그대로 붙여 보내주시면 더 빨리 봐드릴 수 있어요.',
-      children: [
-        _DiagnosticRow(label: '기기 알림 권한', value: _permissionLabel(permissionStatus)),
-        _DiagnosticRow(label: '알림 토큰 상태', value: tokenInfo),
-        _DiagnosticRow(label: '마지막 토큰 발급 시도', value: lastAttemptStatus ?? '이번 세션에서 아직 시도 안 함'),
-        if (lastError != null) _DiagnosticRow(label: '마지막 오류', value: lastError!),
-      ],
-    );
-  }
-}
-
-class _DiagnosticRow extends StatelessWidget {
-  const _DiagnosticRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontSize: 11, color: AppColors.inkFaint, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          SelectableText(value, style: TextStyle(fontSize: 13, color: AppColors.ink)),
-        ],
-      ),
-    );
-  }
 }
 
 class _DigestPreviewSheet extends StatelessWidget {

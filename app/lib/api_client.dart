@@ -522,14 +522,18 @@ class KeywordAlertSettings {
 }
 
 class SourceOutlet {
-  const SourceOutlet({required this.outlet, required this.category});
+  const SourceOutlet({required this.outlet, required this.category, this.homepage});
 
   final String outlet;
   final String category;
 
+  /// 2026-10-18: 언론사 홈페이지(서버의 sources.OUTLET_HOMEPAGE). 없으면(옛 서버 등) 알약은 눌러도 반응 없음.
+  final String? homepage;
+
   factory SourceOutlet.fromJson(Map<String, dynamic> json) => SourceOutlet(
         outlet: json['outlet'] as String,
         category: json['category'] as String,
+        homepage: json['homepage'] as String?,
       );
 }
 

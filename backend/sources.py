@@ -34,6 +34,21 @@
   - leaning_updated: leaning 필드를 마지막으로 검토한 날짜.
 """
 
+# 2026-10-18: 설정 "앱 정보"의 언론사 알약을 누르면 열 홈페이지. RSS 주소(rss.mt.co.kr 등)는 홈페이지가 아니라서 따로 둠.
+# 매체를 추가하면 여기에도 같이 넣을 것(없으면 앱에서 그 알약은 눌러도 반응 없음).
+OUTLET_HOMEPAGE = {
+    "연합뉴스": "https://www.yna.co.kr",
+    "한겨레": "https://www.hani.co.kr",
+    "경향신문": "https://www.khan.co.kr",
+    "매일경제": "https://www.mk.co.kr",
+    "머니투데이": "https://www.mt.co.kr",
+    "SBS": "https://news.sbs.co.kr",
+    "동아일보": "https://www.donga.com",
+    "서울신문": "https://www.seoul.co.kr",
+    "오마이뉴스": "https://www.ohmynews.com",
+    "헤럴드경제": "https://biz.heraldcorp.com",
+}
+
 RSS_SOURCES = [
     {
         "outlet": "연합뉴스", "category": "종합",
