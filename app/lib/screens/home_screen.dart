@@ -544,8 +544,17 @@ class _TopBar extends StatelessWidget {
             // 넘어가므로 그 문제도 같이 해결됨(대신 문자 단위로 잘리는
             // ellipsis 안전장치는 없어짐 — "Issue Pop" 정도 길이면 필요
             // 없다고 판단).
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.end,
+            //
+            // 2026-10-18: 글자 크기를 키우면 로고가 "Issu / e / Pop"으로 줄바꿈되던 문제(실기기 캡처) — 로고는 글자가 아니라 브랜드
+            // 마크라서 글자 크기 설정의 영향을 안 받게 하고(withNoTextScaling), 그래도 자리가 모자라면(좁은 화면 + 아이콘 5개) 줄바꿈 대신
+            // 통째로 줄어들게(FittedBox scaleDown) 함. 그래서 Wrap → Row.
+            child: MediaQuery.withNoTextScaling(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.bottomLeft,
+                child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   'Issue ',
@@ -580,6 +589,8 @@ class _TopBar extends StatelessWidget {
                 ),
               ],
             ),
+              ),
+            ),
           ),
           // 2026-09-09: 아이콘이 3개→5개로 늘면서(관심 워치/공유 추가)
           // 좁은 화면에서 타이틀이 밀려 넘치는 문제가 있었음 — 기본
@@ -589,7 +600,9 @@ class _TopBar extends StatelessWidget {
           // 2026-09-21: 정치성향 필터를 빼면서 비게 된 자리에 "N분 전
           // 업데이트" 표시를 넣음 — 서버가 30분마다 재수집하는 걸 사용자가
           // 알 방법이 없었어서.
-          Column(
+          MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.15,
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -667,6 +680,7 @@ class _TopBar extends StatelessWidget {
                 ],
               ),
             ],
+          ),
           ),
         ],
       ),
