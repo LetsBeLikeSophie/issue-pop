@@ -53,7 +53,15 @@ class MainActivity : FlutterActivity() {
     // 전부 try/catch라 여기서 실패해도 앱은 영향 없음(StockWidgetData.kt 참고).
     stockWidgetMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, stockWidgetChannel)
     stockWidgetMethodChannel!!.setMethodCallHandler { call, result ->
-      if (call.method == "takeLaunchRoute") {
+      if (call.method == "refreshWidgets") {
+        // 앱을 켜거나 다시 돌아왔을 때 — 놓여 있는 모든 위젯을 바로 갱신(WidgetRefresh.kt).
+        try {
+          WidgetRefresh.requestAll(applicationContext)
+          result.success(true)
+        } catch (e: Throwable) {
+          result.success(false)
+        }
+      } else if (call.method == "takeLaunchRoute") {
         val route = pendingRoute
         pendingRoute = null
         result.success(route)

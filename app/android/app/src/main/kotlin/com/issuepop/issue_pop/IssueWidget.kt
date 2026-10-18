@@ -165,6 +165,7 @@ object IssueWidgetData {
   }
 
   fun refresh(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+    WidgetRefresh.schedulePeriodic(context)
     val rows = visibleRows(manager, appWidgetId)
     try {
       val snap = fetch()
@@ -172,6 +173,7 @@ object IssueWidgetData {
       val message = if (snap.issues.isEmpty()) "지금 보여줄 이슈가 없어요" else null
       manager.updateAppWidget(appWidgetId, buildViews(context, appWidgetId, snap.issues, message, timeLabel(snap.atSeconds), rows))
     } catch (e: Exception) {
+      WidgetRefresh.scheduleRetryWhenOnline(context)
       val cached = loadCache(context)
       if (cached != null) {
         manager.updateAppWidget(

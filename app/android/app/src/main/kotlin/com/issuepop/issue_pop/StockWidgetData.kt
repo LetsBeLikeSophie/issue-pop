@@ -280,6 +280,7 @@ object StockWidgetData {
 
   /** 이 위젯 하나를 서버에서 새로 받아 갱신. 실패하면 마지막 내용(없으면 안내 문구)을 그림. */
   fun refresh(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+    WidgetRefresh.schedulePeriodic(context)
     val deviceId = deviceId(context)
     if (deviceId == null) {
       manager.updateAppWidget(appWidgetId, buildViews(context, emptyList(), null, "앱을 한 번 열면 종목이 나와요"))
@@ -291,6 +292,7 @@ object StockWidgetData {
       val rate = fetchUsdKrw() ?: loadCache(context, appWidgetId)?.second
       render(context, manager, appWidgetId, Snapshot(watches, rate))
     } catch (e: Exception) {
+      WidgetRefresh.scheduleRetryWhenOnline(context)
       val cached = loadCache(context, appWidgetId)
       if (cached != null) {
         manager.updateAppWidget(

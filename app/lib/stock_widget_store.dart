@@ -64,6 +64,15 @@ class StockWidgetStore {
     } catch (_) {}
   }
 
+  /// 앱을 켜거나 다시 돌아왔을 때: 홈 화면의 모든 위젯(관심 종목/오늘의 이슈/오늘의 단어)을 바로 갱신시킴.
+  /// 위젯은 시스템 주기 갱신이 절전 때문에 몇 시간씩 밀릴 수 있어서, 앱을 쓰는 순간만큼은 최신으로 맞춰줌.
+  static Future<void> refreshWidgets() async {
+    if (!_supported) return;
+    try {
+      await _channel.invokeMethod<bool>('refreshWidgets');
+    } catch (_) {}
+  }
+
   /// 앱을 켤 때: 이미 등록된 기기 id가 있으면 위젯에 알려줌(위젯만 먼저 추가한 경우에도 종목이 나오게).
   static Future<void> syncKnownDeviceId() async {
     if (!_supported) return;

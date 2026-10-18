@@ -50,6 +50,11 @@
              같은 일이 없게 하려고. 위젯에 보일 종목은 앱의 관심 종목 화면에서 정함(MainActivity의 채널). -->
         <!-- 2026-10-18: 같은 방식으로 만든 위젯 두 개 더 — 오늘의 이슈(IssueWidget.kt), 오늘의 단어(WordWidget.kt). 위젯 목록에서
              "Issue Pop" 아래에 종류별로 따로 보임. -->
+        <!-- 위젯 주기 갱신/네트워크 복구 재시도용 JobScheduler 작업(WidgetRefresh.kt). WorkManager가 아니라 프레임워크 API. -->
+        <service
+            android:name=".WidgetRefreshJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver android:name=".IssueWidgetProvider" android:exported="true" android:label="오늘의 이슈">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>

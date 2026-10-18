@@ -45,6 +45,9 @@ void main() async {
   PresenceService.instance.start(api);
   // 홈 화면 위젯에 기기 id 전달(실패해도 앱엔 영향 없음 — stock_widget_store.dart)
   StockWidgetStore.syncKnownDeviceId();
+  // 앱을 켜거나 다시 돌아올 때 모든 위젯을 바로 갱신(시스템 주기 갱신은 절전으로 몇 시간씩 밀릴 수 있음)
+  StockWidgetStore.refreshWidgets();
+  AppLifecycleListener(onResume: StockWidgetStore.refreshWidgets);
   // 홈 화면 위젯을 눌러 열었을 때 "관심 종목" 화면으로 이동(첫 프레임 뒤에 — 콜드 스타트에서도 Navigator가 붙은 뒤)
   StockWidgetStore.listenForRoute((route) {
     final WidgetBuilder? builder;

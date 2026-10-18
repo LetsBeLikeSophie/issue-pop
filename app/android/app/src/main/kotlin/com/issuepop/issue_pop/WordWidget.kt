@@ -79,11 +79,13 @@ object WordWidgetData {
   }
 
   fun refresh(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
+    WidgetRefresh.schedulePeriodic(context)
     try {
       val w = fetch()
       saveCache(context, w)
       manager.updateAppWidget(appWidgetId, buildViews(context, w, null))
     } catch (e: Exception) {
+      WidgetRefresh.scheduleRetryWhenOnline(context)
       val cached = loadCache(context)
       if (cached != null) {
         manager.updateAppWidget(appWidgetId, buildViews(context, cached, null, " · 연결 안 됨"))
