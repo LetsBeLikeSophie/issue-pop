@@ -97,7 +97,7 @@ def audit_one_batch(batch: list[dict]) -> list[dict]:
     호출이 실패하면 빈 리스트(전체가 죽지 않게, 호출부가 다음 배치로
     계속 진행함)."""
     prompt = _build_batch_prompt(batch)
-    text = llm.complete(prompt, max_tokens=1500)
+    text = llm.complete(prompt, max_tokens=1500, purpose="audit")
     if text is None:
         return []
     valid_ids = {c["issue_id"] for c in batch}

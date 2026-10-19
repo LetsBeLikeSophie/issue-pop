@@ -199,7 +199,7 @@ def classify_category_llm(keywords: list[str], representative_title: str) -> str
         "아래 카테고리 중 하나로만 분류해줘. 다른 설명 없이 카테고리 이름만 답해.\n"
         f"카테고리: {', '.join(VALID_CATEGORIES)}"
     )
-    text = llm.complete(prompt, max_tokens=20, temperature=0)
+    text = llm.complete(prompt, max_tokens=20, temperature=0, purpose="category")
     if text is None:
         return None
     cleaned = text.strip("\"'. \n")

@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 """Claude API 호출 공용 유틸.
 
-- word_of_day.py: 후보 단어 중 하나를 고르는 데 씀(하루 1번).
+- category.py: 이슈 카테고리 분류(purpose="category", 새 이슈 키워드마다 1회, 30일 캐시).
+- word_of_day.py: 후보 단어 중 하나를 고르는 데 씀(purpose="wordofday", 하루 1번).
 - cluster_audit.py: 오늘 클러스터들의 키워드/카테고리/기사 매칭이 이상한지
-  배치로 감사하는 데 씀(하루 1번, 여러 클러스터를 묶어서 몇 번만 호출).
+  배치로 감사하는 데 씀(purpose="audit", 하루 1번, 여러 클러스터를 묶어서 몇 번만 호출).
 
 둘 다 저렴하고 간단한 판단 작업이라 제일 가벼운 모델(Haiku)을 씀.
 
-인증키는 서버 systemd 환경변수(ANTHROPIC_API_KEY)로만 존재함 — 로컬
-개발 시엔 같은 이름으로 환경변수를 직접 설정해야 동작함(translate.py 등과
-같은 패턴).
+인증키는 서버 systemd 환경변수로만 존재함 — 로컬 개발 시엔 같은 이름으로 환경변수를
+직접 설정해야 동작함(translate.py 등과 같은 패턴).
+
+2026-10-20: 기능별로 Anthropic Console 키를 나눠서 "어느 기능에 비용이 많이 드는지"를 콘솔 사용량에서 바로
+보려고, 호출마다 purpose를 받아 ANTHROPIC_KEY_<PURPOSE> 환경변수(예: ANTHROPIC_KEY_CATEGORY)를 먼저 찾고,
+없으면 예전 공용 키 ANTHROPIC_API_KEY로 폴백함(키를 하나씩 옮겨가도 서비스가 안 깨지게). 이름 규칙은
+backend/API_KEYS.md 참고.
 """
 
 from __future__ import annotations
@@ -19,12 +24,26 @@ import os
 
 import requests
 
-_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 _API_URL = "https://api.anthropic.com/v1/messages"
 _MODEL = "claude-haiku-4-5-20251001"
 
 
-def complete(prompt: str, max_tokens: int = 1024, temperature: float | None = None) -> str | None:
+def api_key_for(purpose: str | None) -> str | None:
+    """이 용도의 키: ANTHROPIC_KEY_<PURPOSE>가 있으면 그걸, 없으면 공용 ANTHROPIC_API_KEY(옛 방식)를 돌려줌.
+    호출할 때마다 환경변수를 읽음(서버가 키를 바꾸고 재시작하면 바로 반영되고, 테스트에서 바꿔 끼우기도 쉬움)."""
+    if purpose:
+        specific = os.environ.get(f"ANTHROPIC_KEY_{purpose.upper()}")
+        if specific:
+            return specific
+    return os.environ.get("ANTHROPIC_API_KEY")
+
+
+def complete(
+    prompt: str,
+    max_tokens: int = 1024,
+    temperature: float | None = None,
+    purpose: str | None = None,
+) -> str | None:
     """Claude Haiku에 프롬프트 하나를 보내고 텍스트 응답을 받음. 키가
     없거나 API 실패 시 None(호출부가 각자 폴백 처리).
 
@@ -34,7 +53,8 @@ def complete(prompt: str, max_tokens: int = 1024, temperature: float | None = No
     호출마다 답이 달라지는 걸 실측으로 확인함("암살자" 케이스가 문화/연예를
     오갔음) — 한 번 뽑은 답을 계속 재사용하는 구조에서는 그 "한 번"이 최대한
     일관된 답이어야 해서, 이런 용도는 낮은 temperature를 명시적으로 넘기게 함."""
-    if not _API_KEY:
+    api_key = api_key_for(purpose)
+    if not api_key:
         return None
     try:
         payload = {
@@ -47,7 +67,7 @@ def complete(prompt: str, max_tokens: int = 1024, temperature: float | None = No
         res = requests.post(
             _API_URL,
             headers={
-                "x-api-key": _API_KEY,
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
@@ -79,7 +99,7 @@ def pick_best_word(candidates: list[dict]) -> str | None:
         + "\n".join(lines)
         + "\n\n반드시 위 목록에 있는 단어 하나만, 다른 설명 없이 그 단어만 답해."
     )
-    text = complete(prompt, max_tokens=30)
+    text = complete(prompt, max_tokens=30, purpose="wordofday")
     if text is None:
         return None
 

@@ -10,9 +10,9 @@ Claude Haiku 번역 — 2026-10-04, 파파고(NCP)에서 교체.
 자체가 없음) — 실측으로 확인하고 Claude Haiku로 교체함(쓴 토큰만큼만
 과금, 월 최소과금 없음. 같은 사용량 기준 추산 월 2~3달러 수준).
 
-인증키(ANTHROPIC_TRANSLATE_API_KEY)는 llm.py가 쓰는 ANTHROPIC_API_KEY와
-일부러 분리함 — Anthropic Console 사용량 대시보드에서 번역 비용만 따로
-확인할 수 있게. 서버의 systemd 서비스 환경변수로만 존재함
+인증키는 llm.py가 쓰는 키와 일부러 분리함 — Anthropic Console 사용량 대시보드에서 번역 비용만 따로
+확인할 수 있게. 2026-10-20: 이름을 기능별 규칙(ANTHROPIC_KEY_TRANSLATE, backend/API_KEYS.md)으로 바꿈 —
+예전 이름 ANTHROPIC_TRANSLATE_API_KEY도 계속 읽어서(없을 때) 서버 환경변수를 옮기는 중에도 안 깨짐. 서버의 systemd 서비스 환경변수로만 존재함
 (/etc/systemd/system/newstrend-api.service.d/env.conf, git에는 안 올라감)
 — 로컬에서 돌리려면 같은 이름으로 환경변수를 직접 설정해야 함.
 """
@@ -24,9 +24,12 @@ import os
 
 import requests
 
-_API_KEY = os.environ.get("ANTHROPIC_TRANSLATE_API_KEY")
 _API_URL = "https://api.anthropic.com/v1/messages"
 _MODEL = "claude-haiku-4-5"
+
+
+def _api_key() -> str | None:
+    return os.environ.get("ANTHROPIC_KEY_TRANSLATE") or os.environ.get("ANTHROPIC_TRANSLATE_API_KEY")
 
 
 def translate_to_ko(text: str) -> str | None:
@@ -37,7 +40,8 @@ def translate_to_ko(text: str) -> str | None:
     temperature=0 — 번역 결과를 해시로 캐싱해서 평생 재사용하는 구조라
     (stocks.py의 _translate_cached), 같은 헤드라인은 항상 같은 번역이
     나와야 함(llm.py의 카테고리 분류와 같은 이유)."""
-    if not _API_KEY or not text.strip():
+    api_key = _api_key()
+    if not api_key or not text.strip():
         return None
     try:
         payload = {
@@ -54,7 +58,7 @@ def translate_to_ko(text: str) -> str | None:
         res = requests.post(
             _API_URL,
             headers={
-                "x-api-key": _API_KEY,
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
