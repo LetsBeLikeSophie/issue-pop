@@ -663,6 +663,7 @@ def _run_cluster_audit() -> int:
             "titles": [a["title"] for a in c.get("articles", [])],
         }
         for issue_id, c in _cache.items()
+        if c.get("article_count", 0) >= LLM_MIN_ARTICLES  # 작은 이슈는 안 봄(비용 — LLM_MIN_ARTICLES 참고)
     ]
 
     today = datetime.now(KST).strftime("%Y-%m-%d")
@@ -1508,6 +1509,11 @@ async def digest_preview():
 
 _CLASSIFY_CONCURRENCY = 10  # 동시에 LLM에 물어볼 최대 개수(아래 독스트링 참고)
 
+# 2026-10-20: 비용 줄이기. 기사가 이 수보다 적은 이슈는 LLM에 안 묻고 규칙 기반 분류를 씀(기사가 3건 미만인
+# 이슈가 전체의 73%인데 순위/화면에 거의 안 나오고, 카테고리 호출의 81%가 여기서 나갔음). 기사가 늘어 이 수에
+# 닿으면 그때 LLM이 분류함. 클러스터 감사도 같은 기준으로 큰 이슈만 봄.
+LLM_MIN_ARTICLES = 3
+
 
 def _classify_categories(clusters_by_id: dict) -> None:
     """refresh_cache()가 새로 클러스터링한 직후, 각 클러스터의 category를
@@ -1535,6 +1541,7 @@ def _classify_categories(clusters_by_id: dict) -> None:
     단계별로 나눔."""
     to_classify: list[tuple[str, dict]] = []
     with db.get_session() as session:
+        pending: list[tuple[str, dict]] = []
         for cluster in clusters_by_id.values():
             keywords = cluster.get("keywords") or []
             if not keywords:
@@ -1544,7 +1551,21 @@ def _classify_categories(clusters_by_id: dict) -> None:
             if cached is not None:
                 cluster["category"] = cached.category
             else:
+                pending.append((keyword_key, cluster))
+
+        # 키워드 캐시에 없어도, 이전에 저장된 이슈와 기사가 겹치면(같은 사건) 그 분류를 이어받음 —
+        # 이어받은 값은 일부러 CategoryCache에 안 넣음(캐시엔 LLM이 직접 답한 값만 남기는 원칙).
+        inherited = db.find_inherited_categories(
+            session,
+            {cluster["id"]: [a.get("link", "") for a in cluster.get("articles", [])] for _, cluster in pending if "id" in cluster},
+        )
+        for keyword_key, cluster in pending:
+            inherited_category = inherited.get(cluster.get("id"))
+            if inherited_category is not None:
+                cluster["category"] = inherited_category
+            elif cluster.get("article_count", 0) >= LLM_MIN_ARTICLES:
                 to_classify.append((keyword_key, cluster))
+            # 그 외(새 이슈인데 기사 3건 미만)는 clustering.py가 매긴 규칙 기반 분류를 그대로 둠
 
     if not to_classify:
         return

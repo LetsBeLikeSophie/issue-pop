@@ -64,7 +64,7 @@ class Article(SQLModel, table=True):
     issue_id: str = Field(foreign_key="issues.id", index=True)
     outlet: str
     title: str
-    link: str
+    link: str = Field(index=True)  # 2026-10-20: 이어받기 조회(find_inherited_categories)가 링크로 찾음
     published_at: str | None = None
 
 
@@ -439,10 +439,69 @@ def init_db() -> None:
     # 이후에 추가함 — 이미 그 테이블이 있는 서버엔 마찬가지로 안 채워짐.
     _migrate_table_columns("cluster_audit_findings", {"suggested_fix": "TEXT NOT NULL DEFAULT ''"})
     _migrate_table_columns("feedback", {"contact_email": "TEXT"})
+    # 2026-10-20: 이미 있는 articles 테이블엔 새 인덱스가 안 생겨서(create_all은 테이블이 있으면 건너뜀) 직접 만듦.
+    # 이름은 SQLModel이 index=True로 만드는 기본 이름과 같게 해서 새 DB와도 안 겹침.
+    with engine.connect() as conn:
+        conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_articles_link ON articles (link)")
+        conn.commit()
 
 
 def get_session() -> Session:
     return Session(engine)
+
+
+def find_inherited_categories(
+    session: Session,
+    links_by_key: dict[str, list[str]],
+    min_source_articles: int = 3,
+    min_overlap: float = 0.5,
+) -> dict[str, str]:
+    """새로 클러스터링한 이슈가 이전에 저장된 이슈와 같은 사건인지 "기사 링크 겹침"으로 알아보고, 겹치면 그
+    이슈의 카테고리를 돌려줌 → 이미 분류한 사건을 LLM에 또 묻지 않게 하려는 용도(api._classify_categories).
+
+    30분마다 전체를 다시 묶으면 기사 몇 개만 늘어도 대표 키워드 조합이 바뀌어 "처음 보는 이슈"로 보이지만,
+    기사(링크)는 그대로라서 링크 겹침이 훨씬 안정적인 식별 기준임(2026-10-20 실측: 큰 이슈의 80%가 이전 이슈와
+    기사 절반 이상 겹치고 그 중 90%는 분류가 같았음).
+
+    - links_by_key: {키: 이 이슈의 기사 링크 목록}. 키는 호출부가 정함(클러스터 id 등).
+    - 원본 이슈는 기사가 min_source_articles건 이상인 것만 씀 — 작은 이슈는 LLM 없이 규칙 기반으로 분류한 값일
+      수 있어서, 그런 값이 LLM 분류를 대신하며 퍼지는 걸 막음.
+    - 새 이슈 링크의 min_overlap(기본 절반) 이상이 같은 원본 이슈에 들어 있어야 인정. 여러 원본이 걸리면 겹침이
+      가장 많은 것, 같으면 가장 최근에 본 것.
+    - 겹치는 게 없는 키는 결과에서 빠짐(호출부가 LLM/규칙 기반으로 처리).
+    """
+    key_by_link: dict[str, list[str]] = {}
+    for key, links in links_by_key.items():
+        for link in set(l for l in links if l):
+            key_by_link.setdefault(link, []).append(key)
+    if not key_by_link:
+        return {}
+
+    # key -> {원본 이슈 id: 겹친 링크 수}, 원본 이슈 id -> (카테고리, 마지막으로 본 시각)
+    shared: dict[str, dict[str, int]] = {}
+    source_info: dict[str, tuple[str, datetime]] = {}
+    all_links = list(key_by_link)
+    chunk = 500  # SQLite 변수 개수 제한을 넘지 않게 나눠서 조회
+    for i in range(0, len(all_links), chunk):
+        part = all_links[i : i + chunk]
+        rows = session.exec(
+            select(Article.link, Issue.id, Issue.category, Issue.last_seen_at)
+            .join(Issue, Article.issue_id == Issue.id)
+            .where(Article.link.in_(part), Issue.article_count >= min_source_articles)  # type: ignore[attr-defined]
+        ).all()
+        for link, issue_id, issue_category, last_seen in rows:
+            source_info[issue_id] = (issue_category, last_seen)
+            for key in key_by_link[link]:
+                counts = shared.setdefault(key, {})
+                counts[issue_id] = counts.get(issue_id, 0) + 1
+
+    result: dict[str, str] = {}
+    for key, counts in shared.items():
+        total = len(set(l for l in links_by_key[key] if l))
+        best_id = max(counts, key=lambda sid: (counts[sid], source_info[sid][1]))
+        if total and counts[best_id] / total >= min_overlap:
+            result[key] = source_info[best_id][0]
+    return result
 
 
 def persist_issues(session: Session, clusters_by_id: dict[str, dict]) -> None:
