@@ -43,3 +43,5 @@
 3. `sudo systemctl daemon-reload && sudo systemctl restart newstrend-api` (재시작 8~10분, 앱엔 점검 안내가 나감).
 4. 몇 시간 뒤 Console 사용량에서 새 키 4개에 호출이 찍히는지, 예전 `…IAAA` 키의 이슈팝 호출이 0이 됐는지 확인.
 5. 확인되면 `env.conf`의 예전 `ANTHROPIC_API_KEY`/`ANTHROPIC_TRANSLATE_API_KEY` 줄을 지운다(`…IAAA`는 Side Quest가 쓰니 폐기하지 않음).
+
+- 2026-10-21: 이슈팝 서버의 예전 두 줄을 지우고 재시작함. 지금 `env.conf`엔 `ANTHROPIC_KEY_*` 4줄만 있음(코드의 공용 키 폴백은 그대로지만 쓸 일 없음).
