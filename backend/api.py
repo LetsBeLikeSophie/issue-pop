@@ -33,7 +33,7 @@ import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -824,6 +824,29 @@ class ArticleOut(BaseModel):
     image: str | None = None
 
 
+# 2026-10-20: "속보" 배지. 제목 앞에 "[속보]"가 붙은 기사가 최근(6시간 이내)에 있으면 그 이슈에 배지를 붙임.
+# 카테고리가 아니라 배지인 이유: 속보는 주제가 아니라 보도 방식이라 정치/사회/경제 어디에나 걸침. 괄호 태그만 인정함
+# ("속보다" 같은 일반 단어 제외). 발행 시각이 없거나 읽을 수 없는 기사는 얼마나 오래됐는지 몰라서 안 셈.
+_BREAKING_TAG_RE = re.compile(r"[\[\(]\s*속보\s*[\]\)]")
+BREAKING_MAX_AGE = timedelta(hours=6)
+
+
+def _is_breaking(c: dict, now: datetime | None = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    for a in c.get("articles", []):
+        if not _BREAKING_TAG_RE.search(a.get("title") or ""):
+            continue
+        try:
+            published = datetime.fromisoformat(a.get("published") or "")
+        except ValueError:
+            continue
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        if timedelta(0) <= now - published <= BREAKING_MAX_AGE:
+            return True
+    return False
+
+
 class IssueSummary(BaseModel):
     id: str
     keyword: str
@@ -842,6 +865,8 @@ class IssueSummary(BaseModel):
     # None. surge일 땐 trend_delta가 늘어난 기사 수. _annotate_trends 참고.
     trend: str | None = None
     trend_delta: int | None = None
+    # 2026-10-20: 최근 6시간 안에 "[속보]" 기사가 있으면 True (_is_breaking 참고). 앱이 빨간 "속보" 배지로 보여줌.
+    breaking: bool = False
 
 
 class IssueDetail(IssueSummary):
@@ -861,6 +886,7 @@ def _to_summary(issue_id: str, c: dict) -> IssueSummary:
         first_seen_at=c.get("first_seen_at"),
         trend=c.get("trend"),
         trend_delta=c.get("trend_delta"),
+        breaking=_is_breaking(c),
     )
 
 

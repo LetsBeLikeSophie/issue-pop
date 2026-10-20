@@ -20,6 +20,7 @@ Map<String, dynamic> _issue(String id, String keyword, int articles) => {
       'first_seen_at': null,
       'trend': 'surge',
       'trend_delta': 5,
+      'breaking': true,
       'outlets': [
         {'outlet': '연합뉴스', 'count': 1},
       ],
@@ -50,6 +51,7 @@ void main() {
     expect(first.single.keyword, '추미애');
     expect(first.single.trend, 'surge');
     expect(first.single.trendDelta, 5);
+    expect(first.single.breaking, isTrue);
     expect(OfflineCache.staleSince.value, isNull);
 
     // 저장(비동기)이 끝날 때까지 한 박자 기다림

@@ -221,6 +221,9 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                                 spacing: 7,
                                 runSpacing: 2,
                                 children: [
+                                  // 속보 배지는 키워드 앞에 둬서 제일 먼저 눈에 띄게 함. 저장한 이슈(보관함)는 몇 시간 뒤엔
+                                  // 속보가 아니라서 안 보여줌.
+                                  if (issue.breaking && !widget.archiveMode) const _BreakingBadge(),
                                   Text(
                                     keywords.first,
                                     style: AppTypography.serif(
@@ -336,6 +339,24 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
           ),
         );
       },
+    );
+  }
+}
+
+/// 2026-10-20: 최근 6시간 안에 "[속보]" 기사가 나온 이슈. NEW/급상승(옅은 배경)과 달리 진한 빨강 바탕에 흰 글자로
+/// 한눈에 띄게 함.
+class _BreakingBadge extends StatelessWidget {
+  const _BreakingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: AppColors.breaking, borderRadius: BorderRadius.circular(4)),
+      child: const Text(
+        '속보',
+        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.3, height: 1.2),
+      ),
     );
   }
 }

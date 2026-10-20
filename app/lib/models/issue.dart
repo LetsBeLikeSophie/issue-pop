@@ -18,6 +18,10 @@ class IssueSummary {
   final String? trend;
   final int? trendDelta;
 
+  /// 2026-10-20: 최근 6시간 안에 "[속보]" 기사가 있는 이슈(서버 api.py `_is_breaking`). 카드에 빨간 "속보" 배지.
+  /// 예전 버전 서버/오프라인 캐시엔 없는 필드라 없으면 false.
+  final bool breaking;
+
   IssueSummary({
     required this.id,
     required this.keyword,
@@ -29,6 +33,7 @@ class IssueSummary {
     this.firstSeenAt,
     this.trend,
     this.trendDelta,
+    this.breaking = false,
   });
 
   factory IssueSummary.fromJson(Map<String, dynamic> json) => IssueSummary(
@@ -42,6 +47,7 @@ class IssueSummary {
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
         trend: json['trend'] as String?,
         trendDelta: json['trend_delta'] as int?,
+        breaking: json['breaking'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +61,7 @@ class IssueSummary {
         'first_seen_at': firstSeenAt?.toIso8601String(),
         'trend': trend,
         'trend_delta': trendDelta,
+        'breaking': breaking,
       };
 }
 
@@ -116,6 +123,7 @@ class IssueDetail extends IssueSummary {
     super.firstSeenAt,
     super.trend,
     super.trendDelta,
+    super.breaking,
     required this.outlets,
     required this.articles,
   });
@@ -131,6 +139,7 @@ class IssueDetail extends IssueSummary {
         firstSeenAt: json['first_seen_at'] == null ? null : DateTime.tryParse(json['first_seen_at'] as String),
         trend: json['trend'] as String?,
         trendDelta: json['trend_delta'] as int?,
+        breaking: json['breaking'] as bool? ?? false,
         outlets: (json['outlets'] as List)
             .map((e) => OutletBreakdown.fromJson(e as Map<String, dynamic>))
             .toList(),

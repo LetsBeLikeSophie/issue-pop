@@ -160,6 +160,10 @@ class AppColors {
   static Color get stockDown => _p.stockDown;
   static Color get stockDownSoft => _p.stockDownSoft;
 
+  /// 2026-10-20: "속보" 배지 색 — 카드의 다른 배지(NEW/급상승은 옅은 배경)와 확실히 구분되게 진한 빨강 바탕에
+  /// 흰 글자로 씀. 어느 테마 프리셋에서도 같게 보이도록 팔레트와 무관한 고정 색.
+  static const Color breaking = Color(0xFFD62828);
+
   // 구 이름 유지(위젯 코드 전반에서 참조) — 새 팔레트로 매핑.
   static Color get card => surface;
   static Color get inkMuted => inkSoft;
