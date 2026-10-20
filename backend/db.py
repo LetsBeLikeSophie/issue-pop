@@ -51,6 +51,10 @@ class Issue(SQLModel, table=True):
     outlet_count: int
     first_seen_at: datetime = Field(default_factory=now)
     last_seen_at: datetime = Field(default_factory=now)
+    # 2026-10-21: 이 category가 "AI가 확인한 분류"인지(키워드 캐시 적중 / LLM 응답 / 확인된 이슈에서 이어받음).
+    # False면 규칙 기반 폴백 값(기사 3건 미만이라 LLM을 건너뛰었거나, LLM 호출이 실패했을 때). 이어받기의 원본으로는
+    # True인 것만 씀 — 안 그러면 규칙 기반의 어색한 분류가 기사 겹침을 타고 며칠씩 이어짐(find_inherited_categories).
+    category_verified: bool = Field(default=False)
 
     @property
     def keywords(self) -> list[str]:
@@ -432,6 +436,29 @@ def _migrate_table_columns(table: str, additions: dict[str, str]) -> None:
         conn.commit()
 
 
+def _migrate_issue_category_verified() -> None:
+    """issues.category_verified 컬럼을 처음 추가할 때 한 번만: 이미 저장된 이슈 중 키워드 조합이 CategoryCache에
+    있는 것(= LLM이 직접 답한 값)만 확인된 걸로 표시하고 나머지는 미확인으로 둠. 이어받기가 도입된 뒤로 저장된
+    값에는 규칙 기반 값이 섞여 있을 수 있어서 보수적으로 잡음(미확인 원본은 이어받기에 안 쓰이고, 겹치는 새 이슈는
+    LLM이 다시 분류하면서 확인됨)."""
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(issues)").fetchall()}
+        if "category_verified" in existing:
+            return
+        conn.exec_driver_sql("ALTER TABLE issues ADD COLUMN category_verified BOOLEAN NOT NULL DEFAULT 0")
+        cached = {row[0] for row in conn.exec_driver_sql("SELECT keyword_key FROM category_cache").fetchall()}
+        verified_ids = [
+            row[0]
+            for row in conn.exec_driver_sql("SELECT id, keywords_json FROM issues").fetchall()
+            if "|".join(json.loads(row[1])) in cached
+        ]
+        for i in range(0, len(verified_ids), 500):
+            part = verified_ids[i : i + 500]
+            marks = ",".join("?" * len(part))
+            conn.exec_driver_sql(f"UPDATE issues SET category_verified = 1 WHERE id IN ({marks})", tuple(part))
+        conn.commit()
+
+
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
     _migrate_devices_table()
@@ -439,6 +466,7 @@ def init_db() -> None:
     # 이후에 추가함 — 이미 그 테이블이 있는 서버엔 마찬가지로 안 채워짐.
     _migrate_table_columns("cluster_audit_findings", {"suggested_fix": "TEXT NOT NULL DEFAULT ''"})
     _migrate_table_columns("feedback", {"contact_email": "TEXT"})
+    _migrate_issue_category_verified()
     # 2026-10-20: 이미 있는 articles 테이블엔 새 인덱스가 안 생겨서(create_all은 테이블이 있으면 건너뜀) 직접 만듦.
     # 이름은 SQLModel이 index=True로 만드는 기본 이름과 같게 해서 새 DB와도 안 겹침.
     with engine.connect() as conn:
@@ -464,8 +492,8 @@ def find_inherited_categories(
     기사 절반 이상 겹치고 그 중 90%는 분류가 같았음).
 
     - links_by_key: {키: 이 이슈의 기사 링크 목록}. 키는 호출부가 정함(클러스터 id 등).
-    - 원본 이슈는 기사가 min_source_articles건 이상인 것만 씀 — 작은 이슈는 LLM 없이 규칙 기반으로 분류한 값일
-      수 있어서, 그런 값이 LLM 분류를 대신하며 퍼지는 걸 막음.
+    - 원본 이슈는 기사가 min_source_articles건 이상이고 category_verified(AI가 확인한 분류)인 것만 씀 — 작은
+      이슈나 LLM 호출이 실패한 이슈의 규칙 기반 값이 LLM 분류를 대신하며 퍼지는 걸 막음.
     - 새 이슈 링크의 min_overlap(기본 절반) 이상이 같은 원본 이슈에 들어 있어야 인정. 여러 원본이 걸리면 겹침이
       가장 많은 것, 같으면 가장 최근에 본 것.
     - 겹치는 게 없는 키는 결과에서 빠짐(호출부가 LLM/규칙 기반으로 처리).
@@ -487,7 +515,11 @@ def find_inherited_categories(
         rows = session.exec(
             select(Article.link, Issue.id, Issue.category, Issue.last_seen_at)
             .join(Issue, Article.issue_id == Issue.id)
-            .where(Article.link.in_(part), Issue.article_count >= min_source_articles)  # type: ignore[attr-defined]
+            .where(
+                Article.link.in_(part),  # type: ignore[attr-defined]
+                Issue.article_count >= min_source_articles,
+                Issue.category_verified == True,  # noqa: E712
+            )
         ).all()
         for link, issue_id, issue_category, last_seen in rows:
             source_info[issue_id] = (issue_category, last_seen)
@@ -517,6 +549,10 @@ def persist_issues(session: Session, clusters_by_id: dict[str, dict]) -> None:
             existing.article_count = c["article_count"]
             existing.outlet_count = c["outlet_count"]
             existing.last_seen_at = ts
+            # 예전엔 규칙 기반 값이었는데 이번에 AI가 확인한 값을 받았으면(LLM이 복구됨 등) 분류를 올려줌
+            if c.get("category_verified") and not existing.category_verified:
+                existing.category = c["category"]
+                existing.category_verified = True
             session.add(existing)
             continue
 
@@ -526,6 +562,7 @@ def persist_issues(session: Session, clusters_by_id: dict[str, dict]) -> None:
                 keyword=c["keyword"],
                 keywords_json=json.dumps(c["keywords"], ensure_ascii=False),
                 category=c["category"],
+                category_verified=bool(c.get("category_verified", False)),
                 representative_title=c["representative_title"],
                 article_count=c["article_count"],
                 outlet_count=c["outlet_count"],

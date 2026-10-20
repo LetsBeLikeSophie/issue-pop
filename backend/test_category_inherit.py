@@ -49,10 +49,10 @@ def cluster(cid, keywords, link_list, cat="사회"):
     }
 
 
-def store(cid, kw, link_list, cat):
+def store(cid, kw, link_list, cat, verified=True):
     with db.get_session() as s:
         s.add(db.Issue(id=cid, keyword=kw, keywords_json=f'["{kw}"]', category=cat, representative_title="t",
-                       article_count=len(link_list), outlet_count=2))
+                       article_count=len(link_list), outlet_count=2, category_verified=verified))
         for l in link_list:
             s.add(db.Article(issue_id=cid, outlet="A", title="t", link=l))
         s.commit()
@@ -100,6 +100,54 @@ with db.get_session() as s:
     got = db.find_inherited_categories(s, {"k": links("mix", 3)})
     assert got == {"k": "경제"}, got
     assert db.find_inherited_categories(s, {"k": []}) == {}
+
+# AI가 확인하지 않은(규칙 기반) 큰 원본은 이어받기에 안 씀 → 겹쳐도 LLM에 물음
+store("old_rule", "자동차", links("rule", 4), "스포츠", verified=False)
+calls.clear()
+c6 = cluster("n6", ["자동차", "전시"], links("rule", 4), cat="스포츠")
+api._classify_categories({"n6": c6})
+assert calls == [["자동차", "전시"]] and c6["category"] == "경제", (calls, c6["category"])
+assert c6["category_verified"] is True
+
+# 표시: 캐시/LLM/이어받기는 True, 규칙 기반으로 남은 작은 이슈는 False
+assert c1["category_verified"] is True and c5["category_verified"] is True
+assert c4.get("category_verified") is not True
+
+# 저장: 새 이슈는 표시를 그대로 저장하고, 미확인이던 기존 이슈가 확인된 값을 받으면 분류를 올려줌
+with db.get_session() as s:
+    db.persist_issues(s, {"n6": c6, "n4": c4})
+    assert s.get(db.Issue, "n6").category_verified is True
+    assert s.get(db.Issue, "n4").category_verified is False
+    c4b = dict(c4, category="문화", category_verified=True)
+    db.persist_issues(s, {"n4": c4b})
+    s.expire_all()
+    got = s.get(db.Issue, "n4")
+    assert got.category == "문화" and got.category_verified is True
+    # 이미 확인된 이슈는 다른 값이 와도 안 덮어씀
+    db.persist_issues(s, {"n4": dict(c4, category="사회", category_verified=True)})
+    s.expire_all()
+    assert s.get(db.Issue, "n4").category == "문화"
+
+# 마이그레이션: 컬럼이 없는 예전 DB → 키워드가 캐시에 있는 이슈만 확인된 걸로 표시
+old_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+old_tmp.close()
+real_engine = db.engine
+db.engine = create_engine(f"sqlite:///{old_tmp.name}")
+with db.engine.connect() as conn:
+    conn.exec_driver_sql("CREATE TABLE issues (id TEXT PRIMARY KEY, keyword TEXT, keywords_json TEXT, category TEXT, "
+                         "representative_title TEXT, article_count INT, outlet_count INT, first_seen_at TEXT, last_seen_at TEXT)")
+    conn.exec_driver_sql("CREATE TABLE category_cache (keyword_key TEXT PRIMARY KEY, category TEXT, created_at TEXT)")
+    conn.exec_driver_sql("INSERT INTO category_cache VALUES ('환율|상승', '경제', '2026-10-20')")
+    for iid, kws in (("a", '["환율", "상승"]'), ("b", '["날씨"]')):
+        conn.exec_driver_sql("INSERT INTO issues VALUES (?, 'k', ?, '경제', 't', 5, 2, '2026-10-20', '2026-10-20')", (iid, kws))
+    conn.commit()
+db._migrate_issue_category_verified()
+db._migrate_issue_category_verified()  # 두 번째는 아무것도 안 함
+with db.engine.connect() as conn:
+    flags = dict(conn.exec_driver_sql("SELECT id, category_verified FROM issues").fetchall())
+assert flags == {"a": 1, "b": 0}, flags
+db.engine.dispose()
+db.engine = real_engine
 
 # 클러스터 감사는 큰 이슈만 봄
 api._cache.clear()

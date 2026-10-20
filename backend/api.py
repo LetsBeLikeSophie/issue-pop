@@ -1576,6 +1576,7 @@ def _classify_categories(clusters_by_id: dict) -> None:
             cached = session.get(db.CategoryCache, keyword_key)
             if cached is not None:
                 cluster["category"] = cached.category
+                cluster["category_verified"] = True
             else:
                 pending.append((keyword_key, cluster))
 
@@ -1589,6 +1590,7 @@ def _classify_categories(clusters_by_id: dict) -> None:
             inherited_category = inherited.get(cluster.get("id"))
             if inherited_category is not None:
                 cluster["category"] = inherited_category
+                cluster["category_verified"] = True
             elif cluster.get("article_count", 0) >= LLM_MIN_ARTICLES:
                 to_classify.append((keyword_key, cluster))
             # 그 외(새 이슈인데 기사 3건 미만)는 clustering.py가 매긴 규칙 기반 분류를 그대로 둠
@@ -1619,6 +1621,7 @@ def _classify_categories(clusters_by_id: dict) -> None:
     for keyword_key, cluster in to_classify:
         if keyword_key in results:
             cluster["category"] = results[keyword_key]
+            cluster["category_verified"] = True
 
     with db.get_session() as session:
         for keyword_key, llm_category in results.items():
