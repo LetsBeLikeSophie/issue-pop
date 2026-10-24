@@ -21,6 +21,10 @@ class DeviceRegistry {
   static const _tokenKey = 'device_push_token_v1';
   static const _idKey = 'device_id_v1';
 
+  /// 2026-10-23: 서버가 발급한 기기 비밀값(기기 번호만으로 남의 설정을 못 보게 함). Android 홈 화면 위젯도 같은 값을
+  /// 읽어서(StockWidgetData.kt의 FLUTTER_DEVICE_SECRET_KEY) 서버에 보내므로 키 이름을 바꾸면 거기도 같이 바꿔야 함.
+  static const _secretKey = 'device_secret_v1';
+
   /// 랜덤 폴백 토큰은 항상 이 길이(24자 hex) — 진짜 FCM 토큰은
   /// 훨씬 길어서(보통 140자 이상) 구분에 씀.
   static const _fallbackTokenLength = 24;
@@ -37,12 +41,22 @@ class DeviceRegistry {
 
   Future<int> _deviceId() => _deviceIdFuture ??= _resolveDeviceId();
 
+  /// 테스트에서 앱을 새로 켠 것처럼 만들려고(정적 캐시 초기화).
+  static void resetForTest() {
+    _deviceIdFuture = null;
+    ApiClient.deviceSecret = null;
+  }
+
   Future<int> _resolveDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getInt(_idKey);
     if (cached != null) {
-      unawaited(_maybeUpgradeToken(prefs, cached));
-      return cached;
+      ApiClient.deviceSecret = prefs.getString(_secretKey);
+      // 비밀값 도입 전에 등록한 기기: 저장된 push_token으로 한 번 넘겨받음(서버가 push_token을 아는 쪽에게만 줌).
+      // 실패(오프라인 등)하면 그냥 넘어가고 다음 실행 때 다시 시도 — 서버도 아직 안 잠겼으니 그동안은 예전처럼 동작함.
+      final id = ApiClient.deviceSecret == null ? await _claimExisting(prefs, cached) : cached;
+      unawaited(_maybeUpgradeToken(prefs, id));
+      return id;
     }
 
     var token = prefs.getString(_tokenKey);
@@ -52,9 +66,31 @@ class DeviceRegistry {
       token = await getFcmTokenIfAllowed() ?? _randomToken();
       await prefs.setString(_tokenKey, token);
     }
-    final id = await api.registerDevice(token);
+    final registration = await api.registerDevice(token);
+    await _saveRegistration(prefs, registration.id, registration.secret);
+    return registration.id;
+  }
+
+  Future<void> _saveRegistration(SharedPreferences prefs, int id, String? secret) async {
     await prefs.setInt(_idKey, id);
-    return id;
+    if (secret != null) {
+      await prefs.setString(_secretKey, secret);
+      ApiClient.deviceSecret = secret;
+    }
+  }
+
+  /// 2026-10-23: 이미 등록돼 있던 기기가 앱 업데이트 후 처음으로 비밀값을 받아옴. 서버가 같은 push_token을 같은 기기 번호로
+  /// 돌려주는 게 정상. 번호가 다르게 오면(서버에서 정리됐다 다시 만들어진 경우) 서버 쪽 번호를 따라감.
+  Future<int> _claimExisting(SharedPreferences prefs, int cachedId) async {
+    final token = prefs.getString(_tokenKey);
+    if (token == null) return cachedId;
+    try {
+      final registration = await api.registerDevice(token).timeout(const Duration(seconds: 8));
+      await _saveRegistration(prefs, registration.id, registration.secret);
+      return registration.id;
+    } catch (_) {
+      return cachedId;
+    }
   }
 
   /// 2026-09-27: 서비스 워커가 오리진 루트에 없어서(/app/ 밑에만 있어서)

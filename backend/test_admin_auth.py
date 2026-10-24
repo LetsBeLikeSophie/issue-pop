@@ -50,7 +50,6 @@ PROTECTED = [
     ("get", "/admin/cluster-audit/findings"),
     ("put", "/admin/cluster-audit/findings/1"),
     ("get", "/feedback"),
-    ("get", "/feedback/view"),
 ]
 for method, path in PROTECTED:
     kwargs = {"json": {"summary_text": "x"}} if path.endswith("/summary") else {}
@@ -70,8 +69,8 @@ assert "refresh" in calls and "digest" in calls and "wod" in calls
 for path in ("/health", "/trending", "/categories", "/stats"):
     assert client.get(path).status_code == 200, path
 
-# 문서 페이지(전체 엔드포인트 목록)는 꺼져 있음
-for path in ("/docs", "/redoc", "/openapi.json"):
+# 문서 페이지(전체 엔드포인트 목록)는 꺼져 있고, 문의를 웹페이지로 보여주던 /feedback/view도 없어짐(메일로 받음)
+for path in ("/docs", "/redoc", "/openapi.json", "/feedback/view"):
     assert client.get(path).status_code == 404, path
 
 # 문의 길이 제한

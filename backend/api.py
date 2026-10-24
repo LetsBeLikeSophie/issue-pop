@@ -42,7 +42,7 @@ import firebase_admin
 import requests
 from firebase_admin import exceptions as fb_exceptions
 from firebase_admin import messaging
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -834,6 +834,29 @@ def _require_admin(credentials: HTTPBasicCredentials = Depends(_admin_security))
         raise unauthorized
 
 
+# 2026-10-23: 기기 비밀값. 기기 번호는 1, 2, 3…이라 번호만 알면 남의 관심 종목·알림 설정을 읽고 바꿀 수 있었음 → 서버가 기기마다
+# 비밀값을 발급하고(POST /devices, claim=true) 앱이 이후 요청마다 X-Device-Secret 헤더로 보냄. 서버엔 해시만 저장.
+# 예전 앱(비밀값을 모름)과 같이 돌아야 해서, 비밀값이 아직 없는 기기는 예전처럼 번호만으로 열어줌 — 앱이 업데이트돼 비밀값을
+# 받으면(그 기기의 push_token을 아는 쪽만 받을 수 있음) 그때부터 잠김.
+def _hash_device_secret(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def _authorize_device(device: db.Device, secret: str | None) -> None:
+    if device.secret_hash is None:
+        return
+    if not secret or not secrets.compare_digest(_hash_device_secret(secret), device.secret_hash):
+        raise HTTPException(status_code=403, detail="invalid device secret")
+
+
+def _device_for(session, device_id: int, secret: str | None, not_found: str = "device not registered") -> db.Device:
+    device = session.get(db.Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail=not_found)
+    _authorize_device(device, secret)
+    return device
+
+
 class OutletBreakdown(BaseModel):
     outlet: str
     count: int
@@ -1180,25 +1203,39 @@ class DeviceIn(BaseModel):
     push_token: str
 
 
+class RegisterDeviceIn(DeviceIn):
+    # 2026-10-23: true면 기기 비밀값을 발급해 응답(device_secret)으로 돌려줌. 새 앱만 보냄 — 예전 앱은 이 필드를 몰라서 비밀값을
+    # 받아도 쓸 줄 모르니, 예전 앱이 다시 등록하는 경우에 기기가 잠겨버리지 않게 claim일 때만 발급함.
+    claim: bool = False
+
+
 @app.post("/devices")
-async def register_device(body: DeviceIn):
+async def register_device(body: RegisterDeviceIn):
     """5번(커스텀 키워드 알림, 무료) — 로그인 없이도 알림 보내려면
-    최소한 이 기기가 어떤 push_token인지는 서버가 알아야 함."""
+    최소한 이 기기가 어떤 push_token인지는 서버가 알아야 함.
+
+    2026-10-23: claim=true면 이 기기의 비밀값을 새로 발급해 돌려줌. 이미 등록된 기기라도 같은 push_token을 아는 쪽(= 그 기기)만
+    받을 수 있고, 다시 받으면 이전 비밀값은 무효가 됨(앱이 비밀값을 잃어버린 경우의 복구 경로)."""
     with db.get_session() as session:
         from sqlmodel import select
 
-        existing = session.exec(select(db.Device).where(db.Device.push_token == body.push_token)).first()
-        if existing:
-            return {"device_id": existing.id}
-        device = db.Device(push_token=body.push_token)
-        session.add(device)
+        device = session.exec(select(db.Device).where(db.Device.push_token == body.push_token)).first()
+        if device is None:
+            device = db.Device(push_token=body.push_token)
+            session.add(device)
+        result: dict = {}
+        if body.claim:
+            secret = secrets.token_urlsafe(32)
+            device.secret_hash = _hash_device_secret(secret)
+            result["device_secret"] = secret
         session.commit()
         session.refresh(device)
-        return {"device_id": device.id}
+        result["device_id"] = device.id
+        return result
 
 
 @app.put("/devices/{device_id}/push-token")
-async def update_device_push_token(device_id: int, body: DeviceIn):
+async def update_device_push_token(device_id: int, body: DeviceIn, x_device_secret: str | None = Header(default=None)):
     """2026-09-27: 웹에서 서비스 워커가 오리진 루트가 아니라 /app/
     밑에만 있어서 진짜 FCM 토큰을 못 받아오고 기기 식별용 임시 랜덤
     토큰으로만 등록되던 버그를 고친 뒤, 이미 등록된 기기가 다음 접속
@@ -1208,9 +1245,7 @@ async def update_device_push_token(device_id: int, body: DeviceIn):
     with db.get_session() as session:
         from sqlmodel import select
 
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not found")
+        device = _device_for(session, device_id, x_device_secret, "device not found")
         if device.push_token != body.push_token:
             existing = session.exec(select(db.Device).where(db.Device.push_token == body.push_token)).first()
             if existing and existing.id != device_id:
@@ -1228,11 +1263,9 @@ class WatchIn(BaseModel):
 
 
 @app.post("/watches")
-async def add_watch(body: WatchIn):
+async def add_watch(body: WatchIn, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
-        device = session.get(db.Device, body.device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, body.device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         watch = db.DeviceKeywordWatch(device_id=body.device_id, keyword=body.keyword)
@@ -1243,10 +1276,11 @@ async def add_watch(body: WatchIn):
 
 
 @app.get("/watches/{device_id}")
-async def list_watches(device_id: int):
+async def list_watches(device_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
         from sqlmodel import select
 
+        _device_for(session, device_id, x_device_secret)
         watches = session.exec(
             select(db.DeviceKeywordWatch).where(db.DeviceKeywordWatch.device_id == device_id)
         ).all()
@@ -1254,10 +1288,11 @@ async def list_watches(device_id: int):
 
 
 @app.delete("/watches/{watch_id}")
-async def delete_watch(watch_id: int):
+async def delete_watch(watch_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
         watch = session.get(db.DeviceKeywordWatch, watch_id)
         if watch is not None:
+            _device_for(session, watch.device_id, x_device_secret)
             session.delete(watch)
             session.commit()
         return {"ok": True}
@@ -1274,7 +1309,7 @@ async def get_stock_catalog(response: Response):
 
 
 @app.get("/devices/{device_id}/stocks")
-async def list_stock_watches(device_id: int):
+async def list_stock_watches(device_id: int, x_device_secret: str | None = Header(default=None)):
     """6번(관심 종목/브랜드 뉴스, 2026-09-06 추가) — 이 기기가 등록한
     티커 목록 + 각 티커 최신 뉴스(캐시, 30분마다 갱신). 한 번도 등록한
     적 없으면 STARTER_TICKERS로 자동 시드함(_seed_stock_watches).
@@ -1283,9 +1318,7 @@ async def list_stock_watches(device_id: int):
     with db.get_session() as session:
         from sqlmodel import select
 
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         session.commit()
@@ -1352,7 +1385,7 @@ class StockWatchIn(BaseModel):
 
 
 @app.post("/stocks")
-async def add_stock_watch(body: StockWatchIn):
+async def add_stock_watch(body: StockWatchIn, x_device_secret: str | None = Header(default=None)):
     ticker = body.ticker.strip().upper()
     if not ticker:
         raise HTTPException(status_code=422, detail="ticker must not be empty")
@@ -1367,9 +1400,7 @@ async def add_stock_watch(body: StockWatchIn):
     with db.get_session() as session:
         from sqlmodel import select
 
-        device = session.get(db.Device, body.device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, body.device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         # 2026-09-06: 같은 티커를 두 번 추가하면 칩/카드가 중복으로 뜨는
@@ -1409,10 +1440,11 @@ async def add_stock_watch(body: StockWatchIn):
 
 
 @app.delete("/stocks/{watch_id}")
-async def delete_stock_watch(watch_id: int):
+async def delete_stock_watch(watch_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
         watch = session.get(db.DeviceStockWatch, watch_id)
         if watch is not None:
+            _device_for(session, watch.device_id, x_device_secret)
             session.delete(watch)
             session.commit()
         return {"ok": True}
@@ -1428,7 +1460,7 @@ class DigestIn(BaseModel):
 
 
 @app.put("/devices/{device_id}/digest")
-async def set_digest(device_id: int, body: DigestIn):
+async def set_digest(device_id: int, body: DigestIn, x_device_secret: str | None = Header(default=None)):
     """매일 정해진 시간에 오늘의 트렌드 요약을 푸시로 보내는 기능의 설정
     저장. 2026-09-20부터 실제 발송(FCM)도 됨 — 서버에
     GOOGLE_APPLICATION_CREDENTIALS(Firebase 서비스 계정 키)가 설정돼
@@ -1439,9 +1471,7 @@ async def set_digest(device_id: int, body: DigestIn):
     if not (0 <= body.minute <= 59):
         raise HTTPException(status_code=422, detail="minute must be 0-59")
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.digest_hour = body.hour
         device.digest_minute = body.minute
         device.last_active_at = db.now()
@@ -1451,11 +1481,9 @@ async def set_digest(device_id: int, body: DigestIn):
 
 
 @app.get("/devices/{device_id}/digest")
-async def get_digest(device_id: int):
+async def get_digest(device_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         session.commit()
@@ -1478,7 +1506,7 @@ def _keyword_alert_dict(device: db.Device) -> dict:
 
 
 @app.put("/devices/{device_id}/keyword-alert")
-async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
+async def set_keyword_alert(device_id: int, body: KeywordAlertIn, x_device_secret: str | None = Header(default=None)):
     """"관심 이슈 알림" — 이 기기가 등록한 관심 키워드와 매칭되는 새
     이슈가 뜨면 알림(word_of_day-alert와 같은 단계 구성).
     2026-09-26: 옵션만 많고 실제 발송이 없던 "실시간 트렌드 알림"(6개
@@ -1489,9 +1517,7 @@ async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
     if not (0 <= body.quiet_start <= 23) or not (0 <= body.quiet_end <= 23):
         raise HTTPException(status_code=422, detail="quiet hours must be 0-23")
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.keyword_alert_enabled = body.enabled
         device.keyword_alert_quiet_start = body.quiet_start
         device.keyword_alert_quiet_end = body.quiet_end
@@ -1502,11 +1528,9 @@ async def set_keyword_alert(device_id: int, body: KeywordAlertIn):
 
 
 @app.get("/devices/{device_id}/keyword-alert")
-async def get_keyword_alert(device_id: int):
+async def get_keyword_alert(device_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         session.commit()
@@ -1698,7 +1722,7 @@ def _word_of_day_alert_dict(device: db.Device) -> dict:
 
 
 @app.put("/devices/{device_id}/word-of-day-alert")
-async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
+async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn, x_device_secret: str | None = Header(default=None)):
     """오늘의 단어 알림 — 2026-09-26: "오늘의 이슈팝이랑 왜 시각을 못
     고르냐"는 피드백으로, 서버 전체 고정 9시에서 digest_hour와 같은
     기기별 시각 선택으로 바꿈."""
@@ -1707,9 +1731,7 @@ async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
     if not (0 <= body.minute <= 59):
         raise HTTPException(status_code=422, detail="minute must be 0-59")
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.word_of_day_enabled = body.enabled
         device.word_of_day_hour = body.hour
         device.word_of_day_minute = body.minute
@@ -1720,11 +1742,9 @@ async def set_word_of_day_alert(device_id: int, body: WordOfDayAlertIn):
 
 
 @app.get("/devices/{device_id}/word-of-day-alert")
-async def get_word_of_day_alert(device_id: int):
+async def get_word_of_day_alert(device_id: int, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
-        device = session.get(db.Device, device_id)
-        if device is None:
-            raise HTTPException(status_code=404, detail="device not registered")
+        device = _device_for(session, device_id, x_device_secret, "device not registered")
         device.last_active_at = db.now()
         session.add(device)
         session.commit()
@@ -1885,9 +1905,49 @@ class FeedbackIn(BaseModel):
     contact_email: str | None = Field(default=None, max_length=254)
 
 
+# 2026-10-23: 문의가 들어오면 개발자 메일로도 보냄(웹페이지로 열어보지 않아도 되게). 메일 서버 정보는 systemd env.conf의
+# FEEDBACK_SMTP_USER/FEEDBACK_SMTP_PASSWORD(+선택: _HOST/_PORT/FEEDBACK_MAIL_TO/FEEDBACK_MAIL_FROM)에만 둠. 설정이 없으면 메일은
+# 조용히 건너뛰고 DB 저장만 함(문의가 유실되지 않게). 메일 실패도 문의 접수 자체에는 영향 없음. 폭주 방지로 시간당 30통까지.
+_feedback_mail_times: list[float] = []
+
+
+def _send_feedback_email(feedback_id: int, message: str, contact_email: str | None, device_id: int | None) -> None:
+    import smtplib
+    from email.message import EmailMessage
+
+    user = os.environ.get("FEEDBACK_SMTP_USER")
+    password = os.environ.get("FEEDBACK_SMTP_PASSWORD")
+    if not user or not password:
+        return
+    nowt = time.time()
+    _feedback_mail_times[:] = [t for t in _feedback_mail_times if nowt - t < 3600]
+    if len(_feedback_mail_times) >= 30:
+        return
+    _feedback_mail_times.append(nowt)
+    try:
+        msg = EmailMessage()
+        first_line = " ".join(message.split())[:40]  # 줄바꿈을 없애 헤더 주입을 막음
+        msg["Subject"] = f"[이슈팝 문의 #{feedback_id}] {first_line}"
+        msg["From"] = os.environ.get("FEEDBACK_MAIL_FROM") or user
+        msg["To"] = os.environ.get("FEEDBACK_MAIL_TO") or "contact@issue-pop.com"
+        if contact_email:
+            msg["Reply-To"] = contact_email  # 답장 누르면 문의한 사람에게 바로 감
+        msg.set_content(
+            f"{message}\n\n---\n답장받을 이메일: {contact_email or '(입력 안 함)'}\n기기 번호: {device_id or '-'}\n문의 번호: {feedback_id}\n"
+        )
+        host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
+        port = int(os.environ.get("FEEDBACK_SMTP_PORT") or 587)
+        with smtplib.SMTP(host, port, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(user, password)
+            smtp.send_message(msg)
+    except Exception as e:  # noqa: BLE001 - 메일이 안 가도 문의는 DB에 있음
+        print(f"[feedback] 메일 발송 실패: {type(e).__name__}")
+
+
 @app.post("/feedback")
 @limiter.limit("5/hour")
-async def submit_feedback(request: Request, body: FeedbackIn):
+async def submit_feedback(request: Request, body: FeedbackIn, background_tasks: BackgroundTasks):
     """베타 "고객의 소리" — 답장 없는 일방향 제출. 로그인 없이도 보낼 수
     있음(device_id는 선택, 있으면 어느 기기에서 왔는지 참고용).
     2026-09-22: 설정 화면 "문의하기"가 mailto: 대신 이 엔드포인트를
@@ -1905,6 +1965,7 @@ async def submit_feedback(request: Request, body: FeedbackIn):
         session.add(fb)
         session.commit()
         session.refresh(fb)
+        background_tasks.add_task(_send_feedback_email, fb.id, message, contact_email or None, body.device_id)
         return {"id": fb.id, "created_at": fb.created_at}
 
 
@@ -2128,6 +2189,8 @@ async def privacy_policy():
   <ul>
     <li><b>Google Firebase Cloud Messaging</b> — 푸시 알림 발송 (수탁 정보:
     기기 푸시 토큰)</li>
+    <li><b>Google Gmail</b> — "문의하기"로 보낸 내용을 운영자 이메일로 전달
+    (수탁 정보: 문의 내용, 입력한 경우 답장받을 이메일)</li>
   </ul>
 
   <h2>5. 이용자의 권리</h2>
@@ -2149,68 +2212,6 @@ async def privacy_policy():
   <h2>7. 방침 변경</h2>
   <p>본 방침은 법령·서비스 변경에 따라 수정될 수 있으며, 변경 시 이
   페이지를 통해 공지합니다.</p>
-</body>
-</html>"""
-    return HTMLResponse(content=page_html)
-
-
-@app.get("/feedback/view", response_class=HTMLResponse)
-async def view_feedback(_: None = Depends(_require_admin)):
-    """브라우저로 바로 열어서 볼 수 있는 피드백 목록(최신순). 2026-09-22:
-    비밀 URL 방식(아는 사람만 열어봄)이던 걸 HTTP Basic 인증으로 바꿈 —
-    URL이 새어나가도 계정 없인 못 봄(_require_admin 참고)."""
-    with db.get_session() as session:
-        from sqlmodel import select
-
-        items = session.exec(select(db.Feedback).order_by(db.Feedback.created_at.desc())).all()
-
-    # SQLite는 timezone 정보 없이 저장해서 읽어오면 naive datetime이 됨
-    # (db.now()가 항상 UTC로 저장하니 그걸로 tag만 붙여서 KST로 변환).
-    def _kst(dt: datetime) -> str:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(KST).strftime("%Y-%m-%d %H:%M")
-
-    # 사용자가 직접 입력한 텍스트라 그대로 HTML에 꽂으면 XSS 위험이 있음
-    # — 반드시 이스케이프하고 넣음.
-    rows = "".join(
-        f"""<li class="row">
-            <div class="meta">
-                <span class="time">{_kst(f.created_at)}</span>
-                <span class="device">{'기기 #' + str(f.device_id) if f.device_id else '기기 정보 없음'}</span>
-            </div>
-            <p class="message">{html.escape(f.message)}</p>
-            {f'<p class="contact">답장: {html.escape(f.contact_email)}</p>' if f.contact_email else ''}
-        </li>"""
-        for f in items
-    )
-    empty = '<p class="empty">아직 들어온 의견이 없어요.</p>' if not items else ""
-
-    page_html = f"""<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<title>피드백 — 뉴스 트렌드</title>
-<style>
-  body {{ font-family: -apple-system, "Malgun Gothic", sans-serif; background: #EEF1EA;
-         color: #232A20; max-width: 640px; margin: 0 auto; padding: 24px 16px; }}
-  h1 {{ font-size: 18px; margin-bottom: 4px; }}
-  .count {{ color: #8B9280; font-size: 13px; margin-bottom: 20px; }}
-  ul {{ list-style: none; padding: 0; margin: 0; }}
-  .row {{ background: #fff; border: 1px solid #D7DBC9; border-radius: 10px;
-          padding: 14px; margin-bottom: 10px; }}
-  .meta {{ display: flex; justify-content: space-between; font-size: 11px;
-           color: #8B9280; margin-bottom: 6px; }}
-  .message {{ font-size: 14px; line-height: 1.5; white-space: pre-wrap; margin: 0; }}
-  .contact {{ font-size: 12px; color: #35503F; margin: 6px 0 0; font-weight: 600; }}
-  .empty {{ color: #8B9280; font-size: 13px; }}
-</style>
-</head>
-<body>
-  <h1>피드백함</h1>
-  <p class="count">총 {len(items)}건 · 최신순</p>
-  <ul>{rows}</ul>
-  {empty}
 </body>
 </html>"""
     return HTMLResponse(content=page_html)

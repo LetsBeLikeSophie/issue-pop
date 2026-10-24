@@ -107,6 +107,10 @@ class Device(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     push_token: str = Field(unique=True, index=True)
+    # 2026-10-23: 기기 비밀값의 SHA-256. 기기 번호(id)는 1, 2, 3…이라 추측할 수 있어서, 번호만으로는 남의 설정을 못 보게
+    # 앱이 요청마다 X-Device-Secret 헤더로 비밀값을 보내게 함. null이면 아직 비밀값을 안 받은 옛 기기(예전 앱 버전) —
+    # 이 경우만 예전처럼 번호만으로 열림(api._authorize_device 참고).
+    secret_hash: str | None = None
     digest_hour: int | None = None
     # 2026-09-27: 원래는 시(0~23)만 골랐는데, "지금 테스트해보게 분 단위로도
     # 되면 좋겠다"는 요청으로 분(0~59)도 같이 저장함 — digest_hour가
@@ -467,6 +471,7 @@ def init_db() -> None:
     _migrate_table_columns("cluster_audit_findings", {"suggested_fix": "TEXT NOT NULL DEFAULT ''"})
     _migrate_table_columns("feedback", {"contact_email": "TEXT"})
     _migrate_issue_category_verified()
+    _migrate_table_columns("devices", {"secret_hash": "TEXT"})
     # 2026-10-20: 이미 있는 articles 테이블엔 새 인덱스가 안 생겨서(create_all은 테이블이 있으면 건너뜀) 직접 만듦.
     # 이름은 SQLModel이 index=True로 만드는 기본 이름과 같게 해서 새 DB와도 안 겹침.
     with engine.connect() as conn:

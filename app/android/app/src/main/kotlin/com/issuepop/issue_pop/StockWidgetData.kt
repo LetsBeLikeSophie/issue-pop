@@ -32,6 +32,7 @@ object StockWidgetData {
   private const val PREFS = "stock_widget"
   private const val FLUTTER_PREFS = "FlutterSharedPreferences"
   private const val FLUTTER_DEVICE_ID_KEY = "flutter.device_id_v1" // lib/device_registry.dart의 _idKey
+  private const val FLUTTER_DEVICE_SECRET_KEY = "flutter.device_secret_v1" // lib/device_registry.dart의 _secretKey
 
   /** [quoteTime]: 이 시세가 거래된 시각(초, 서버가 Finnhub에서 받은 값) — 모르면 null. */
   data class Watch(val ticker: String, val name: String, val price: Double?, val percent: Double?, val quoteTime: Long?)
@@ -50,6 +51,13 @@ object StockWidgetData {
     return (value as? Number)?.toLong()
   }
 
+  /**
+   * 2026-10-23: 기기 비밀값(앱이 서버에서 받아 Flutter SharedPreferences에 저장). 서버는 비밀값이 등록된 기기의 설정을
+   * 번호만으로는 안 열어줘서, 관심 종목을 받아올 때 같이 보내야 함. 아직 못 받았으면(앱 업데이트 직후 한 번도 안 열었음) null.
+   */
+  fun deviceSecret(context: Context): String? =
+      context.getSharedPreferences(FLUTTER_PREFS, Context.MODE_PRIVATE).all[FLUTTER_DEVICE_SECRET_KEY] as? String
+
   /** 앱(관심 종목 화면)이 정한 기기 id와 위젯에 보일 종목을 저장. tickers가 비면 기본(앞 3개). */
   fun saveConfig(context: Context, deviceId: Long?, tickers: List<String>) {
     val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -59,12 +67,13 @@ object StockWidgetData {
   }
 
   /** 위젯들이 같이 쓰는 서버 GET(타임아웃 4초/5초). 실패하면 예외. */
-  internal fun httpGet(path: String): String {
+  internal fun httpGet(path: String, deviceSecret: String? = null): String {
     val conn = URL("$API_BASE$path").openConnection() as HttpURLConnection
     try {
       conn.connectTimeout = 4000
       conn.readTimeout = 5000
       conn.setRequestProperty("Accept", "application/json")
+      if (deviceSecret != null) conn.setRequestProperty("X-Device-Secret", deviceSecret)
       if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
       return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
     } finally {
@@ -73,8 +82,8 @@ object StockWidgetData {
   }
 
   /** 이 기기에 설정된 관심 종목 전체(가격 포함). 실패하면 예외 — 호출하는 쪽이 잡음. */
-  fun fetchWatches(deviceId: Long): List<Watch> {
-    val arr = JSONArray(httpGet("/devices/$deviceId/stocks"))
+  fun fetchWatches(deviceId: Long, deviceSecret: String? = null): List<Watch> {
+    val arr = JSONArray(httpGet("/devices/$deviceId/stocks", deviceSecret))
     return (0 until arr.length()).map { i ->
       val o = arr.getJSONObject(i)
       val q = o.optJSONObject("quote")
@@ -287,7 +296,7 @@ object StockWidgetData {
       return
     }
     try {
-      val watches = fetchWatches(deviceId)
+      val watches = fetchWatches(deviceId, deviceSecret(context))
       // 환율은 못 받아도 달러 시세는 보여줌(이전에 받아둔 환율이 있으면 그걸로).
       val rate = fetchUsdKrw() ?: loadCache(context, appWidgetId)?.second
       render(context, manager, appWidgetId, Snapshot(watches, rate))

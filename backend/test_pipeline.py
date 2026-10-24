@@ -150,6 +150,17 @@ def test_noun_ngram_rules():
     # 띄어 쓴 일반 관형사/대명사는 이름으로 안 붙임
     assert not extract_fused_syllable_chains("이 사건은 양 팀의 문제다")
 
+    # 2026-10-23: 본문 중간의 기자 서명("이홍석기자", "강윤중 선임기자")은 키워드 후보에서 뺌. 서명이 아닌 낱말은 그대로.
+    sig = extract_noun_ngrams(clean_title("인천=이홍석기자 인천 섬 지역 하늘길 열렸다"))
+    assert not any("이홍석" in c or "기자" in c for c in sig) and "하늘길" in sig, sig
+    sig2 = extract_noun_ngrams(clean_title("강윤중 선임기자서울고법 형사"))
+    assert not any("강윤중" in c or "선임" in c for c in sig2) and "서울고법" in sig2, sig2
+    assert "청와대" in extract_noun_ngrams(clean_title("청와대 기자단 앞에서 발언"))
+    assert "기자간담회" in extract_noun_ngrams(clean_title("삼성전자 기자간담회 개최"))
+    # 서명 앞에 우연히 붙은 외국 인명은 안 지움
+    foreign = extract_noun_ngrams(clean_title("축구 전설 디디에 드로그바 김상훈 특파원 = 코트디부아르"))
+    assert "디디에" in foreign and "드로그바" in foreign and not any("김상훈" in c for c in foreign), foreign
+
     print("OK: 키워드 이어붙이기 규칙 (서 줄임 조사 / 띄어 쓴 한 글자 / 영문 단위 / 종합N보)")
 
 

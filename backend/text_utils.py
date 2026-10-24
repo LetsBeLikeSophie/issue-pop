@@ -217,6 +217,55 @@ def _noun_form(t) -> str:
     return _strip_locative_seo(t.form) if getattr(t, "oov", False) else t.form
 
 
+_REPORTER_TITLES = {"기자", "특파원"}
+_REPORTER_RANKS = {"선임", "수습", "편집", "사진", "논설", "대기자", "정치부", "경제부", "사회부"}
+# 직함 뒤에 이런 말이 붙으면 서명이 아니라 일반 낱말("기자단", "기자들", "기자회견"…)이라 건드리지 않음.
+_NOT_BYLINE_NEXT = {"단", "들", "회견", "간담회", "석", "실", "협회", "생", "님", "출신", "직"}
+
+
+def _reporter_byline_indices(tokens, runs: list[list[int]]) -> set[int]:
+    """"〇〇〇 기자"처럼 사람 이름 바로 뒤에 기자/특파원이 오는 서명의 토큰 인덱스(이름 + 직함)를 돌려줌.
+    이름은 한국 성으로 시작하는 2~4글자 고유명사(NNP)이거나 한 글자씩 쪼개져 이어붙여진 인명(runs)이어야 하고 공백이 한 칸
+    이하로 붙어 있어야 함 — "디디에 드로그바"처럼 서명 앞에 우연히 붙은 외국 인명·지명은 건드리지 않으려고. "청와대 기자단"처럼
+    직함 뒤에 다른 말이 붙는 일반 낱말도 제외함."""
+    run_by_idx = {i: run for run in runs for i in run}
+    found: set[int] = set()
+    for i, t in enumerate(tokens):
+        if t.form not in _REPORTER_TITLES or t.tag not in ("NNG", "NNP"):
+            continue
+        if i + 1 < len(tokens):
+            nxt = tokens[i + 1]
+            if nxt.start == t.start + t.len and (
+                nxt.form in _NOT_BYLINE_NEXT or nxt.tag in ("XSN", "XSV", "XSA") or nxt.tag.startswith("J")
+            ):
+                continue  # "기자단"/"기자들"/"기자는" — 서명이 아니라 일반 낱말·문장 속 쓰임
+        members = [i]
+        j = i - 1
+        if j >= 0 and tokens[j].form in _REPORTER_RANKS and tokens[j + 1].start - (tokens[j].start + tokens[j].len) <= 1:
+            members.append(j)
+            j -= 1
+        names = 0
+        while j >= 0 and names < 3:
+            tj = tokens[j]
+            if tokens[j + 1].start - (tj.start + tj.len) > 1:
+                break
+            if j in run_by_idx:
+                run = run_by_idx[j]
+                if run[-1] != j or tokens[run[0]].form not in _SURNAMES:
+                    break
+                members.extend(run)
+                j = run[0] - 1
+            elif tj.tag == "NNP" and 2 <= len(tj.form) <= 4 and tj.form[0] in _SURNAMES:
+                members.append(j)
+                j -= 1
+            else:
+                break
+            names += 1
+        if names:
+            found.update(members)
+    return found
+
+
 def extract_noun_ngrams(text: str) -> list[str]:
     """명사 유니그램 + 바로 붙어있는 명사쌍(바이그램) + 숫자·단위 조합.
 
@@ -267,9 +316,15 @@ def extract_noun_ngrams(text: str) -> list[str]:
     # ("홍원")은 후보에서 뺌 — 조각이 전체 이름보다 코퍼스에서 드물어서 점수가 더 높게 나와, 키워드가 "양홍원"이 아니라
     # "홍원"으로 뽑히던 문제(실제 라이브 데이터로 확인).
     chain_of: dict[int, int] = {}
-    for run_no, run in enumerate(_fused_syllable_runs(tokens)):
+    _runs = _fused_syllable_runs(tokens)
+    for run_no, run in enumerate(_runs):
         for i in run:
             chain_of[i] = run_no
+
+    # 2026-10-23: 기사 본문 중간에 붙은 기자 서명("이홍석기자", "성동훈 기자", "강윤중 선임기자")의 기자 이름이 키워드가 되던
+    # 문제("인천 · 이홍석") — 독자에게 의미 없는 키워드. 사람 이름 바로 뒤의 "기자"/"특파원"이면 그 이름과 직함을 후보에서 뺌.
+    byline_idx = _reporter_byline_indices(tokens, _runs)
+    noun_idx = [i for i in noun_idx if i not in byline_idx]
 
     result = [fused.get(i, _noun_form(tokens[i])) for i in noun_idx if i not in chain_of]
 

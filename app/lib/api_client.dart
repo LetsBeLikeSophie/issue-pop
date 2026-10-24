@@ -55,6 +55,14 @@ class ApiClient {
 
   final String baseUrl;
 
+  /// 2026-10-23: 이 기기의 비밀값(서버가 POST /devices에서 발급). 기기 번호만으로는 남의 설정을 못 보게, 기기별 요청
+  /// (알림 설정·관심 키워드·관심 종목)마다 X-Device-Secret 헤더로 실어 보냄. DeviceRegistry가 등록/불러오기 때 채움 —
+  /// 앱 전체에서 기기가 하나라 정적으로 둠. 아직 못 받았으면(옛 서버/업데이트 직후 오프라인) 헤더 없이 보냄.
+  static String? deviceSecret;
+
+  Map<String, String> _dev([Map<String, String> extra = const {}]) =>
+      {...extra, 'X-Device-Secret': ?deviceSecret};
+
   /// 2026-08-24: 요약이 아니라 기사 목록까지 포함한 상세를 통째로 받음 —
   /// 카드를 펼칠 때마다 다시 호출하지 않고 이미 받아둔 데이터로 즉시
   /// 펼쳐지게 하려고(이슈판 프로토타입만큼 빠른 반응 속도를 위해).
@@ -184,23 +192,26 @@ class ApiClient {
 
   /// 로그인 없이 기기를 서버에 등록(다이제스트 알림 설정 등에 씀).
   /// 이미 등록된 push_token이면 서버가 기존 device_id를 그대로 돌려줌.
-  Future<int> registerDevice(String pushToken) async {
+  ///
+  /// 2026-10-23: claim=true로 보내서 서버가 이 기기의 비밀값(device_secret)을 함께 발급함 — 이미 등록된 옛 기기도 같은
+  /// push_token을 아는 이 앱만 비밀값을 받아서 그때부터 잠김. 옛 서버가 비밀값을 안 주면 secret은 null.
+  Future<({int id, String? secret})> registerDevice(String pushToken) async {
     final uri = Uri.parse('$baseUrl/devices');
     final res = await _client.post(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'push_token': pushToken}),
+      body: jsonEncode({'push_token': pushToken, 'claim': true}),
     );
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    return map['device_id'] as int;
+    return (id: map['device_id'] as int, secret: map['device_secret'] as String?);
   }
 
   Future<void> updateDevicePushToken(int deviceId, String pushToken) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/push-token');
     final res = await _client.put(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({'push_token': pushToken}),
     );
     _checkOk(res);
@@ -208,7 +219,7 @@ class ApiClient {
 
   Future<DigestSettings> getDigest(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
-    final res = await _client.get(uri);
+    final res = await _client.get(uri, headers: _dev());
     _checkOk(res);
     return DigestSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
@@ -217,7 +228,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/digest');
     final res = await _client.put(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({'hour': settings.hour, 'minute': settings.minute}),
     );
     _checkOk(res);
@@ -247,7 +258,7 @@ class ApiClient {
   /// digest_hour와 완전히 같은 패턴(서버 고정 9시 → 기기별 선택).
   Future<WordOfDayAlertSettings> getWordOfDayAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
-    final res = await _client.get(uri);
+    final res = await _client.get(uri, headers: _dev());
     _checkOk(res);
     return WordOfDayAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
@@ -256,7 +267,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
     final res = await _client.put(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({'enabled': settings.enabled, 'hour': settings.hour, 'minute': settings.minute}),
     );
     _checkOk(res);
@@ -275,7 +286,7 @@ class ApiClient {
   /// 알림"의 6개 옵션 중 유일하게 실제로 쓸모 있던 게 이거라 다시 붙임.
   Future<KeywordAlertSettings> getKeywordAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
-    final res = await _client.get(uri);
+    final res = await _client.get(uri, headers: _dev());
     _checkOk(res);
     return KeywordAlertSettings.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
   }
@@ -284,7 +295,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/keyword-alert');
     final res = await _client.put(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({
         'enabled': settings.enabled,
         'quiet_start': settings.quietStart,
@@ -316,7 +327,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/watches');
     final res = await _client.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({'device_id': deviceId, 'keyword': keyword}),
     );
     _checkOk(res);
@@ -324,7 +335,7 @@ class ApiClient {
 
   Future<List<KeywordWatch>> listWatches(int deviceId) async {
     final uri = Uri.parse('$baseUrl/watches/$deviceId');
-    final res = await _client.get(uri);
+    final res = await _client.get(uri, headers: _dev());
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => KeywordWatch.fromJson(e as Map<String, dynamic>)).toList();
@@ -332,7 +343,7 @@ class ApiClient {
 
   Future<void> deleteWatch(int watchId) async {
     final uri = Uri.parse('$baseUrl/watches/$watchId');
-    final res = await _client.delete(uri);
+    final res = await _client.delete(uri, headers: _dev());
     _checkOk(res);
   }
 
@@ -376,7 +387,7 @@ class ApiClient {
   /// 같은 이유) 펼칠 때 추가 호출이 필요 없음.
   Future<List<StockWatch>> listStockWatches(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/stocks');
-    final res = await _client.get(uri);
+    final res = await _client.get(uri, headers: _dev());
     _checkOk(res);
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list.map((e) => StockWatch.fromJson(e as Map<String, dynamic>)).toList();
@@ -386,7 +397,7 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/stocks');
     final res = await _client.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: _dev({'Content-Type': 'application/json'}),
       body: jsonEncode({'device_id': deviceId, 'ticker': ticker}),
     );
     _checkOk(res);
@@ -395,7 +406,7 @@ class ApiClient {
 
   Future<void> deleteStockWatch(int watchId) async {
     final uri = Uri.parse('$baseUrl/stocks/$watchId');
-    final res = await _client.delete(uri);
+    final res = await _client.delete(uri, headers: _dev());
     _checkOk(res);
   }
 
