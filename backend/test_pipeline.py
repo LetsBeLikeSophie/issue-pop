@@ -108,7 +108,7 @@ def test_keywords_are_short_and_on_topic():
 def test_noun_ngram_rules():
     """2026-10-15 실제 라이브 데이터에서 찾은 엉뚱한 키워드 패턴 회귀 테스트(text_utils.extract_noun_ngrams)."""
     from text_utils import extract_noun_ngrams
-    from text_utils import clean_title
+    from text_utils import clean_title, extract_fused_syllable_chains
 
     def grams(text: str) -> list[str]:
         return extract_noun_ngrams(clean_title(text))
@@ -142,6 +142,13 @@ def test_noun_ngram_rules():
 
     # "(종합2보)" 같은 갱신 표시는 제목에서 지움.
     assert "종합2보" not in clean_title("당국 금융사 침해사고 발생 총 16곳(종합2보)")
+
+    # 2026-10-23: "래퍼 양홍원…"에서 kiwi가 성 "양"을 관형사로 보고 "양/홍/원"으로 쪼개서 키워드가 "홍원"이 되던 문제 —
+    # 성이 관형사로 잡혀도 이름 앞에 붙이고, 이어붙인 이름의 조각("홍", "원", "홍원")은 후보에서 뺌.
+    name_cands = extract_noun_ngrams(clean_title("결혼 5일만에 불륜설 휩싸인 래퍼 양홍원…“모텔 갔지만 애정 행위 없었다” 해명"))
+    assert "양홍원" in name_cands and "홍원" not in name_cands and "홍" not in name_cands, name_cands
+    # 띄어 쓴 일반 관형사/대명사는 이름으로 안 붙임
+    assert not extract_fused_syllable_chains("이 사건은 양 팀의 문제다")
 
     print("OK: 키워드 이어붙이기 규칙 (서 줄임 조사 / 띄어 쓴 한 글자 / 영문 단위 / 종합N보)")
 

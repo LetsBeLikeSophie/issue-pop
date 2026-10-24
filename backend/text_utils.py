@@ -153,24 +153,48 @@ def extract_fused_syllable_chains(text: str) -> list[str]:
     return _fused_syllable_chains_from_tokens(kiwi.tokenize(text))
 
 
-def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
-    chains: list[str] = []
-    run: list = []
+# 2026-10-23: 흔한 성 한 글자. 사전에 없는 이름의 성이 명사가 아니라 관형사(MM)/대명사(NP) 등으로 잘못 태깅되는 경우
+# ("래퍼 양홍원" → 양/MM + 홍/NNG + 원/NNG)에 이름 앞에 붙여주려고 씀 — 안 붙이면 "홍원"만 키워드가 됨.
+_SURNAMES = set("김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민나진지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부")
+_SURNAME_TAG_PREFIXES = ("MM", "NP", "XPN")
+
+
+def _fused_syllable_runs(tokens) -> list[list[int]]:
+    """1음절 명사 토큰이 공백·조사 없이 이어진 구간들의 토큰 인덱스 묶음(이어붙일 수 있는 인명 후보)."""
+    runs: list[list[int]] = []
+    run: list[int] = []
 
     def _is_candidate(t) -> bool:
         return t.tag in _CHAIN_TAGS and len(t.form) == 1
 
-    for t in tokens:
-        contiguous = bool(run) and t.start == run[-1].start + run[-1].len
-        if _is_candidate(t) and (not run or contiguous):
-            run.append(t)
+    def _is_misread_surname(i: int) -> bool:
+        # 성으로 쓰이는 한 글자인데 명사로 태깅되지 않은 경우: 바로 뒤에(공백·조사 없이) 1음절 명사 토큰이 두 개 이어질 때만
+        # 이름으로 봄(성 + 이름 두 글자) — "이 사건"처럼 띄어 쓴 일반 관형사/대명사나 한 글자 뒤 단어는 건드리지 않으려고.
+        t = tokens[i]
+        if len(t.form) != 1 or t.form not in _SURNAMES or not t.tag.startswith(_SURNAME_TAG_PREFIXES):
+            return False
+        if i + 2 >= len(tokens):
+            return False
+        a, b = tokens[i + 1], tokens[i + 2]
+        return _is_candidate(a) and _is_candidate(b) and a.start == t.start + t.len and b.start == a.start + a.len
+
+    for i, t in enumerate(tokens):
+        candidate = _is_candidate(t) or (not run and _is_misread_surname(i))
+        contiguous = bool(run) and t.start == tokens[run[-1]].start + tokens[run[-1]].len
+        if candidate and (not run or contiguous):
+            run.append(i)
             continue
         if len(run) >= 2:
-            chains.append("".join(x.form for x in run))
-        run = [t] if _is_candidate(t) else []
+            runs.append(run)
+        run = [i] if candidate else []
     if len(run) >= 2:
-        chains.append("".join(x.form for x in run))
-    return chains
+        runs.append(run)
+    return runs
+
+
+def _fused_syllable_chains_from_tokens(tokens) -> list[str]:
+    tokens = list(tokens)
+    return ["".join(tokens[i].form for i in run) for run in _fused_syllable_runs(tokens)]
 
 
 @lru_cache(maxsize=20000)
@@ -238,10 +262,21 @@ def extract_noun_ngrams(text: str) -> list[str]:
         and t.start == tokens[i - 1].start + tokens[i - 1].len
     }
     noun_idx = [i for i, t in enumerate(tokens) if t.tag in NOUN_TAGS and i not in unit_idx]
-    result = [fused.get(i, _noun_form(tokens[i])) for i in noun_idx]
+
+    # 2026-10-23: 한 글자씩 쪼개진 인명을 이어붙인 경우("양"+"홍"+"원"→"양홍원") 그 조각("홍", "원")과 조각끼리의 바이그램
+    # ("홍원")은 후보에서 뺌 — 조각이 전체 이름보다 코퍼스에서 드물어서 점수가 더 높게 나와, 키워드가 "양홍원"이 아니라
+    # "홍원"으로 뽑히던 문제(실제 라이브 데이터로 확인).
+    chain_of: dict[int, int] = {}
+    for run_no, run in enumerate(_fused_syllable_runs(tokens)):
+        for i in run:
+            chain_of[i] = run_no
+
+    result = [fused.get(i, _noun_form(tokens[i])) for i in noun_idx if i not in chain_of]
 
     for a, b in zip(noun_idx, noun_idx[1:]):
         if b != a + 1:
+            continue
+        if a in chain_of and chain_of.get(b) == chain_of[a]:
             continue
         if b in fused:
             # b는 실은 뒤에 접미사가 붙어 다른 단어("여대생")의 일부라서,
