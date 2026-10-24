@@ -161,6 +161,13 @@ def test_noun_ngram_rules():
     foreign = extract_noun_ngrams(clean_title("축구 전설 디디에 드로그바 김상훈 특파원 = 코트디부아르"))
     assert "디디에" in foreign and "드로그바" in foreign and not any("김상훈" in c for c in foreign), foreign
 
+    # 2026-10-23: "김태욱"이 김/태/욱(부사)으로 쪼개져 "김태"만 키워드가 되던 문제 — 성으로 시작하는 이름 뒤에 바로 붙은 한 글자가
+    # 부사 등으로 잘못 읽혀도 이름 끝 글자로 이어붙임. 띄어 쓴 경우나 일반 문장은 건드리지 않음.
+    kt = extract_noun_ngrams(clean_title("‘채시라 남편’ 김태욱 회사에 日마루베니 공개매수…주가 상한가 직행"))
+    assert "김태욱" in kt and "김태" not in kt, kt
+    assert "김태" in extract_noun_ngrams(clean_title("김태 욱하는 성격"))
+    assert not extract_fused_syllable_chains("정부 안에서 곧바로 발표")
+
     print("OK: 키워드 이어붙이기 규칙 (서 줄임 조사 / 띄어 쓴 한 글자 / 영문 단위 / 종합N보)")
 
 

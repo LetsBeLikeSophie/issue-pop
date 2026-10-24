@@ -157,6 +157,7 @@ def extract_fused_syllable_chains(text: str) -> list[str]:
 # ("래퍼 양홍원" → 양/MM + 홍/NNG + 원/NNG)에 이름 앞에 붙여주려고 씀 — 안 붙이면 "홍원"만 키워드가 됨.
 _SURNAMES = set("김이박최정강조윤장임한오서신권황안송류전홍고문양손배백허유남심노하곽성차주우구민나진지엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부")
 _SURNAME_TAG_PREFIXES = ("MM", "NP", "XPN")
+_MISREAD_LAST_TAGS = {"MAG", "MM", "NNB", "NP", "NR"}  # 이름 끝 글자가 잘못 읽히는 품사(부사·관형사·의존명사·대명사·수사)
 
 
 def _fused_syllable_runs(tokens) -> list[list[int]]:
@@ -178,6 +179,18 @@ def _fused_syllable_runs(tokens) -> list[list[int]]:
         a, b = tokens[i + 1], tokens[i + 2]
         return _is_candidate(a) and _is_candidate(b) and a.start == t.start + t.len and b.start == a.start + a.len
 
+    def _is_misread_last_syllable(run_: list[int], t) -> bool:
+        # 2026-10-23: 성+이름 앞 두 글자 뒤에 바로 붙은 한 글자가 부사/관형사/의존명사로 잘못 태깅된 경우("김태욱"이 김/태/욱(부사
+        # MAG, "욱하다"의 그 욱)으로 쪼개져 "김태"만 키워드가 되던 문제) 이름의 마지막 글자로 봄. 한국어에선 이런 한 글자 말이
+        # 앞 명사에 공백 없이 바로 붙는 일이 거의 없고(조사·어미·접미사는 제외), 첫 글자가 성이어야만 적용해서 오탐을 줄임.
+        last = tokens[run_[-1]]
+        return (
+            len(t.form) == 1
+            and t.tag in _MISREAD_LAST_TAGS
+            and t.start == last.start + last.len
+            and tokens[run_[0]].form in _SURNAMES
+        )
+
     for i, t in enumerate(tokens):
         candidate = _is_candidate(t) or (not run and _is_misread_surname(i))
         contiguous = bool(run) and t.start == tokens[run[-1]].start + tokens[run[-1]].len
@@ -185,6 +198,8 @@ def _fused_syllable_runs(tokens) -> list[list[int]]:
             run.append(i)
             continue
         if len(run) >= 2:
+            if _is_misread_last_syllable(run, t):
+                run = run + [i]
             runs.append(run)
         run = [i] if candidate else []
     if len(run) >= 2:
