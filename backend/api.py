@@ -46,7 +46,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -779,7 +779,8 @@ async def lifespan(app: FastAPI):
     stock_catalog_task.cancel()
 
 
-app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan)
+# 2026-10-23: /docs, /openapi.json을 끔 — 숨겨둔 개발용 엔드포인트 목록까지 전부 공개되던 것을 막음.
+app = FastAPI(title="뉴스 트렌드 API", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def _rate_limit_key(request: Request) -> str:
@@ -809,6 +810,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 2026-09-22: /feedback 조회 화면(피드백함)에 걸어두는 관리자 인증.
+# 2026-10-23: 개발/테스트용 엔드포인트(/refresh, /digest/run, /admin/* 등)도 같은 인증을 걸었음 — 인증 없이 열려 있어서
+# 누구나 전체 푸시 발송/강제 갱신/감사(LLM 비용)를 일으킬 수 있었음. 그래서 엔드포인트 정의보다 앞에 둠.
+# 계정은 하나뿐이라 별도 로그인 화면/세션 없이 HTTP Basic으로 충분함 —
+# 값은 systemd env.conf(ADMIN_USERNAME/ADMIN_PASSWORD)에만 두고 코드에는
+# 안 넣음. 둘 중 하나라도 서버에 설정 안 돼 있으면(로컬 개발 등) 그냥
+# 열어주는 대신 항상 401을 돌려줌 — fail-open으로 두면 설정을 깜빡했을 때
+# 피드백이 그대로 공개돼버림.
+_admin_security = HTTPBasic()
+_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
+_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+
+
+def _require_admin(credentials: HTTPBasicCredentials = Depends(_admin_security)) -> None:
+    unauthorized = HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Basic"})
+    if _ADMIN_USERNAME is None or _ADMIN_PASSWORD is None:
+        raise unauthorized
+    valid_user = secrets.compare_digest(credentials.username, _ADMIN_USERNAME)
+    valid_pass = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
+    if not (valid_user and valid_pass):
+        raise unauthorized
 
 
 class OutletBreakdown(BaseModel):
@@ -1075,7 +1098,7 @@ async def get_issue(issue_id: str):
 
 
 @app.post("/refresh")
-async def force_refresh():
+async def force_refresh(_: None = Depends(_require_admin)):
     """개발/테스트용 수동 갱신 트리거 (30분 기다리기 싫을 때)."""
     await refresh_cache()
     return {"issue_count": len(_cache), "last_refresh": _last_refresh, "last_error": _last_error}
@@ -1136,7 +1159,7 @@ async def get_summary(issue_id: str):
 
 
 @app.post("/issues/{issue_id}/summary")
-async def set_summary(issue_id: str, body: SummaryIn):
+async def set_summary(issue_id: str, body: SummaryIn, _: None = Depends(_require_admin)):
     """개발용 — 실제로는 백그라운드 갱신 때 "새로 생긴 이슈"에 한해 LLM을
     호출해서 채우게 될 자리(README 참고). 지금은 수동으로만 채움."""
     with db.get_session() as session:
@@ -1491,7 +1514,7 @@ async def get_keyword_alert(device_id: int):
 
 
 @app.post("/devices/{device_id}/keyword-alert/run")
-async def run_keyword_alert_check(device_id: int):
+async def run_keyword_alert_check(device_id: int, _: None = Depends(_require_admin)):
     """개발/테스트용 — 새 이슈가 실제로 뜨길 기다리지 않고, 지금 캐시에
     있는 이슈 전체를 대상으로 이 기기의 관심 키워드와 매칭해서 즉시
     발송함(운영 로직인 _check_keyword_alerts는 refresh_cache 직후 "새로
@@ -1709,7 +1732,7 @@ async def get_word_of_day_alert(device_id: int):
 
 
 @app.post("/digest/run")
-async def run_digest_check(force: bool = False):
+async def run_digest_check(force: bool = False, _: None = Depends(_require_admin)):
     """개발/테스트용 — 지금 KST 시각이 되길 기다리지 않고 다이제스트
     스케줄러를 즉시 한 번 실행함(1분마다 자동으로도 돌긴 함). Firebase
     자격증명이 서버에 설정돼 있으면 실제로 발송되고, 없으면 로그만
@@ -1721,7 +1744,7 @@ async def run_digest_check(force: bool = False):
 
 
 @app.post("/word-of-day/alert-run")
-async def run_word_of_day_alert_check(force: bool = False):
+async def run_word_of_day_alert_check(force: bool = False, _: None = Depends(_require_admin)):
     """개발/테스트용 — 기기별 설정 시각까지 기다리지 않고 즉시 한 번
     실행함. force=true면 시각 일치 여부·중복방지 둘 다 무시하고
     무조건 발송함(그 외엔 /digest/run과 같은 규칙)."""
@@ -1741,7 +1764,7 @@ async def _run_cluster_audit_background() -> None:
 
 
 @app.post("/admin/cluster-audit/run")
-async def run_cluster_audit_now():
+async def run_cluster_audit_now(_: None = Depends(_require_admin)):
     """개발/테스트용 — 새벽 스케줄(CLUSTER_AUDIT_HOUR_KST)까지 안 기다리고
     지금 캐시로 바로 감사를 돌림. 초반이라 버그를 빨리 많이 찾아야 해서
     (2026-09-11) 수동으로 여러 번 돌려볼 수 있게 남겨둠 — 오늘 이미
@@ -1761,12 +1784,14 @@ async def run_cluster_audit_now():
 
 
 @app.get("/admin/cluster-audit/status")
-async def cluster_audit_status():
+async def cluster_audit_status(_: None = Depends(_require_admin)):
     return {"running": _cluster_audit_running}
 
 
 @app.get("/admin/cluster-audit/findings")
-async def list_cluster_audit_findings(reviewed: bool | None = None, limit: int = Query(100, le=500)):
+async def list_cluster_audit_findings(
+    reviewed: bool | None = None, limit: int = Query(100, le=500), _: None = Depends(_require_admin)
+):
     """검토 대기열 조회 — reviewed=false로 필터하면 아직 안 본 것만."""
     from sqlmodel import select
 
@@ -1792,7 +1817,7 @@ async def list_cluster_audit_findings(reviewed: bool | None = None, limit: int =
 
 
 @app.put("/admin/cluster-audit/findings/{finding_id}")
-async def mark_cluster_audit_finding_reviewed(finding_id: int):
+async def mark_cluster_audit_finding_reviewed(finding_id: int, _: None = Depends(_require_admin)):
     """검토 완료 표시(진짜 버그로 확인해서 규칙/회귀 테스트에 반영했든,
     오탐이라 넘기기로 했든 — 어느 쪽이든 "봤음" 표시만 함)."""
     with db.get_session() as session:
@@ -1853,31 +1878,11 @@ async def list_favorites(authorization: str | None = Header(default=None)):
         return result
 
 
-# 2026-09-22: /feedback 조회 화면(피드백함)에 걸어두는 관리자 인증.
-# 계정은 하나뿐이라 별도 로그인 화면/세션 없이 HTTP Basic으로 충분함 —
-# 값은 systemd env.conf(ADMIN_USERNAME/ADMIN_PASSWORD)에만 두고 코드에는
-# 안 넣음. 둘 중 하나라도 서버에 설정 안 돼 있으면(로컬 개발 등) 그냥
-# 열어주는 대신 항상 401을 돌려줌 — fail-open으로 두면 설정을 깜빡했을 때
-# 피드백이 그대로 공개돼버림.
-_admin_security = HTTPBasic()
-_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME")
-_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
-
-
-def _require_admin(credentials: HTTPBasicCredentials = Depends(_admin_security)) -> None:
-    unauthorized = HTTPException(status_code=401, detail="unauthorized", headers={"WWW-Authenticate": "Basic"})
-    if _ADMIN_USERNAME is None or _ADMIN_PASSWORD is None:
-        raise unauthorized
-    valid_user = secrets.compare_digest(credentials.username, _ADMIN_USERNAME)
-    valid_pass = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
-    if not (valid_user and valid_pass):
-        raise unauthorized
-
-
 class FeedbackIn(BaseModel):
     device_id: int | None = None
-    message: str
-    contact_email: str | None = None
+    # 2026-10-23: 길이 제한 — 예전엔 nginx 기본 한도(1MB)까지 아무 글이나 저장됨(시간당 5건 제한은 있었음).
+    message: str = Field(max_length=5000)
+    contact_email: str | None = Field(default=None, max_length=254)
 
 
 @app.post("/feedback")
