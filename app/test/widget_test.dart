@@ -39,26 +39,34 @@ void main() {
     expect(find.byType(LaunchLoading), findsNothing);
     expect(find.text('키워드 또는 헤드라인 검색…'), findsOneWidget);
   });
-  testWidgets('글자 크기를 "아주 크게"로 하고 좁은 화면이어도 로고(Issue Pop)가 한 줄로 유지된다', (WidgetTester tester) async {
-    // 2026-10-18 실기기에서 로고가 "Issu / e / Pop"으로 줄바꿈되던 문제의 회귀 테스트.
-    tester.view.physicalSize = const Size(360 * 3, 800 * 3);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-    final client = MockClient((req) async {
-      final body = req.url.path == '/health' ? {'last_refresh': null} : [];
-      return http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
-    });
-    final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
-    await TextScaleStore.instance.setScale(1.3);
-    addTearDown(() => TextScaleStore.instance.setScale(1.0));
+  // 2026-10-18 실기기에서 로고가 "Issu / e / Pop"으로 줄바꿈되던 문제의 회귀 테스트. 2026-10-23: 더 좁은 화면
+  // (폴드 바깥 화면 같은 280~320폭)과 글자 크기 여러 단계로 넓혀서 다시 확인함.
+  for (final width in [360.0, 320.0, 300.0, 280.0]) {
+    for (final scale in [1.0, 1.15, 1.3]) {
+      testWidgets('폭 ${width.toInt()}에서 글자 크기 $scale배여도 로고(Issue Pop)가 한 줄로 유지되고 화면 밖으로 안 나간다',
+          (WidgetTester tester) async {
+        tester.view.physicalSize = Size(width * 3, 800 * 3);
+        tester.view.devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
+        final client = MockClient((req) async {
+          final body = req.url.path == '/health' ? {'last_refresh': null} : [];
+          return http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
+        });
+        final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
+        await TextScaleStore.instance.setScale(scale);
+        addTearDown(() => TextScaleStore.instance.setScale(1.0));
 
-    await tester.pumpWidget(IssuePopApp(api: api, navigatorKey: GlobalKey<NavigatorState>()));
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpWidget(IssuePopApp(api: api, navigatorKey: GlobalKey<NavigatorState>()));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump(const Duration(milliseconds: 400));
 
-    final issue = tester.getTopLeft(find.text('Issue '));
-    final pop = tester.getTopLeft(find.text('Pop'));
-    expect((issue.dy - pop.dy).abs(), lessThan(8), reason: '로고가 줄바꿈되면 두 글자 묶음의 세로 위치가 크게 달라짐');
-    expect(issue.dx, lessThan(pop.dx));
-  });
+        final issue = tester.getTopLeft(find.text('Issue '));
+        final pop = tester.getTopLeft(find.text('Pop'));
+        expect((issue.dy - pop.dy).abs(), lessThan(8), reason: '로고가 줄바꿈되면 두 글자 묶음의 세로 위치가 크게 달라짐');
+        expect(issue.dx, lessThan(pop.dx));
+        expect(tester.getBottomRight(find.text('Pop')).dx, lessThanOrEqualTo(width), reason: '로고가 화면 오른쪽 밖으로 나가면 안 됨');
+        expect(tester.takeException(), isNull, reason: '좁은 화면에서 레이아웃 넘침 오류가 나면 안 됨');
+      });
+    }
+  }
 }

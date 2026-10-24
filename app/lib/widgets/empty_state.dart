@@ -49,7 +49,9 @@ class SwipeHintRow extends StatelessWidget {
       children: [
         Icon(Icons.swipe_left_outlined, size: 12, color: AppColors.inkFaint),
         const SizedBox(width: 4),
-        Text(text, style: TextStyle(fontSize: 11, color: AppColors.inkFaint)),
+        // 2026-10-23: 좁은 화면(폭 300 안팎)에서 안내 문구가 한 줄에 안 들어가 오른쪽으로 넘쳤음 — 남는 자리 안에서
+        // 줄바꿈되게 Expanded로 감쌈.
+        Expanded(child: Text(text, style: TextStyle(fontSize: 11, color: AppColors.inkFaint))),
       ],
     );
   }
