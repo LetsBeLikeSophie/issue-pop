@@ -132,10 +132,11 @@ def test_noun_ngram_rules():
         g = grams(text)
         assert bad not in g, f"띄어 쓴 한 글자 명사가 이어붙음: {bad!r} in {g!r}"
 
-    # 붙여 쓴 복합어와 두 글자 이상끼리 띄어 쓴 흔한 표현은 계속 붙음.
+    # 붙여 쓴 복합어와 보통명사끼리 띄어 쓴 흔한 표현은 계속 붙음.
     assert "국민연금" in grams("국민연금 개혁안 발표")
     assert "국민연금" in grams("국민 연금 개혁안 발표")
-    assert "포스코노사" in grams("포스코 노사 또 합의 불발")
+    # 2026-10-23: 고유명사(포스코)로 시작하고 원문에서 띄어 쓴 짝은 이제 띄어서 둠(예전엔 "포스코노사"로 붙였음).
+    assert "포스코 노사" in grams("포스코 노사 또 합의 불발")
 
     # 숫자 바로 뒤 영문 단위(cm)는 명사 후보가 아님.
     assert "cm테니스" not in grams("178cm 테니스 여신, 선 넘은 상대에 대폭발")
@@ -167,6 +168,11 @@ def test_noun_ngram_rules():
     assert "김태욱" in kt and "김태" not in kt, kt
     assert "김태" in extract_noun_ngrams(clean_title("김태 욱하는 성격"))
     assert not extract_fused_syllable_chains("정부 안에서 곧바로 발표")
+
+    # 2026-10-23: 고유명사로 시작하고 원문에서 띄어 쓴 짝은 띄어서 둠("채시라 남편"), 보통명사끼리는 그대로 붙임("국민연금").
+    sp = extract_noun_ngrams(clean_title("‘채시라 남편’ 김태욱 회사에 日마루베니 공개매수"))
+    assert "채시라 남편" in sp and "채시라남편" not in sp, sp
+    assert "국민연금" in extract_noun_ngrams(clean_title("국민 연금 개혁안 발표"))
 
     print("OK: 키워드 이어붙이기 규칙 (서 줄임 조사 / 띄어 쓴 한 글자 / 영문 단위 / 종합N보)")
 

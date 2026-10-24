@@ -385,7 +385,16 @@ def extract_noun_ngrams(text: str) -> list[str]:
             # 명사는 대개 복합어가 아니라 다음 단어의 일부/접미사/의존명사임. "국민연금"처럼
             # 붙여 쓴 복합어는 이 규칙과 무관(gap == 0).
             continue
-        sep = " " if (gap == 1 and tokens[a].tag == "NNP" and tokens[b].tag == "NNP") else ""
+        # 2026-10-23: 고유명사로 시작하고 원문에서 띄어 쓴 짝("채시라 남편", "북한 해킹")은 띄어서 둠 — 고유명사는 원래 띄어 쓰고
+        # 붙이면 읽기 헷갈림(신문마다 표기가 갈려 붙여서 세야 하는 건 "국민연금" 같은 보통명사끼리의 복합어뿐).
+        spaced_name_pair = (
+            gap == 1
+            and tokens[a].tag == "NNP"
+            and tokens[b].tag == "NNG"
+            and len(tokens[a].form) >= 2
+            and len(tokens[b].form) >= 2
+        )
+        sep = " " if (gap == 1 and tokens[a].tag == "NNP" and tokens[b].tag == "NNP") or spaced_name_pair else ""
         result.append(_noun_form(tokens[a]) + sep + _noun_form(tokens[b]))
 
     for i, t in enumerate(tokens[:-1]):
