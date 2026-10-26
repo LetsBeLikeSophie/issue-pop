@@ -71,6 +71,23 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
   bool _expanded = false;
   Future<IssueDetail>? _detail;
 
+  /// 2026-10-26(출시 전 점검 IP-14): 상세를 한 번 못 받으면(오프라인·서버 재시작 중) 그 실패한 Future를 그대로 들고 있어서 같은
+  /// 실행 안에서는 접었다 펴도 계속 "불러오지 못했어요"만 보였음 — 실패를 기억해 두었다가 다시 펼치거나 "다시 시도"를 누르면 새로 받음.
+  bool _detailFailed = false;
+
+  Future<IssueDetail> _fetchDetail() {
+    final future = widget.api!.getIssue(widget.issue.id);
+    future.then<void>((_) {}, onError: (Object _) => _detailFailed = true);
+    return future;
+  }
+
+  void _retryDetail() {
+    setState(() {
+      _detailFailed = false;
+      _detail = _fetchDetail();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,21 +96,42 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
     }
     if (widget.initiallyExpanded) {
       _expanded = true;
-      _detail ??= widget.api!.getIssue(widget.issue.id);
+      _detail ??= _fetchDetail();
     }
   }
 
   void _toggleExpand() {
     setState(() {
       _expanded = !_expanded;
-      _detail ??= widget.api!.getIssue(widget.issue.id);
+      if (_expanded) {
+        // 펼칠 때만 받음(접을 때는 아무것도 안 함). 지난번에 실패했으면 새로 받음.
+        if (_detailFailed) {
+          _detailFailed = false;
+          _detail = null;
+        }
+        _detail ??= _fetchDetail();
+      }
     });
   }
 
   Future<void> _toggleSave() async {
     // 즐겨찾기는 기사 목록까지 저장해두는 구조라(favorites_store.dart),
     // 요약만 있는 카드(검색 결과)에서 저장하려면 먼저 상세를 받아야 함.
-    final full = await (_detail ??= widget.api!.getIssue(widget.issue.id));
+    final IssueDetail full;
+    try {
+      if (_detailFailed) {
+        _detailFailed = false;
+        _detail = null;
+      }
+      full = await (_detail ??= _fetchDetail());
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('저장하지 못했어요. 인터넷 연결을 확인해 주세요'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
     final nowSaved = await FavoritesStore.instance.toggle(full);
     if (!mounted) return;
     // 스와이프만으로는 저장/삭제가 됐는지 눈에 안 띈다는 피드백을 받고
@@ -332,7 +370,7 @@ class _ExpandableIssueCardState extends State<ExpandableIssueCard> {
                 AnimatedSize(
                   duration: const Duration(milliseconds: 160),
                   curve: Curves.easeOut,
-                  child: _expanded ? _ExpandedBody(detail: _detail!) : const SizedBox(width: double.infinity),
+                  child: _expanded ? _ExpandedBody(detail: _detail!, onRetry: _retryDetail) : const SizedBox(width: double.infinity),
                 ),
               ],
             ),
@@ -518,9 +556,10 @@ class _ReachAvatars extends StatelessWidget {
 }
 
 class _ExpandedBody extends StatelessWidget {
-  const _ExpandedBody({required this.detail});
+  const _ExpandedBody({required this.detail, required this.onRetry});
 
   final Future<IssueDetail> detail;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -539,8 +578,13 @@ class _ExpandedBody extends StatelessWidget {
           }
           if (snapshot.hasError) {
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(child: Text('불러오지 못했어요', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint))),
+                  TextButton(onPressed: onRetry, child: const Text('다시 시도')),
+                ],
+              ),
             );
           }
           final articles = snapshot.data!.articles;
