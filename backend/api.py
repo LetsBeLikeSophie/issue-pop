@@ -29,6 +29,7 @@ import html
 import os
 import re
 import secrets
+import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1746,31 +1747,52 @@ def _classify_categories(clusters_by_id: dict) -> None:
         session.commit()
 
 
-def _get_or_create_word_of_day() -> db.WordOfDay | None:
+# 2026-10-26(출시 전 점검 IP-06): 오늘 단어를 못 정한 날(사전 API 장애 등)에 GET /word-of-day가 요청마다 전체 기사를 형태소 분석하고
+# 사전 API를 최대 15번 부르던 문제 — 실패도 이 시간 동안은 다시 계산하지 않고, 동시에 두 곳이 계산하지도 않으며, 계산은 백그라운드
+# 루프(와 알림 확인)에서만 하고 요청은 저장된 값만 읽음.
+WORD_OF_DAY_RETRY_SECONDS = 30 * 60
+_word_of_day_retry_at = 0.0
+_word_of_day_lock = threading.Lock()
+
+
+def _get_or_create_word_of_day(compute: bool = True) -> db.WordOfDay | None:
     """오늘(KST) 단어가 이미 골라져 있으면 그대로 재사용하고, 없으면 지금
     캐시에서 하나 뽑아 저장함 — 재계산 주기(30분)마다 바뀌면 "오늘의
-    단어"라는 말이 무색해지니 하루 한 번만 고름."""
+    단어"라는 말이 무색해지니 하루 한 번만 고름. compute=False면 저장된 값만 읽음(요청 경로용)."""
+    global _word_of_day_retry_at
     today = datetime.now(KST).strftime("%Y-%m-%d")
     with db.get_session() as session:
         existing = session.get(db.WordOfDay, today)
         if existing is not None:
             return existing
-        picked = word_of_day.pick_word(_cache)
-        if picked is None:
+        if not compute or time.time() < _word_of_day_retry_at:
             return None
-        word, example, definition = picked
-        row = db.WordOfDay(date=today, word=word, example=example, definition=definition)
-        session.add(row)
-        session.commit()
-        session.refresh(row)
-        return row
+        if not _word_of_day_lock.acquire(blocking=False):
+            return None  # 다른 곳에서 이미 계산 중
+        try:
+            try:
+                picked = word_of_day.pick_word(_cache)
+            except Exception as e:  # noqa: BLE001 - 사전·LLM 오류도 실패로 보고 잠시 쉼
+                print(f"[word_of_day] 계산 실패: {type(e).__name__}: {str(e)[:120]}")
+                picked = None
+            if picked is None:
+                _word_of_day_retry_at = time.time() + WORD_OF_DAY_RETRY_SECONDS
+                return None
+            word, example, definition = picked
+            row = db.WordOfDay(date=today, word=word, example=example, definition=definition)
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row
+        finally:
+            _word_of_day_lock.release()
 
 
 @app.get("/word-of-day")
 async def get_word_of_day():
     """2026-09-11: 오늘 기사에서 뽑은 단어 + 예문 + 뜻풀이(국립국어원
     API 연동 전까지는 null). 설정 화면의 "오늘의 단어" 미리보기에서 씀."""
-    row = await asyncio.to_thread(_get_or_create_word_of_day)
+    row = await asyncio.to_thread(_get_or_create_word_of_day, False)  # 요청은 저장된 값만 읽음(계산은 백그라운드 루프)
     if row is None:
         return {"date": None, "word": None, "example": None, "definition": None}
     return {"date": row.date, "word": row.word, "example": row.example, "definition": row.definition}
