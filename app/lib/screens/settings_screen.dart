@@ -620,11 +620,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         // 2026-09-26: "후원하기"보다 Buy Me a Coffee 자체
                         // 브랜딩(서비스명 그대로)을 쓰는 게 낫다는 피드백 —
                         // 이모지는 빼고 이름만.
-                        _PlainRow(
-                          label: 'Buy Me a Coffee',
-                          onTap: _openDonationLink,
-                          showDivider: true,
-                        ),
+                        // 2026-10-26: Google Play는 앱 안에서 Play 결제 밖의 후원·결제로 안내하는 걸 제한해서(심사 반려 위험)
+                        // 모바일 앱에서는 숨기고 웹에서만 보여줌.
+                        if (kIsWeb)
+                          _PlainRow(
+                            label: 'Buy Me a Coffee',
+                            onTap: _openDonationLink,
+                            showDivider: true,
+                          ),
                         _PlainRow(
                           label: '문의하기',
                           onTap: _showContactSheet,
@@ -658,8 +661,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                           children: [
                             Text(
                               outlets.isEmpty
-                                  ? '이슈판이 정보를 받아오는 언론사들이에요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
-                                  : '이슈판이 정보를 받아오는 ${outlets.length}개 언론사예요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요. 언론사를 누르면 홈페이지가 열려요.',
+                                  ? '이슈팝이 정보를 받아오는 언론사들이에요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요.'
+                                  : '이슈팝이 정보를 받아오는 ${outlets.length}개 언론사예요. 기사 원문은 각 언론사에서 직접 확인할 수 있어요. 언론사를 누르면 홈페이지가 열려요. 콘텐츠 제외 요청은 contact@issue-pop.com으로 보내 주세요.',
                               style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
                             ),
                             if (outlets.isNotEmpty) ...[

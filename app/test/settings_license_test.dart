@@ -26,6 +26,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SettingsScreen(api: api)));
     await tester.pump(const Duration(milliseconds: 500));
 
+    // 모바일 앱(웹이 아님)에서는 외부 후원 링크를 보여주지 않음(Play 정책 위험).
+    expect(find.text('Buy Me a Coffee'), findsNothing);
+
     final row = find.text('오픈소스 라이선스');
     await tester.scrollUntilVisible(row, 300, scrollable: find.byType(Scrollable).first);
     expect(row, findsOneWidget);

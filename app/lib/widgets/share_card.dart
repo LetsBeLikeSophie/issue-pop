@@ -44,7 +44,7 @@ Future<void> shareTodayTrend(BuildContext context, List<IssueSummary> issues) as
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile.fromData(bytes, name: 'issue-pop-trend.png', mimeType: 'image/png')],
-        text: '오늘의 이슈판 트렌드',
+        text: '오늘의 이슈팝 트렌드',
       ),
     );
   } finally {
