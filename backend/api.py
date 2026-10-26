@@ -61,6 +61,7 @@ import word_of_day
 from pipeline import run
 
 REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
+HEALTH_STALE_AFTER_SECONDS = 90 * 60  # 마지막 갱신이 이보다 오래되면 /health가 "stale"
 # 2026-09-11: 클러스터 감사(cluster_audit.py) — 트래픽 적은 새벽 시간에
 # 하루 한 번만 돎(라이브 클러스터링과는 별개, LLM 배치 호출이라 비쌀 건
 # 없지만 그래도 굳이 피크 시간에 돌 이유는 없어서).
@@ -260,6 +261,18 @@ def _seed_stock_watches(session, device_id: int) -> None:
 
 
 async def refresh_cache() -> None:
+    """한 번 갱신. 2026-10-26: run() 뒤의 단계(카테고리·종목 수집·DB 저장·키워드 알림)에서 예외가 나면 예전엔 이 함수 밖으로
+    새어나가 _refresh_loop 태스크가 죽었고(서버를 재시작할 때까지 오래된 이슈만 보임, /health는 캐시가 있어 계속 ok),
+    서버 시작 때(lifespan)는 앱이 아예 못 떴음. 어떤 예외든 기록만 하고 다음 주기에 다시 시도함."""
+    global _last_error
+    try:
+        await _refresh_cache_once()
+    except Exception as e:  # noqa: BLE001 - 한 번 실패가 갱신 루프·서버 시작을 막으면 안 됨
+        _last_error = f"{type(e).__name__}: {e}"[:300]
+        print(f"[refresh] 갱신 중 예외(다음 주기에 다시 시도): {_last_error}")
+
+
+async def _refresh_cache_once() -> None:
     global _cache, _last_refresh, _last_error, _weather_cache, _stock_news_cache, _stock_quote_cache, _usd_krw_rate
     async with _refresh_lock:
         try:
@@ -353,7 +366,13 @@ async def refresh_cache() -> None:
 async def _refresh_loop() -> None:
     while True:
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
-        await refresh_cache()
+        await refresh_cache()  # 예외는 refresh_cache 안에서 처리함
+
+
+def _log_loop_error(name: str, e: Exception) -> None:
+    # 2026-10-26: 백그라운드 루프 본문이 예외로 끝나면 그 태스크가 조용히 죽어(알림 발송·감사·오늘의 단어 등이 서버를 재시작할 때까지
+    # 멈춤) 아무도 모름 — 루프마다 예외를 기록하고 다음 주기에 계속함. CancelledError(BaseException)는 그대로 통과해 종료는 됨.
+    print(f"[loop:{name}] 예외(다음 주기에 계속): {type(e).__name__}: {str(e)[:200]}")
 
 
 _DIGEST_TITLE_MAX_LEN = 40  # 공유 카드(share_card.dart)와 같은 한 줄 미리보기 길이 기준
@@ -638,8 +657,14 @@ def _word_of_day_alert_check(force: bool = False) -> list[int]:
 async def _digest_loop() -> None:
     while True:
         await asyncio.sleep(DIGEST_CHECK_INTERVAL_SECONDS)
-        await asyncio.to_thread(_digest_check)
-        await asyncio.to_thread(_word_of_day_alert_check)
+        try:
+            await asyncio.to_thread(_digest_check)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("digest", e)
+        try:
+            await asyncio.to_thread(_word_of_day_alert_check)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("word_of_day_alert", e)
 
 
 def _run_cluster_audit() -> int:
@@ -735,7 +760,10 @@ def _cluster_audit_check() -> bool:
 async def _cluster_audit_loop() -> None:
     while True:
         await asyncio.sleep(CLUSTER_AUDIT_CHECK_INTERVAL_SECONDS)
-        await asyncio.to_thread(_cluster_audit_check)
+        try:
+            await asyncio.to_thread(_cluster_audit_check)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("cluster_audit", e)
 
 
 async def _word_of_day_loop() -> None:
@@ -748,7 +776,10 @@ async def _word_of_day_loop() -> None:
     있으면 그냥 반환하는 idempotent 함수라, 여기서 주기적으로 미리
     불러두면 실제 유저는 거의 항상 DB에 이미 저장된 값만 받아감."""
     while True:
-        await asyncio.to_thread(_get_or_create_word_of_day)
+        try:
+            await asyncio.to_thread(_get_or_create_word_of_day)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("word_of_day", e)
         await asyncio.sleep(WORD_OF_DAY_CHECK_INTERVAL_SECONDS)
 
 
@@ -759,7 +790,10 @@ async def _stock_catalog_refresh_loop() -> None:
     그 다음부터의 주기적 갱신만 담당함(그래서 sleep을 먼저 함)."""
     while True:
         await asyncio.sleep(STOCK_CATALOG_REFRESH_INTERVAL_SECONDS)
-        await asyncio.to_thread(stocks.refresh_sec_catalog)
+        try:
+            await asyncio.to_thread(stocks.refresh_sec_catalog)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("stock_catalog", e)
 
 
 @asynccontextmanager
@@ -990,8 +1024,11 @@ async def image_proxy(url: str):
 
 @app.get("/health")
 async def health():
+    # 2026-10-26: 캐시가 비어 있지 않아도 마지막 갱신이 90분(갱신 주기 30분의 3배) 넘게 없으면 "stale" — 갱신이 멈춘 걸 바깥에서
+    # 알아챌 수 있게(예전엔 캐시만 있으면 계속 ok였음).
+    stale = _last_refresh is not None and time.time() - _last_refresh > HEALTH_STALE_AFTER_SECONDS
     return {
-        "status": "ok" if _cache else "warming_up",
+        "status": "warming_up" if not _cache else ("stale" if stale else "ok"),
         "issue_count": len(_cache),
         "last_refresh": _last_refresh,
         "last_error": _last_error,
