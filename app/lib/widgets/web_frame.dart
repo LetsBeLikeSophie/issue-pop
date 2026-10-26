@@ -1,6 +1,8 @@
+// ignore_for_file: prefer_const_constructors_in_immutables
+// (이 파일의 일부 위젯은 일부러 const로 만들지 않음 — const 위젯은 테마가 바뀌어도 다시 안 그려져서 옛 색이 남았음)
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -43,11 +45,15 @@ class WebFrame extends StatefulWidget {
   /// 이 폭 미만이면 프레임 없이 앱을 꽉 차게 보여줌(폰 브라우저).
   static const frameMinWidth = 720.0;
 
-  /// 이 폭 이상이면 양옆 칸도 보여줌(프레임 446 + 양옆 칸 2×320 + 간격 72 = 1158보다 커야 넘치지 않음).
-  static const panelsMinWidth = 1200.0;
+  /// 이 폭 이상이면 양옆 칸도 보여줌(프레임 446 + 양옆 칸 2×340 + 간격 72 = 1198보다 커야 넘치지 않음).
+  static const panelsMinWidth = 1240.0;
+
+  /// 테스트용: 웹이 아닌 환경에서도 임베드 카드(펼치기 버튼)를 보이게 함.
+  @visibleForTesting
+  static bool debugAssumeEmbeddable = false;
 
   static const frameWidth = 430.0;
-  static const panelWidth = 320.0;
+  static const panelWidth = 340.0;
 
   @override
   State<WebFrame> createState() => _WebFrameState();
@@ -116,7 +122,7 @@ class _WebFrameState extends State<WebFrame> {
                           header: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const _BrandBlock(),
+                              _BrandBlock(),
                               FutureBuilder<({int issueCount, int articleCount})?>(
                                 future: _stats,
                                 builder: (context, snap) {
@@ -133,17 +139,9 @@ class _WebFrameState extends State<WebFrame> {
                                   return Padding(padding: const EdgeInsets.only(top: 14), child: _OutletChartCard(rows: rows));
                                 },
                               ),
-                              FutureBuilder<WordOfDay?>(
-                                future: _word,
-                                builder: (context, snap) {
-                                  final word = snap.data;
-                                  if (word?.word == null) return const SizedBox.shrink();
-                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCard(word: word!));
-                                },
-                              ),
                             ],
                           ),
-                          footer: const _Footer(),
+                          footer: _Footer(),
                         ),
                       ),
                       const SizedBox(width: 36),
@@ -162,7 +160,20 @@ class _WebFrameState extends State<WebFrame> {
                         child: _SidePanel(
                           alignEnd: false,
                           cards: promos.where((p) => !p.left).toList(),
-                          header: const _ThemePickerCard(),
+                          header: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _ThemePickerCard(),
+                              FutureBuilder<WordOfDay?>(
+                                future: _word,
+                                builder: (context, snap) {
+                                  final word = snap.data;
+                                  if (word?.word == null) return const SizedBox.shrink();
+                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCard(word: word!));
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -176,6 +187,17 @@ class _WebFrameState extends State<WebFrame> {
       },
     );
   }
+}
+
+/// 화면 전체를 다시 그리게 함 — 테마를 바꾼 직후 이미 열려 있는 화면(홈 목록 등)이 새 색으로 바뀌게(Flutter 공식 문서의 "rebuild all children"
+/// 방식). AppColors는 Theme.of처럼 의존 관계를 만들지 않아서 MaterialApp이 다시 그려져도 const·캐시된 하위 위젯은 옛 색 그대로였음.
+void _rebuildAll() {
+  void rebuild(Element element) {
+    element.markNeedsBuild();
+    element.visitChildren(rebuild);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(rebuild);
 }
 
 /// 폰 모양 테두리 안에 앱을 넣음. 앱이 화면 크기를 MediaQuery로 읽는 곳이 있어서, 프레임 안의 크기로 덮어씀.
@@ -194,7 +216,7 @@ class _PhoneFrame extends StatelessWidget {
       height: height + 16,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.ink,
+        color: const Color(0xFF15191B),
         borderRadius: BorderRadius.circular(40),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 32, offset: const Offset(0, 14))],
       ),
@@ -213,6 +235,12 @@ class _PhoneFrame extends StatelessWidget {
     );
   }
 }
+
+/// 양옆 칸의 글자 스타일 — 카드마다 제목 모양이 달라 정신없어 보이던 걸 하나로 맞춤. 세리프는 로고(Issue Pop)에만 쓰고
+/// 나머지는 앱 기본 글꼴(Noto Sans KR). 카드 제목 13.5 굵게 / 본문 12.5 / 보조 11.5.
+TextStyle _cardTitle() => TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.3);
+TextStyle _cardBody() => TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.55);
+TextStyle _cardMeta() => TextStyle(fontSize: 11.5, color: AppColors.inkFaint, height: 1.4);
 
 class _SidePanel extends StatelessWidget {
   const _SidePanel({required this.alignEnd, required this.cards, this.header, this.footer});
@@ -245,7 +273,7 @@ class _SidePanel extends StatelessWidget {
 }
 
 class _BrandBlock extends StatelessWidget {
-  const _BrandBlock();
+  _BrandBlock();
 
   @override
   Widget build(BuildContext context) {
@@ -256,15 +284,9 @@ class _BrandBlock extends StatelessWidget {
         children: [
           Text('Issue Pop', style: AppTypography.serif(fontSize: 34, fontWeight: FontWeight.w700, color: AppColors.ink)),
           const SizedBox(height: 10),
-          Text(
-            '오늘 어떤 이슈가 많이 보도됐는지, 한눈에',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.4),
-          ),
+          Text('오늘 어떤 이슈가 많이 보도됐는지, 한눈에', style: _cardTitle().copyWith(fontSize: 14.5)),
           const SizedBox(height: 8),
-          Text(
-            '여러 언론사의 기사를 모아 같은 이슈끼리 묶어 보여줘요. 알림과 홈 화면 위젯은 앱에서 쓸 수 있어요.',
-            style: TextStyle(fontSize: 13, color: AppColors.inkSoft, height: 1.55),
-          ),
+          Text('여러 언론사의 기사를 모아 같은 이슈끼리 묶어 보여줘요. 알림과 홈 화면 위젯은 앱에서 쓸 수 있어요.', style: _cardBody()),
         ],
       ),
     );
@@ -288,12 +310,12 @@ class _StatsCard extends StatelessWidget {
               text: '${stats.issueCount}',
               style: AppTypography.mono(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accent),
             ),
-            TextSpan(text: '개 이슈 · ', style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
+            TextSpan(text: '개 이슈 · ', style: _cardBody()),
             TextSpan(
               text: '${stats.articleCount}',
               style: AppTypography.mono(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accent),
             ),
-            TextSpan(text: '건 기사', style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
+            TextSpan(text: '건 기사', style: _cardBody()),
           ],
         ),
       ),
@@ -404,15 +426,10 @@ class _WordCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(word.word!, style: AppTypography.serif(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          Text(word.word!, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.accent, height: 1.3)),
           if ((word.definition ?? '').isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              word.definition!,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
-            ),
+            Text(word.definition!, maxLines: 4, overflow: TextOverflow.ellipsis, style: _cardBody()),
           ],
         ],
       ),
@@ -438,8 +455,8 @@ class _InfoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.inkFaint, letterSpacing: 0.4)),
-          const SizedBox(height: 8),
+          Text(label, style: _cardTitle()),
+          const SizedBox(height: 10),
           child,
         ],
       ),
@@ -448,13 +465,13 @@ class _InfoCard extends StatelessWidget {
 }
 
 class _Footer extends StatelessWidget {
-  const _Footer();
+  _Footer();
 
   @override
   Widget build(BuildContext context) {
     Widget link(String label, String url) => InkWell(
           onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-          child: Text(label, style: TextStyle(fontSize: 12, color: AppColors.inkFaint, decoration: TextDecoration.underline)),
+          child: Text(label, style: _cardMeta().copyWith(decoration: TextDecoration.underline)),
         );
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -470,15 +487,28 @@ class _Footer extends StatelessWidget {
   }
 }
 
-class _PromoCardView extends StatelessWidget {
+class _PromoCardView extends StatefulWidget {
   const _PromoCardView({required this.card});
 
   final PromoCard card;
 
+  @override
+  State<_PromoCardView> createState() => _PromoCardViewState();
+}
+
+class _PromoCardViewState extends State<_PromoCardView> {
+  /// 임베드 카드가 펼쳐져 있는지. 처음엔 접어 둠 — 후원 폼이 처음부터 다 보이면 부담스럽다는 의견이었고, 접어 두면 제3자(Buy Me a
+  /// Coffee) 페이지도 눌러서 펼칠 때만 불러옴(방문만 해서는 그쪽으로 접속 정보가 안 감).
+  bool _open = false;
+
+  PromoCard get card => widget.card;
+
   /// 임베드는 Buy Me a Coffee 위젯 주소만 허용(서버 파일이 잘못돼도 엉뚱한 사이트가 안 붙게).
   bool get _embeddable {
     final host = Uri.tryParse(card.embed)?.host ?? '';
-    return canEmbed && card.embed.isNotEmpty && (host == 'buymeacoffee.com' || host.endsWith('.buymeacoffee.com'));
+    return (canEmbed || WebFrame.debugAssumeEmbeddable) &&
+        card.embed.isNotEmpty &&
+        (host == 'buymeacoffee.com' || host.endsWith('.buymeacoffee.com'));
   }
 
   @override
@@ -494,10 +524,10 @@ class _PromoCardView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(card.title, style: AppTypography.serif(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          Text(card.title, style: _cardTitle()),
           if (card.body.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(card.body, style: TextStyle(fontSize: 13, color: AppColors.inkSoft, height: 1.5)),
+            Text(card.body, style: _cardBody()),
           ],
           if (card.image.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -515,23 +545,54 @@ class _PromoCardView extends StatelessWidget {
             ),
           ],
           if (_embeddable) ...[
-            const SizedBox(height: 10),
-            ClipRRect(borderRadius: BorderRadius.circular(12), child: buildEmbed(card.embed, card.embedHeight)),
-          ],
-          if (card.hasButton) ...[
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              // 임베드가 보이면 그 안에 후원 버튼이 이미 있으니 링크는 작은 보조 버튼으로, 아니면(앱·임베드 불가) 큰 버튼.
-              child: _embeddable
-                  ? TextButton(onPressed: open, child: Text(card.button))
-                  : card.highlight
-                      ? FilledButton(
-                          onPressed: open,
-                          style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-                          child: Text(card.button),
-                        )
-                      : OutlinedButton(onPressed: open, child: Text(card.button)),
+              child: FilledButton.icon(
+                onPressed: () => setState(() => _open = !_open),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                icon: Icon(_open ? Icons.expand_less : Icons.expand_more, size: 18),
+                label: Text(_open ? '접기' : '응원하기'),
+              ),
+            ),
+            // 눌렀을 때만 위젯을 만들어(그때 제3자 페이지를 불러옴) 카드가 아래로 부드럽게 길어짐
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _open
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Column(
+                        children: [
+                          KeyedSubtree(
+                            key: ValueKey('embed-${card.id}'),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: buildEmbed(card.embed, card.embedHeight),
+                            ),
+                          ),
+                          if (card.hasButton)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(onPressed: open, child: Text(card.button)),
+                            ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ] else if (card.hasButton) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: card.highlight
+                  ? FilledButton(
+                      onPressed: open,
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                      child: Text(card.button),
+                    )
+                  : OutlinedButton(onPressed: open, child: Text(card.button)),
             ),
           ],
         ],
@@ -542,7 +603,7 @@ class _PromoCardView extends StatelessWidget {
 
 /// 웹에는 설정 화면이 없어서(설정은 앱에서) 색 테마만 바로 고르게 둠.
 class _ThemePickerCard extends StatelessWidget {
-  const _ThemePickerCard();
+  _ThemePickerCard();
 
   static const _labels = {
     ColorPreset.current: '기본',
@@ -562,7 +623,7 @@ class _ThemePickerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('화면 색상', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          Text('화면 색상', style: _cardTitle()),
           const SizedBox(height: 10),
           ListenableBuilder(
             listenable: ThemeStore.instance,
@@ -587,7 +648,10 @@ class _ThemePickerCard extends StatelessWidget {
     final (bg, accent, accent2) = AppColors.previewColors(preset);
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () => ThemeStore.instance.setPreset(preset),
+      onTap: () {
+        ThemeStore.instance.setPreset(preset);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _rebuildAll());
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(

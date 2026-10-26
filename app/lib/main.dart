@@ -91,12 +91,27 @@ void main() async {
 /// 앱 전체 콘텐츠 최대 폭. 폰(보통 360~430dp)은 이보다 좁아서 영향 없음.
 const _kMaxContentWidth = 720.0;
 
-/// 2026-10-27: 웹에서는 스크롤바를 숨김(마우스 휠·터치패드로 스크롤하면 되고, 폰 프레임 안에 스크롤바가 걸려 지저분해 보였음).
+/// 2026-10-27: 웹의 스크롤바 — 기본 브라우저 모양(굵은 회색 막대)이 폰 프레임 안에서 지저분해 보여서, 얇고 둥근 막대를 스크롤하는 동안과
+/// 마우스를 올렸을 때만 보이게 함. 색은 현재 테마(라이트/다크)를 따름.
 class _WebScrollBehavior extends MaterialScrollBehavior {
   const _WebScrollBehavior();
 
   @override
-  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) => child;
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        scrollbarTheme: ScrollbarThemeData(
+          thickness: const WidgetStatePropertyAll(5),
+          radius: const Radius.circular(3),
+          thumbColor: WidgetStatePropertyAll(AppColors.inkFaint.withValues(alpha: 0.55)),
+          thumbVisibility: const WidgetStatePropertyAll(false),
+          crossAxisMargin: 2,
+          interactive: true,
+        ),
+      ),
+      child: Scrollbar(controller: details.controller, child: child),
+    );
+  }
 }
 
 /// 웹은 화면 밀도가 낮아 작은 글씨(10~12px)가 뭉개져 보여서 글자를 조금 키움(앱은 그대로).

@@ -56,7 +56,7 @@ const kDefaultPromos = <PromoCard>[
   PromoCard(
     id: 'coffee',
     title: 'Buy Me a Coffee',
-    body: '이슈팝이 마음에 드셨다면 커피 한 잔으로 응원해 주세요.',
+    body: '이슈팝이 마음에 드셨다면 응원해 주세요. 금액은 직접 정할 수 있어서, 작은 마음도 큰 힘이 돼요.',
     button: '후원하기',
     url: 'https://buymeacoffee.com/itssophie',
     highlight: true,

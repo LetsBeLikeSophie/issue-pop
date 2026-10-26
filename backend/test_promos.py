@@ -39,7 +39,7 @@ assert coffee["title"] == "Buy Me a Coffee" and coffee["url"] == "https://buymea
 assert coffee["side"] == "right" and coffee["highlight"] is True
 assert coffee["embed"].startswith("https://buymeacoffee.com/widget/page/") and coffee["embed_height"] == 360
 # 앱 받기는 스토어 출시 전이라 링크·버튼 없는 "준비 중" 안내 카드
-assert by_id["app"]["side"] == "left" and by_id["app"]["url"] == "" and by_id["app"]["button"] == ""
+assert by_id["app"]["side"] == "right" and by_id["app"]["url"] == "" and by_id["app"]["button"] == ""
 
 tmp = tempfile.mkdtemp()
 path = os.path.join(tmp, "promos.json")

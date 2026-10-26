@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:issue_pop/api_client.dart' show OutletStat, WordOfDay;
 import 'package:issue_pop/models/promo.dart';
+import 'package:issue_pop/theme.dart' show AppColors;
+import 'package:issue_pop/theme_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:issue_pop/widgets/web_frame.dart';
 
 /// 2026-10-27: 웹 넓은 화면의 폰 프레임 + 양옆 카드.
@@ -24,6 +27,14 @@ Widget _app({
         ),
       ),
     );
+
+/// 테마 색을 build에서 읽기만 하는 const 위젯(실제 앱의 화면들과 같은 형태).
+class _ThemeProbe extends StatelessWidget {
+  const _ThemeProbe();
+
+  @override
+  Widget build(BuildContext context) => Text('앱 화면', style: TextStyle(color: AppColors.ink));
+}
 
 void _size(WidgetTester tester, double w, double h) {
   tester.view.physicalSize = Size(w, h);
@@ -64,7 +75,7 @@ void main() {
     expect(rightCard.left, greaterThan(app.right));
   });
 
-  testWidgets('오늘의 숫자·오늘의 단어 카드가 왼쪽에 보이고, 못 받으면 그 카드만 숨는다', (tester) async {
+  testWidgets('오늘의 숫자(왼쪽)·오늘의 단어(오른쪽) 카드가 보이고, 못 받으면 그 카드만 숨는다', (tester) async {
     _size(tester, 1400, 900);
     await tester.pumpWidget(_app(
       enabled: true,
@@ -78,7 +89,7 @@ void main() {
     expect(find.textContaining('1038', findRichText: true), findsOneWidget);
     expect(find.text('오늘의 단어'), findsOneWidget);
     expect(find.text('비상계엄'), findsOneWidget);
-    expect(tester.getRect(find.text('비상계엄')).right, lessThan(tester.getRect(find.text('앱 화면')).left));
+    expect(tester.getRect(find.text('비상계엄')).left, greaterThan(tester.getRect(find.text('앱 화면')).right)); // 단어 카드는 오른쪽 칸
 
     // 실패하면 그 카드만 숨고 나머지는 그대로(새로 시작한 것처럼 상태를 비우고 다시 그림)
     await tester.pumpWidget(const SizedBox());
@@ -122,6 +133,45 @@ void main() {
     expect(find.textContaining('준비 중'), findsOneWidget);
     expect(find.byType(OutlinedButton), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
+  });
+
+  testWidgets('후원 카드는 처음엔 버튼만 보이고, 누르면 아래로 펼쳐져 위젯이 나오고, 다시 누르면 접힌다', (tester) async {
+    _size(tester, 1400, 900);
+    WebFrame.debugAssumeEmbeddable = true;
+    addTearDown(() => WebFrame.debugAssumeEmbeddable = false);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      loader: () async => const [
+        PromoCard(
+          id: 'coffee',
+          title: 'Buy Me a Coffee',
+          body: '응원해 주세요',
+          button: '후원 페이지에서 열기',
+          url: 'https://buymeacoffee.com/itssophie',
+          highlight: true,
+          embed: 'https://buymeacoffee.com/widget/page/itssophie',
+        ),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    // 처음: 접혀 있음(위젯 없음, 링크 버튼도 아직 없음)
+    expect(find.text('응원하기'), findsOneWidget);
+    expect(find.byKey(const ValueKey('embed-coffee')), findsNothing);
+    final closedHeight = tester.getSize(find.ancestor(of: find.text('응원하기'), matching: find.byType(Container)).first).height;
+
+    await tester.tap(find.text('응원하기'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('embed-coffee')), findsOneWidget);
+    expect(find.text('접기'), findsOneWidget);
+    expect(find.text('후원 페이지에서 열기'), findsOneWidget); // 펼치면 작은 보조 링크
+    final openHeight = tester.getSize(find.ancestor(of: find.text('접기'), matching: find.byType(Container)).first).height;
+    expect(openHeight, greaterThanOrEqualTo(closedHeight)); // 카드가 아래로 길어짐
+
+    await tester.tap(find.text('접기'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('embed-coffee')), findsNothing);
+    expect(find.text('응원하기'), findsOneWidget);
   });
 
   testWidgets('임베드를 쓸 수 없는 곳(앱·테스트)에서는 후원 위젯 대신 링크 버튼이 나온다', (tester) async {
@@ -182,6 +232,33 @@ void main() {
     expect(find.text('앱 화면'), findsOneWidget);
   });
 
+  testWidgets('색 테마를 다크로 바꾸면 양옆 칸 글씨(로고 포함)와 폰 안의 화면이 모두 새 색으로 바뀐다', (tester) async {
+    SharedPreferences.setMockInitialValues({}); // ThemeStore가 설정 저장소에 쓰므로(테스트에는 실제 저장소가 없음)
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => ListenableBuilder(
+        listenable: ThemeStore.instance,
+        builder: (context, _) => WebFrame(enabled: true, child: child!),
+      ),
+      // const 위젯: MaterialApp이 다시 그려져도 스스로는 안 다시 그려지는, 실제 앱 화면과 같은 처지
+      home: const Scaffold(body: Center(child: _ThemeProbe())),
+    ));
+    await tester.pumpAndSettle();
+    Color logoColor() => tester.widget<Text>(find.text('Issue Pop')).style!.color!;
+    Color probeColor() => tester.widget<Text>(find.text('앱 화면')).style!.color!;
+    final logoLight = logoColor();
+    final probeLight = probeColor();
+
+    await tester.tap(find.text('다크'));
+    await tester.pumpAndSettle();
+
+    expect(logoColor(), isNot(logoLight), reason: '다크로 바꿨는데 로고 색이 그대로면(옛 색 유지) 어두운 배경에서 안 보임');
+    expect(probeColor(), isNot(probeLight), reason: '폰 안의 이미 열려 있던 화면도 새 색으로 다시 그려져야 함');
+
+    await ThemeStore.instance.setPreset(ColorPreset.current);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('서버 카드를 못 받으면(오류) 기본 카드로 대체한다', (tester) async {
     _size(tester, 1400, 900);
     await tester.pumpWidget(_app(enabled: true, loader: () async => throw Exception('서버 점검 중')));
@@ -190,8 +267,8 @@ void main() {
     expect(find.text('Buy Me a Coffee'), findsOneWidget);
   });
 
-  testWidgets('폰 폭을 넘는 중간 화면(1200px 미만)은 프레임만 보이고 양옆 카드는 숨긴다(넘침 없음)', (tester) async {
-    _size(tester, 1150, 800);
+  testWidgets('폰 폭을 넘는 중간 화면(1240px 미만)은 프레임만 보이고 양옆 카드는 숨긴다(넘침 없음)', (tester) async {
+    _size(tester, 1200, 800);
     await tester.pumpWidget(_app(enabled: true));
     await tester.pumpAndSettle();
 
@@ -200,8 +277,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('양옆 칸이 처음 나타나는 폭(1200px)에서도 넘치지 않는다', (tester) async {
-    _size(tester, 1200, 800);
+  testWidgets('양옆 칸이 처음 나타나는 폭(1240px)에서도 넘치지 않는다', (tester) async {
+    _size(tester, 1240, 800);
     await tester.pumpWidget(_app(enabled: true));
     await tester.pumpAndSettle();
 

@@ -1,19 +1,19 @@
 [
   {
-    "id": "app",
-    "side": "left",
-    "title": "앱으로 더 편하게",
-    "body": "알림과 홈 화면 위젯은 앱에서 쓸 수 있어요. 앱 스토어에 등록되면 여기서 QR로 받을 수 있어요. (준비 중)"
-  },
-  {
     "id": "coffee",
     "side": "right",
     "title": "Buy Me a Coffee",
-    "body": "이슈팝이 마음에 드셨다면 커피 한 잔으로 응원해 주세요.",
+    "body": "이슈팝이 마음에 드셨다면 응원해 주세요. 금액은 직접 정할 수 있어서, 작은 마음도 큰 힘이 돼요.",
     "button": "후원 페이지에서 열기",
     "url": "https://buymeacoffee.com/itssophie",
     "highlight": true,
     "embed": "https://buymeacoffee.com/widget/page/itssophie?description=Support%20me&color=%23232A20",
-    "embed_height": 360
+    "embed_height": 400
+  },
+  {
+    "id": "app",
+    "side": "right",
+    "title": "앱으로 더 편하게",
+    "body": "알림과 홈 화면 위젯은 앱에서 쓸 수 있어요. 앱 스토어에 등록되면 여기서 QR로 받을 수 있어요. (준비 중)"
   }
 ]
