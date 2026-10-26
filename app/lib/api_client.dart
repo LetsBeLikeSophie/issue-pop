@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:http/http.dart' as http;
 
 import 'models/issue.dart';
@@ -27,10 +28,19 @@ import 'offline_cache.dart';
 class ApiClient {
   ApiClient({String? baseUrl}) : baseUrl = baseUrl ?? _defaultBaseUrl;
 
-  static const _defaultBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000',
-  );
+  /// 2026-10-26(출시 전 점검 IP-11): 릴리스 빌드에서 --dart-define=API_BASE_URL을 빠뜨리면 예전엔 개발용 기본값(127.0.0.1)으로
+  /// 나가서 모든 화면이 실패했음 — 릴리스(kReleaseMode)에서는 값이 없을 때 운영 서버를 기본으로 씀. 개발(debug/profile)은 예전처럼
+  /// 로컬 서버가 기본.
+  static const _envBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const _productionBaseUrl = 'https://api.issue-pop.com';
+  static const _localBaseUrl = 'http://127.0.0.1:8000';
+
+  static String resolveBaseUrl({required String env, required bool release}) {
+    if (env.isNotEmpty) return env;
+    return release ? _productionBaseUrl : _localBaseUrl;
+  }
+
+  static String get _defaultBaseUrl => resolveBaseUrl(env: _envBaseUrl, release: kReleaseMode);
 
   // 2026-09-26: 지금까지 모든 호출이 http 패키지의 top-level 함수
   // (http.get/post/put/delete)를 썼는데, 이 함수들은 호출마다 내부적으로

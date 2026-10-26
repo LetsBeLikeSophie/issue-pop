@@ -17,6 +17,13 @@ const _token = 'a-long-push-token-over-24-chars-xxxxx';
 void main() {
   setUp(() => DeviceRegistry.resetForTest());
 
+  test('서버 주소: 빌드 옵션이 있으면 그대로, 없으면 릴리스는 운영 서버·개발은 로컬(출시 전 점검 IP-11)', () {
+    expect(ApiClient.resolveBaseUrl(env: 'https://staging.example.com', release: true), 'https://staging.example.com');
+    expect(ApiClient.resolveBaseUrl(env: '', release: true), 'https://api.issue-pop.com');
+    expect(ApiClient.resolveBaseUrl(env: '', release: false), 'http://127.0.0.1:8000');
+    expect(ApiClient.resolveBaseUrl(env: 'http://10.0.2.2:8000', release: false), 'http://10.0.2.2:8000');
+  });
+
   test('비밀값 도입 전에 등록한 기기는 업데이트 후 첫 요청 전에 비밀값을 넘겨받고, 이후 요청에 실어 보낸다', () async {
     SharedPreferences.setMockInitialValues({'device_id_v1': 7, 'device_push_token_v1': _token});
     final seen = <String>[];
