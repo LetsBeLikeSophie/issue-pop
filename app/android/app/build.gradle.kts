@@ -57,11 +57,25 @@ android {
 
     buildTypes {
         release {
-            // 2026-09-26: key.properties가 없는 환경(예: CI, 다른 개발자 PC)
-            // 에서는 빌드가 아예 깨지지 않도록 디버그 키로 폴백함 — 실제
-            // 스토어 배포 빌드는 반드시 key.properties가 있는 이 PC에서.
-            signingConfig = if (keystorePropertiesFile.exists()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            // 2026-10-26(출시 전 점검 IP-12): 예전(2026-09-26)엔 key.properties가 없으면 디버그 키로 조용히 서명해서 빌드가 "성공"했는데,
+            // 그렇게 만든 앱은 Play가 업로드를 거부하고 원인을 알기 어려웠음. 이제 릴리스 서명은 항상 release 키를 쓰고,
+            // key.properties가 없으면 아래에서 빌드를 실패시킴(디버그 빌드·flutter run에는 영향 없음).
+            signingConfig = signingConfigs.getByName("release")
         }
+    }
+}
+
+// 릴리스 빌드(assembleRelease/bundleRelease 등)를 요청했는데 key.properties가 없으면 바로 실패시킴.
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any { task ->
+        task.project == project && task.name.contains("Release", ignoreCase = true) &&
+            (task.name.startsWith("assemble") || task.name.startsWith("bundle") || task.name.startsWith("package"))
+    }
+    if (releaseRequested && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "릴리스 빌드에는 ${keystorePropertiesFile.path} (업로드 키 정보)가 필요합니다. " +
+                "이 파일 없이 만든 앱은 디버그 키로 서명돼 Play 업로드가 거부됩니다. 업로드 키가 있는 PC에서 빌드하세요."
+        )
     }
 }
 
