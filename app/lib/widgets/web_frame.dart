@@ -217,6 +217,7 @@ class _PhoneFrame extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: const Color(0xFF15191B),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)), // 다크 배경에서도 폰 윤곽이 보이게
         borderRadius: BorderRadius.circular(40),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 32, offset: const Offset(0, 14))],
       ),

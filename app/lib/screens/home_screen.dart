@@ -575,7 +575,12 @@ class _TopBar extends StatelessWidget {
                         child: FractionallySizedBox(
                           heightFactor: 0.5,
                           widthFactor: 1,
-                          child: ColoredBox(color: const Color(0xFFF4C94E)),
+                          // 2026-10-27: 다크 모드에서는 노란 형광펜을 은은하게(밝은 글씨 "Pop"이 진한 노랑 위에서 안 보였음). 라이트는 그대로.
+                          child: ColoredBox(
+                            color: AppColors.brightness == Brightness.dark
+                                ? const Color(0xFFF4C94E).withValues(alpha: 0.32)
+                                : const Color(0xFFF4C94E),
+                          ),
                         ),
                       ),
                     ),
