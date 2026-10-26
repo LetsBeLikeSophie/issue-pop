@@ -39,7 +39,17 @@ class DeviceRegistry {
   /// 불러도 `??=`가 먼저 시작된 하나의 Future를 그대로 돌려줌.
   static Future<int>? _deviceIdFuture;
 
-  Future<int> _deviceId() => _deviceIdFuture ??= _resolveDeviceId();
+  /// 2026-10-26(출시 전 점검 IP-09): 첫 등록이 실패(오프라인·서버 재시작 중)하면 그 실패한 Future가 static으로 남아, 앱을 다시 켤
+  /// 때까지 설정의 자동 재시도·관심 키워드·관심 종목·문의가 전부 같은 오류로 실패했음 — 실패하면 비워서 다음 호출이 다시 등록을 시도함.
+  Future<int> _deviceId() async {
+    final future = _deviceIdFuture ??= _resolveDeviceId();
+    try {
+      return await future;
+    } catch (_) {
+      if (identical(_deviceIdFuture, future)) _deviceIdFuture = null;
+      rethrow;
+    }
+  }
 
   /// 테스트에서 앱을 새로 켠 것처럼 만들려고(정적 캐시 초기화).
   static void resetForTest() {

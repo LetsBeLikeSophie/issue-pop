@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +63,52 @@ void main() {
     await DeviceRegistry(api).getDigest();
 
     expect(seen, ['GET /devices/7/digest']);
+  });
+
+  test('첫 기기 등록이 실패해도 같은 실행 안에서 다시 시도하면 복구된다(실패한 결과가 남지 않음)', () async {
+    // 토큰은 이미 있고 기기 번호만 없는 첫 설치 — FCM 조회 없이 등록 요청만 나감.
+    SharedPreferences.setMockInitialValues({'device_push_token_v1': _token});
+    var posts = 0;
+    final client = MockClient((req) async {
+      if (req.method == 'POST' && req.url.path == '/devices') {
+        posts++;
+        if (posts == 1) throw http.ClientException('서버 재시작 중');
+        return _json({'device_id': 5, 'device_secret': 'S5'});
+      }
+      return _json({'device_id': 5, 'digest_hour': 7, 'digest_minute': 0});
+    });
+    final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
+    final registry = DeviceRegistry(api);
+
+    await expectLater(registry.getDigest(), throwsA(isA<http.ClientException>()));
+    final settings = await registry.getDigest(); // 앱을 다시 켜지 않아도 두 번째 호출이 다시 등록함
+
+    expect(settings.hour, 7);
+    expect(posts, 2);
+    expect((await SharedPreferences.getInstance()).getInt('device_id_v1'), 5);
+  });
+
+  test('기기 등록 응답이 영영 안 오면 시간 제한 뒤 실패하고, 다음 호출에서 다시 시도한다', () async {
+    SharedPreferences.setMockInitialValues({'device_push_token_v1': _token});
+    final saved = ApiClient.registerTimeout;
+    ApiClient.registerTimeout = const Duration(milliseconds: 100);
+    addTearDown(() => ApiClient.registerTimeout = saved);
+    var posts = 0;
+    final client = MockClient((req) async {
+      if (req.method == 'POST') {
+        posts++;
+        if (posts == 1) return Completer<http.Response>().future; // 응답이 오지 않음
+        return _json({'device_id': 6, 'device_secret': 'S6'});
+      }
+      return _json({'device_id': 6, 'digest_hour': null, 'digest_minute': 0});
+    });
+    final api = http.runWithClient(() => ApiClient(baseUrl: 'http://fake'), () => client);
+    final registry = DeviceRegistry(api);
+
+    await expectLater(registry.getDigest(), throwsA(isA<TimeoutException>()));
+    await registry.getDigest();
+
+    expect(posts, 2);
   });
 
   test('넘겨받기에 실패(오프라인)해도 앱은 예전처럼 계속 동작한다', () async {

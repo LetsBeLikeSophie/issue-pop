@@ -60,6 +60,9 @@ class ApiClient {
   /// 앱 전체에서 기기가 하나라 정적으로 둠. 아직 못 받았으면(옛 서버/업데이트 직후 오프라인) 헤더 없이 보냄.
   static String? deviceSecret;
 
+  /// 기기 등록 요청 제한 시간(테스트에서 줄여 씀).
+  static Duration registerTimeout = const Duration(seconds: 10);
+
   Map<String, String> _dev([Map<String, String> extra = const {}]) =>
       {...extra, 'X-Device-Secret': ?deviceSecret};
 
@@ -197,11 +200,13 @@ class ApiClient {
   /// push_token을 아는 이 앱만 비밀값을 받아서 그때부터 잠김. 옛 서버가 비밀값을 안 주면 secret은 null.
   Future<({int id, String? secret})> registerDevice(String pushToken) async {
     final uri = Uri.parse('$baseUrl/devices');
-    final res = await _client.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'push_token': pushToken, 'claim': true}),
-    );
+    final res = await _client
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'push_token': pushToken, 'claim': true}),
+        )
+        .timeout(registerTimeout); // 2026-10-26: 응답이 영영 안 오면 기기 등록을 기다리는 모든 기능이 멈췄음
     _checkOk(res);
     final map = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     return (id: map['device_id'] as int, secret: map['device_secret'] as String?);
