@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -91,7 +92,8 @@ class ScrollJumpFab extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        if (!controller.showScrollTop && !controller.showScrollBottom) return const SizedBox.shrink();
+        // 2026-10-27: 웹에서는 마우스 휠로 충분하고 폰 프레임 안에서 거슬려서 숨김.
+        if (kIsWeb || (!controller.showScrollTop && !controller.showScrollBottom)) return const SizedBox.shrink();
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [

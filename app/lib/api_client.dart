@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:http/http.dart' as http;
 
 import 'models/issue.dart';
+import 'models/promo.dart';
 import 'models/reaction.dart';
 import 'offline_cache.dart';
 
@@ -366,6 +367,14 @@ class ApiClient {
     final uri = Uri.parse('$baseUrl/watches/$watchId');
     final res = await _client.delete(uri, headers: _dev());
     _checkOk(res);
+  }
+
+  /// 2026-10-27: 웹 양옆 홍보 카드(backend/promos.json). 실패하면 호출한 쪽(WebFrame)이 기본 카드로 대체함.
+  Future<List<PromoCard>> getPromos() async {
+    final res = await _client.get(Uri.parse('$baseUrl/promos')).timeout(const Duration(seconds: 8));
+    _checkOk(res);
+    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return list.map((e) => PromoCard.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// 2026-09-26: 설정 화면 "앱 정보"에 서비스 중인 언론사 목록을 보여주려고

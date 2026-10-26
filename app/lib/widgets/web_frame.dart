@@ -1,0 +1,492 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../api_client.dart' show WordOfDay;
+import '../models/promo.dart';
+import '../theme.dart';
+import '../theme_store.dart';
+
+/// 2026-10-27: 웹(넓은 화면)에서 앱을 폰 폭의 프레임으로 가운데 고정하고 양옆에 소개·홍보 카드를 보여주는 틀.
+/// 가로로 넓은 화면에 앱이 그대로 퍼져 보이던 걸 "폰 화면"처럼 보이게 하려는 것. 좁은 화면(폰 브라우저)이나 앱에서는
+/// 아무것도 안 하고 [child]를 그대로 보여줌.
+///
+/// 양옆 카드는 서버(GET /promos, backend/promos.json)에서 받아서 앱을 다시 올리지 않고 바꿈 — [promosLoader]가 실패하면
+/// [kDefaultPromos](Buy Me a Coffee)로 대체함.
+class WebFrame extends StatefulWidget {
+  const WebFrame({
+    super.key,
+    required this.child,
+    this.promosLoader,
+    this.statsLoader,
+    this.wordLoader,
+    this.enabled = kIsWeb,
+  });
+
+  final Widget child;
+  final Future<List<PromoCard>> Function()? promosLoader;
+
+  /// 왼쪽 칸의 "오늘의 숫자"(이슈·기사 수)와 "오늘의 단어" 카드용. 못 받으면 그 카드만 안 보임.
+  final Future<({int issueCount, int articleCount})> Function()? statsLoader;
+  final Future<WordOfDay> Function()? wordLoader;
+
+  /// 기본은 웹일 때만(테스트에서 켜고 끌 수 있게 분리).
+  final bool enabled;
+
+  /// 이 폭 미만이면 프레임 없이 앱을 꽉 차게 보여줌(폰 브라우저).
+  static const frameMinWidth = 720.0;
+
+  /// 이 폭 이상이면 양옆 칸도 보여줌.
+  static const panelsMinWidth = 1040.0;
+
+  static const frameWidth = 430.0;
+  static const panelWidth = 280.0;
+
+  @override
+  State<WebFrame> createState() => _WebFrameState();
+}
+
+class _WebFrameState extends State<WebFrame> {
+  late final Future<List<PromoCard>> _promos = _load();
+  late final Future<({int issueCount, int articleCount})?> _stats = _safe(widget.statsLoader);
+  late final Future<WordOfDay?> _word = _safe(widget.wordLoader);
+
+  Future<List<PromoCard>> _load() async {
+    final loader = widget.promosLoader;
+    if (loader == null) return kDefaultPromos;
+    try {
+      final cards = await loader();
+      return cards.isEmpty ? kDefaultPromos : cards;
+    } catch (_) {
+      return kDefaultPromos;
+    }
+  }
+
+  /// 부가 카드(숫자·단어)는 실패해도 그 카드만 숨김.
+  Future<T?> _safe<T>(Future<T> Function()? loader) async {
+    if (loader == null) return null;
+    try {
+      return await loader();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < WebFrame.frameMinWidth) return widget.child;
+        final showPanels = c.maxWidth >= WebFrame.panelsMinWidth;
+        // 위아래 여백(28씩)을 두고, 너무 길어지지 않게 상한을 둠.
+        final frameHeight = math.max(480.0, math.min(c.maxHeight - 56, 960.0));
+        final media = MediaQuery.of(context);
+        return ColoredBox(
+          color: AppColors.bg,
+          child: Center(
+            child: FutureBuilder<List<PromoCard>>(
+              future: _promos,
+              initialData: const <PromoCard>[],
+              builder: (context, snapshot) {
+                final promos = snapshot.data ?? const <PromoCard>[];
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (showPanels) ...[
+                      SizedBox(
+                        width: WebFrame.panelWidth,
+                        height: frameHeight,
+                        child: _SidePanel(
+                          alignEnd: true,
+                          cards: promos.where((p) => p.left).toList(),
+                          header: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const _BrandBlock(),
+                              FutureBuilder<({int issueCount, int articleCount})?>(
+                                future: _stats,
+                                builder: (context, snap) {
+                                  final stats = snap.data;
+                                  if (stats == null) return const SizedBox.shrink();
+                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _StatsCard(stats: stats));
+                                },
+                              ),
+                              FutureBuilder<WordOfDay?>(
+                                future: _word,
+                                builder: (context, snap) {
+                                  final word = snap.data;
+                                  if (word?.word == null) return const SizedBox.shrink();
+                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCard(word: word!));
+                                },
+                              ),
+                            ],
+                          ),
+                          footer: const _Footer(),
+                        ),
+                      ),
+                      const SizedBox(width: 36),
+                    ],
+                    _PhoneFrame(
+                      width: WebFrame.frameWidth,
+                      height: frameHeight,
+                      media: media,
+                      child: widget.child,
+                    ),
+                    if (showPanels) ...[
+                      const SizedBox(width: 36),
+                      SizedBox(
+                        width: WebFrame.panelWidth,
+                        height: frameHeight,
+                        child: _SidePanel(
+                          alignEnd: false,
+                          cards: promos.where((p) => !p.left).toList(),
+                          header: const _ThemePickerCard(),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 폰 모양 테두리 안에 앱을 넣음. 앱이 화면 크기를 MediaQuery로 읽는 곳이 있어서, 프레임 안의 크기로 덮어씀.
+class _PhoneFrame extends StatelessWidget {
+  const _PhoneFrame({required this.width, required this.height, required this.media, required this.child});
+
+  final double width;
+  final double height;
+  final MediaQueryData media;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width + 16,
+      height: height + 16,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.ink,
+        borderRadius: BorderRadius.circular(40),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.18), blurRadius: 32, offset: const Offset(0, 14))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: MediaQuery(
+          data: media.copyWith(
+            size: Size(width, height),
+            padding: EdgeInsets.zero,
+            viewPadding: EdgeInsets.zero,
+            viewInsets: EdgeInsets.zero,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _SidePanel extends StatelessWidget {
+  const _SidePanel({required this.alignEnd, required this.cards, this.header, this.footer});
+
+  final bool alignEnd;
+  final List<PromoCard> cards;
+  final Widget? header;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (header != null) ...[header!, const SizedBox(height: 14)],
+                for (final card in cards) ...[_PromoCardView(card: card), const SizedBox(height: 14)],
+              ],
+            ),
+          ),
+        ),
+        ?footer,
+      ],
+    );
+  }
+}
+
+class _BrandBlock extends StatelessWidget {
+  const _BrandBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Issue Pop', style: AppTypography.serif(fontSize: 34, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 10),
+          Text(
+            '오늘 어떤 이슈가 많이 보도됐는지, 한눈에',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '여러 언론사의 기사를 모아 같은 이슈끼리 묶어 보여줘요. 알림과 홈 화면 위젯은 앱에서 쓸 수 있어요.',
+            style: TextStyle(fontSize: 13, color: AppColors.inkSoft, height: 1.55),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "오늘의 숫자" — 서버가 지금 모은 이슈·기사 수(앱 홈 위쪽에서 쓰는 /stats와 같은 값).
+class _StatsCard extends StatelessWidget {
+  const _StatsCard({required this.stats});
+
+  final ({int issueCount, int articleCount}) stats;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoCard(
+      label: '오늘의 숫자',
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '${stats.issueCount}',
+              style: AppTypography.mono(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accent),
+            ),
+            TextSpan(text: '개 이슈 · ', style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
+            TextSpan(
+              text: '${stats.articleCount}',
+              style: AppTypography.mono(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accent),
+            ),
+            TextSpan(text: '건 기사', style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "오늘의 단어" — 서버가 매일 하나 골라 두는 단어(GET /word-of-day)와 뜻풀이.
+class _WordCard extends StatelessWidget {
+  const _WordCard({required this.word});
+
+  final WordOfDay word;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoCard(
+      label: '오늘의 단어',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(word.word!, style: AppTypography.serif(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          if ((word.definition ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              word.definition!,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12.5, color: AppColors.inkSoft, height: 1.5),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.inkFaint, letterSpacing: 0.4)),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget link(String label, String url) => InkWell(
+          onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          child: Text(label, style: TextStyle(fontSize: 12, color: AppColors.inkFaint, decoration: TextDecoration.underline)),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        children: [
+          link('개인정보처리방침', 'https://api.issue-pop.com/privacy'),
+          link('콘텐츠 제외 요청', 'mailto:contact@issue-pop.com'),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromoCardView extends StatelessWidget {
+  const _PromoCardView({required this.card});
+
+  final PromoCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    void open() => launchUrl(Uri.parse(card.url), mode: LaunchMode.externalApplication);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: card.highlight ? AppColors.accent : AppColors.line, width: card.highlight ? 1.5 : 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(card.title, style: AppTypography.serif(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          if (card.body.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(card.body, style: TextStyle(fontSize: 13, color: AppColors.inkSoft, height: 1.5)),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: card.highlight
+                ? FilledButton(
+                    onPressed: open,
+                    style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                    child: Text(card.button),
+                  )
+                : OutlinedButton(onPressed: open, child: Text(card.button)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 웹에는 설정 화면이 없어서(설정은 앱에서) 색 테마만 바로 고르게 둠.
+class _ThemePickerCard extends StatelessWidget {
+  const _ThemePickerCard();
+
+  static const _labels = {
+    ColorPreset.current: '기본',
+    ColorPreset.neutral: '화이트',
+    ColorPreset.dark: '다크',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('화면 색상', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 10),
+          ListenableBuilder(
+            listenable: ThemeStore.instance,
+            builder: (context, _) {
+              final current = ThemeStore.instance.preset;
+              return Row(
+                children: [
+                  for (final preset in ColorPreset.values) ...[
+                    Expanded(child: _swatch(preset, current == preset)),
+                    if (preset != ColorPreset.values.last) const SizedBox(width: 6),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _swatch(ColorPreset preset, bool selected) {
+    final (bg, accent, accent2) = AppColors.previewColors(preset);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => ThemeStore.instance.setPreset(preset),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.chipBg,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: bg,
+                shape: BoxShape.circle,
+                border: Border.all(color: selected ? Colors.white : AppColors.line),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                  const SizedBox(width: 2),
+                  Container(width: 6, height: 6, decoration: BoxDecoration(color: accent2, shape: BoxShape.circle)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _labels[preset]!,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? Colors.white : AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

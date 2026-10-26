@@ -18,6 +18,7 @@ import 'stock_widget_store.dart';
 import 'text_scale_store.dart';
 import 'theme.dart';
 import 'theme_store.dart';
+import 'widgets/web_frame.dart';
 
 /// 2026-10-26(출시 전 점검 IP-10): 시작 단계 하나가 예외를 던져도 runApp까지 가게 함 — 예전엔 Firebase 초기화나 저장소 읽기가
 /// 실패하면 앱이 하얀 시작 화면에서 멈췄음. 이 단계들은 없어도 앱의 핵심(이슈 목록)은 동작함.
@@ -90,6 +91,17 @@ void main() async {
 /// 앱 전체 콘텐츠 최대 폭. 폰(보통 360~430dp)은 이보다 좁아서 영향 없음.
 const _kMaxContentWidth = 720.0;
 
+/// 2026-10-27: 웹에서는 스크롤바를 숨김(마우스 휠·터치패드로 스크롤하면 되고, 폰 프레임 안에 스크롤바가 걸려 지저분해 보였음).
+class _WebScrollBehavior extends MaterialScrollBehavior {
+  const _WebScrollBehavior();
+
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) => child;
+}
+
+/// 웹은 화면 밀도가 낮아 작은 글씨(10~12px)가 뭉개져 보여서 글자를 조금 키움(앱은 그대로).
+const _kWebTextBoost = 1.08;
+
 class IssuePopApp extends StatelessWidget {
   const IssuePopApp({super.key, required this.api, required this.navigatorKey});
 
@@ -111,6 +123,7 @@ class IssuePopApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
+          scrollBehavior: kIsWeb ? const _WebScrollBehavior() : null,
           // 설정의 "글자 크기"를 앱 전체에 적용 — 화면마다 개별 텍스트에
           // textScaler를 넣는 대신, MaterialApp 루트에서 한 번만 감쌈.
           builder: (context, child) {
@@ -120,15 +133,21 @@ class IssuePopApp extends StatelessWidget {
                 final media = MediaQuery.of(context);
                 return MediaQuery(
                   data: media.copyWith(
-                    textScaler: TextScaler.linear(TextScaleStore.instance.scale),
+                    textScaler: TextScaler.linear(TextScaleStore.instance.scale * (kIsWeb ? _kWebTextBoost : 1.0)),
                   ),
-                  // 최대 폭을 넘는 화면에선 가운데 정렬(좌우는 앱 배경색).
-                  child: ColoredBox(
-                    color: AppColors.bg,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: _kMaxContentWidth),
-                        child: child!,
+                  // 2026-10-27: 웹의 넓은 화면에선 폰 폭 프레임 + 양옆 카드(WebFrame), 그 외엔 예전처럼 최대 폭을 넘으면
+                  // 가운데 정렬(좌우는 앱 배경색).
+                  child: WebFrame(
+                    promosLoader: api.getPromos,
+                    statsLoader: api.getStats,
+                    wordLoader: api.getWordOfDay,
+                    child: ColoredBox(
+                      color: AppColors.bg,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: _kMaxContentWidth),
+                          child: child!,
+                        ),
                       ),
                     ),
                   ),

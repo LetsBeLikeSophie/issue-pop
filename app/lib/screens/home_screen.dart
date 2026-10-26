@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -649,28 +650,32 @@ class _TopBar extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     constraints: const BoxConstraints(),
                   ),
-                  IconButton(
+                  if (!kIsWeb)
+                    IconButton(
                     icon: Icon(Icons.person_search, color: AppColors.ink),
                     onPressed: onKeywords,
                     tooltip: '관심 키워드',
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     constraints: const BoxConstraints(),
                   ),
-                  IconButton(
+                  if (!kIsWeb)
+                    IconButton(
                     icon: Icon(Icons.ios_share, color: AppColors.ink),
                     onPressed: onShare,
                     tooltip: '오늘의 트렌드 공유',
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     constraints: const BoxConstraints(),
                   ),
-                  IconButton(
+                  if (!kIsWeb)
+                    IconButton(
                     icon: Icon(Icons.bookmark_border, color: AppColors.ink),
                     onPressed: onArchive,
                     tooltip: '저장한 이슈',
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     constraints: const BoxConstraints(),
                   ),
-                  IconButton(
+                  if (!kIsWeb)
+                    IconButton(
                     icon: Icon(Icons.person_outline, color: AppColors.ink),
                     onPressed: onSettings,
                     tooltip: '설정',
