@@ -4,6 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
+/// 2026-10-26(출시 전 점검 IP-13): 오프라인일 때 "ClientException: Failed host lookup…" 같은 영어 예외 문구가 그대로
+/// 사용자에게 보였음 — 사용자가 알아볼 수 있는 한국어 안내로 바꿈(자세한 내용은 개발자용 로그에만).
+String friendlyErrorText(Object? error) {
+  final raw = '$error';
+  if (RegExp(r'^ApiException\(4\d\d\)').hasMatch(raw)) return '요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
+  if (RegExp(
+    r'SocketException|ClientException|HandshakeException|TimeoutException|Failed host lookup|Connection (refused|reset|closed)|'
+    r'Network is unreachable|XMLHttpRequest|timed out',
+    caseSensitive: false,
+  ).hasMatch(raw)) {
+    return '인터넷 연결을 확인해 주세요.';
+  }
+  return '잠시 후 다시 시도해 주세요.';
+}
+
 /// 2026-09-25: home_screen(구 _ErrorRetry)/keyword_watch_screen/
 /// stock_watch_screen 세 화면이 "불러오지 못했어요 + 에러 텍스트 +
 /// 다시 시도 버튼"을 각자 따로 그리고 있어서 하나로 뺌.
@@ -80,7 +95,7 @@ class _ErrorRetryState extends State<ErrorRetry> {
           children: [
             Text('불러오지 못했어요', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
             const SizedBox(height: 6),
-            Text(error, style: TextStyle(fontSize: 12, color: AppColors.inkMuted), textAlign: TextAlign.center),
+            Text(friendlyErrorText(error), style: TextStyle(fontSize: 12, color: AppColors.inkMuted), textAlign: TextAlign.center),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: onRetry, child: const Text('다시 시도')),
           ],

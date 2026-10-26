@@ -53,7 +53,13 @@ class ApiClient {
   // 만들어져 쓰이므로(main.dart), 이 Client 하나를 계속 재사용하면
   // Keep-Alive로 커넥션을 재활용해서 두 번째 요청부터는 핸드셰이크를
   // 건너뜀.
-  final http.Client _client = http.Client();
+  ///
+  /// 2026-10-26(출시 전 점검 IP-13): 모든 요청에 공통 제한 시간을 둠 — 예전엔 trending/index에만 12초 제한이 있고 나머지(이슈 상세,
+  /// 알림 설정, 관심 종목 등)는 응답이 안 오면 로딩만 계속 돌았음. 클라이언트 자체를 감싸서 get/post/put/delete 전부에 적용함.
+  final http.Client _client = _TimeoutClient(http.Client(), () => requestTimeout);
+
+  /// 서버가 응답을 시작하기까지 기다리는 최대 시간(테스트에서 줄여 씀). 개별 요청이 더 짧게 정한 제한(trending 12초 등)은 그대로.
+  static Duration requestTimeout = const Duration(seconds: 15);
 
   /// 2026-09-07: 기사 썸네일 이미지 프록시 URL 생성용 — 항상
   /// ApiClient() 인스턴스를 통해서만 쓰이고 baseUrl 오버라이드도 안
@@ -638,4 +644,18 @@ class ApiException implements Exception {
 
   @override
   String toString() => 'ApiException($statusCode): $body';
+}
+
+/// 요청마다 응답 시작까지의 제한 시간을 거는 http 클라이언트 래퍼([ApiClient.requestTimeout]).
+class _TimeoutClient extends http.BaseClient {
+  _TimeoutClient(this._inner, this._timeout);
+
+  final http.Client _inner;
+  final Duration Function() _timeout;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) => _inner.send(request).timeout(_timeout());
+
+  @override
+  void close() => _inner.close();
 }

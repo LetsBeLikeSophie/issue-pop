@@ -12,6 +12,7 @@ import '../push_token.dart';
 import '../text_scale_store.dart';
 import '../theme.dart';
 import '../theme_store.dart';
+import '../widgets/error_retry.dart';
 import '../widgets/app_badge.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../widgets/app_card.dart';
@@ -965,7 +966,7 @@ class _DigestPreviewSheet extends StatelessWidget {
               if (snapshot.hasError) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text('불러오지 못했어요: ${snapshot.error}', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
+                  child: Text('불러오지 못했어요. ${friendlyErrorText(snapshot.error)}', style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint)),
                 );
               }
               final lines = snapshot.data!.split('\n');
