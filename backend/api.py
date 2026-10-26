@@ -1283,6 +1283,12 @@ async def update_device_push_token(device_id: int, body: DeviceIn, x_device_secr
         from sqlmodel import select
 
         device = _device_for(session, device_id, x_device_secret, "device not found")
+        # 2026-10-26(출시 전 점검 IP-03): 비밀값이 없는 옛 기기는 번호만으로 열리는데, 여기서 push_token까지 바꿀 수 있으면
+        # 공격자가 자기 토큰으로 바꾼 뒤 POST /devices(claim)로 그 토큰을 대고 비밀값을 가로채 진짜 주인을 잠글 수 있었음.
+        # 그래서 비밀값이 없는 기기는 토큰을 못 바꾸게 함 — 새 앱은 업데이트 후 첫 실행에 먼저 비밀값을 받고(claim) 토큰을 바꿈.
+        # (비밀값을 받기 전의 옛 앱은 알림 토큰 교체가 거절되므로, 알림을 쓰려면 새 버전으로 업데이트해야 함.)
+        if device.secret_hash is None:
+            raise HTTPException(status_code=403, detail="claim a device secret before changing the push token")
         if device.push_token != body.push_token:
             existing = session.exec(select(db.Device).where(db.Device.push_token == body.push_token)).first()
             if existing and existing.id != device_id:

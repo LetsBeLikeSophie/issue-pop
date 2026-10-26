@@ -103,6 +103,21 @@ assert rot["device_secret"] != claimed["device_secret"]
 assert client.get(f"/devices/{lid}/digest", headers=H(claimed["device_secret"])).status_code == 403
 assert client.get(f"/devices/{lid}/digest", headers=H(rot["device_secret"])).status_code == 200
 
+# 8-1) 출시 전 점검 IP-03: 비밀값 없는 옛 기기의 push_token을 번호만으로 바꿔서 비밀값을 가로채는 길이 막혀 있음
+victim = client.post("/devices", json={"push_token": "victim-legacy-token"}).json()["device_id"]
+assert client.put(f"/devices/{victim}/push-token", json={"push_token": "attacker-token"}).status_code == 403
+with db.get_session() as s:
+    assert s.get(db.Device, victim).push_token == "victim-legacy-token"  # 토큰이 안 바뀜
+# 공격자가 자기 토큰으로 claim해도 피해 기기의 비밀값이 아니라 별개의 새 기기가 만들어질 뿐
+stolen = client.post("/devices", json={"push_token": "attacker-token", "claim": True}).json()
+assert stolen["device_id"] != victim
+assert client.get(f"/devices/{victim}/digest").status_code == 200  # 피해 기기는 그대로(옛 방식)
+# 비밀값을 받은 기기는 맞는 비밀값으로 토큰을 바꿀 수 있음
+owner = client.post("/devices", json={"push_token": "owner-token-1", "claim": True}).json()
+assert client.put(f"/devices/{owner['device_id']}/push-token", json={"push_token": "owner-token-2"}).status_code == 403
+assert client.put(f"/devices/{owner['device_id']}/push-token", json={"push_token": "owner-token-2"},
+                  headers=H(owner["device_secret"])).status_code == 200
+
 # 9) 문의 메일: 설정이 없으면 건너뜀, 있으면 제목 줄바꿈 제거 + Reply-To + 받는 곳 기본값
 import smtplib
 
