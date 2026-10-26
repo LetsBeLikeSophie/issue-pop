@@ -51,15 +51,34 @@ class FavoritesStore extends ChangeNotifier {
   bool _loaded = false;
   bool get isLoaded => _loaded;
 
+  /// 2026-10-26(출시 전 점검 IP-10): 저장한 이슈 JSON 하나라도 읽다가 예외가 나면(손상됐거나 나중에 모델에 필수 필드가
+  /// 생겼는데 옛 데이터엔 없을 때) runApp 전에 이 함수가 던져 앱이 시작 화면에서 멈췄음 — 항목마다 따로 읽고, 못 읽는 항목은
+  /// 건너뜀(나머지 즐겨찾기와 앱은 그대로 동작). 목록 자체를 못 읽어도 빈 목록으로 시작함.
   Future<void> load() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_key) ?? [];
+    List<String> raw;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      raw = prefs.getStringList(_key) ?? [];
+    } catch (_) {
+      raw = [];
+    }
     for (final s in raw) {
-      final saved = SavedIssue.fromJson(jsonDecode(s) as Map<String, dynamic>);
-      _byId[saved.issue.id] = saved;
+      try {
+        final saved = SavedIssue.fromJson(jsonDecode(s) as Map<String, dynamic>);
+        _byId[saved.issue.id] = saved;
+      } catch (_) {
+        // 못 읽는 항목은 건너뜀.
+      }
     }
     _loaded = true;
+  }
+
+  /// 테스트에서 앱을 새로 켠 것처럼 만들려고(싱글턴 초기화).
+  @visibleForTesting
+  void resetForTest() {
+    _byId.clear();
+    _loaded = false;
   }
 
   List<SavedIssue> get all {

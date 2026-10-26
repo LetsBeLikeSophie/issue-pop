@@ -19,6 +19,16 @@ import 'text_scale_store.dart';
 import 'theme.dart';
 import 'theme_store.dart';
 
+/// 2026-10-26(출시 전 점검 IP-10): 시작 단계 하나가 예외를 던져도 runApp까지 가게 함 — 예전엔 Firebase 초기화나 저장소 읽기가
+/// 실패하면 앱이 하얀 시작 화면에서 멈췄음. 이 단계들은 없어도 앱의 핵심(이슈 목록)은 동작함.
+Future<void> _startupStep(Future<void> Function() step) async {
+  try {
+    await step();
+  } catch (e) {
+    debugPrint('시작 단계 실패(건너뜀): ${e.runtimeType}');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 2026-09-08: 다이제스트 알림 실제 발송용 FCM 연동 — 웹은 firebase_options.dart의
@@ -26,16 +36,21 @@ void main() async {
   // 플러그인이 읽음)을 네이티브가 자동으로 찾아서 옵션 없이 호출하면 됨.
   // iOS는 아직 GoogleService-Info.plist를 안 받아와서 건너뜀(초기화하면
   // 네이티브 설정 없이 죽을 수 있음).
-  if (kIsWeb) {
-    await Firebase.initializeApp(options: firebaseOptionsWeb);
-  } else if (Platform.isAndroid) {
-    await Firebase.initializeApp();
-  }
-  // 2026-10-17: FCM 자동 초기화는 꺼둠(AndroidManifest) — 이미 알림을 허용한 기기만 여기서 다시 켬.
-  if (kIsWeb || Platform.isAndroid) await restorePushIfAllowed();
-  await FavoritesStore.instance.load();
-  await TextScaleStore.instance.load();
-  await ThemeStore.instance.load();
+  var firebaseReady = false;
+  await _startupStep(() async {
+    if (kIsWeb) {
+      await Firebase.initializeApp(options: firebaseOptionsWeb);
+      firebaseReady = true;
+    } else if (Platform.isAndroid) {
+      await Firebase.initializeApp();
+      firebaseReady = true;
+    }
+  });
+  // 2026-10-17: FCM 자동 초기화는 꺼둠(AndroidManifest) — 이미 알림을 허용한 기기만 여기서 다시 켬. Firebase가 안 떴으면 건너뜀.
+  if (firebaseReady) await _startupStep(restorePushIfAllowed);
+  await _startupStep(FavoritesStore.instance.load);
+  await _startupStep(TextScaleStore.instance.load);
+  await _startupStep(ThemeStore.instance.load);
   AppFonts.preload(); // 글꼴 내려받기를 바로 시작(기다리지는 않음 — 홈 화면의 로딩 화면이 기다림)
   final api = ApiClient();
   final navigatorKey = GlobalKey<NavigatorState>();
