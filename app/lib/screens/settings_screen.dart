@@ -633,6 +633,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         _PlainRow(
                           label: '개인정보처리방침',
                           onTap: _openPrivacyPolicy,
+                          showDivider: true,
+                        ),
+                        // 2026-10-26(출시 전 점검 IP-17): 앱이 쓰는 오픈소스 패키지의 라이선스 고지(Flutter가 패키지에서 자동으로 모아 보여줌).
+                        _PlainRow(
+                          label: '오픈소스 라이선스',
+                          onTap: () => showLicensePage(context: context, applicationName: 'Issue Pop'),
                           showDivider: false,
                         ),
                       ],
