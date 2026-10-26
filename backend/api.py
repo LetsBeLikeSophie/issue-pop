@@ -35,7 +35,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import bcrypt
@@ -289,6 +289,7 @@ async def _refresh_cache_once() -> None:
             clusters = await asyncio.wait_for(asyncio.to_thread(run, live=True), timeout=30 * 60)
         except Exception as e:  # noqa: BLE001 - 한 번 실패해도 다음 주기에 재시도, 서버는 안 죽음
             _last_error = str(e) or type(e).__name__
+            print(f"[refresh] 수집 실패(다음 주기에 다시 시도): {type(e).__name__}: {_last_error[:300]}")
             return
         # 2026-09-26: "관심 이슈 알림" 대상(새로 생긴 이슈 id)을 구하려고
         # 갱신 전 id 집합을 남겨둠. 서버 막 시작해서 _cache가 아직 비어
@@ -1010,19 +1011,65 @@ _ALLOWED_IMAGE_DOMAINS = (
 )
 
 
+# 2026-10-26(출시 전 점검 IP-07): 이미지 프록시 강화 — 응답 전체를 메모리에 올리던 것(1GB VM)에 크기 상한을 두고, 리다이렉트는
+# 자동으로 따라가지 않고 한 단계씩 직접 따라가며 매번 허용 도메인인지 확인하고(허용 목록 밖으로 새면 SSRF 통로), 이미지(image/*)만
+# 내보내고, 실패 응답에 내부 예외 문구를 싣지 않음.
+_IMAGE_PROXY_MAX_BYTES = 5 * 1024 * 1024
+_IMAGE_PROXY_MAX_REDIRECTS = 2
+
+
+def _image_url_allowed(url: str) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    return parsed.scheme in ("http", "https") and any(host == d or host.endswith(f".{d}") for d in _ALLOWED_IMAGE_DOMAINS)
+
+
+def _fetch_image(url: str) -> tuple[bytes, str]:
+    """허용 도메인의 이미지를 가져옴. 실패하면 HTTPException(상태 코드 포함)."""
+    current = url
+    for _ in range(_IMAGE_PROXY_MAX_REDIRECTS + 1):
+        if not _image_url_allowed(current):
+            raise HTTPException(status_code=403, detail="domain not allowed")
+        try:
+            res = requests.get(
+                current, headers={"User-Agent": "Mozilla/5.0"}, timeout=8, allow_redirects=False, stream=True
+            )
+        except Exception as e:  # noqa: BLE001 - 이미지 하나 실패해도 프론트가 텍스트만 보여주면 됨
+            raise HTTPException(status_code=502, detail="failed to fetch image") from e
+        try:
+            if res.status_code in (301, 302, 303, 307, 308):
+                location = res.headers.get("Location")
+                if not location:
+                    raise HTTPException(status_code=502, detail="failed to fetch image")
+                current = urljoin(current, location)
+                continue
+            if res.status_code != 200:
+                raise HTTPException(status_code=502, detail="failed to fetch image")
+            content_type = (res.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if not content_type.startswith("image/"):
+                raise HTTPException(status_code=415, detail="not an image")
+            declared = res.headers.get("Content-Length")
+            if declared and declared.isdigit() and int(declared) > _IMAGE_PROXY_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="image too large")
+            data = bytearray()
+            for chunk in res.iter_content(chunk_size=64 * 1024):
+                data.extend(chunk)
+                if len(data) > _IMAGE_PROXY_MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="image too large")
+            return bytes(data), content_type
+        finally:
+            res.close()
+    raise HTTPException(status_code=502, detail="too many redirects")
+
+
 @app.get("/image-proxy")
 async def image_proxy(url: str):
-    host = urlparse(url).hostname or ""
-    if not any(host == d or host.endswith(f".{d}") for d in _ALLOWED_IMAGE_DOMAINS):
+    if not _image_url_allowed(url):
         raise HTTPException(status_code=403, detail="domain not allowed")
-    try:
-        res = await asyncio.to_thread(requests.get, url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
-        res.raise_for_status()
-    except Exception as e:  # noqa: BLE001 - 이미지 하나 실패해도 프론트가 텍스트만 보여주면 됨
-        raise HTTPException(status_code=502, detail=f"failed to fetch image: {e}") from e
+    content, content_type = await asyncio.to_thread(_fetch_image, url)
     return Response(
-        content=res.content,
-        media_type=res.headers.get("Content-Type", "image/jpeg"),
+        content=content,
+        media_type=content_type,
         headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"},
     )
 
@@ -1036,7 +1083,8 @@ async def health():
         "status": "warming_up" if not _cache else ("stale" if stale else "ok"),
         "issue_count": len(_cache),
         "last_refresh": _last_refresh,
-        "last_error": _last_error,
+        # 공개 응답에는 내부 예외 문구를 싣지 않음(자세한 내용은 서버 로그) — 실패했는지 여부만 알림.
+        "last_error": "refresh_failed" if _last_error else None,
     }
 
 
