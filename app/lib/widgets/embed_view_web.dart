@@ -15,7 +15,6 @@ Widget buildEmbed(String url, double height) {
         final frame = element as JSObject;
         frame.setProperty('src'.toJS, url.toJS);
         frame.setProperty('title'.toJS, '후원 위젯'.toJS);
-        frame.setProperty('loading'.toJS, 'lazy'.toJS);
         frame.setProperty('allow'.toJS, 'payment *'.toJS);
         final style = frame.getProperty<JSObject>('style'.toJS);
         style.setProperty('border'.toJS, 'none'.toJS);

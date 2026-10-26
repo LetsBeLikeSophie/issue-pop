@@ -141,6 +141,7 @@ class IssuePopApp extends StatelessWidget {
                     promosLoader: api.getPromos,
                     statsLoader: api.getStats,
                     wordLoader: api.getWordOfDay,
+                    outletsLoader: api.getOutletStats,
                     child: ColoredBox(
                       color: AppColors.bg,
                       child: Center(

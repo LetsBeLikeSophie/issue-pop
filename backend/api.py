@@ -1197,6 +1197,23 @@ async def get_sources(response: Response):
     ]
 
 
+@app.get("/outlet-stats")
+async def get_outlet_stats(response: Response):
+    """2026-10-27: 웹 화면의 "언론사별 기사 수" 차트용 — 지금 캐시(최근 약 30시간)에 모인 기사가 언론사별로 몇 건인지와 그
+    언론사 홈페이지 링크. 수집 중인 언론사는 0건이어도 포함(어느 매체가 이번에 안 들어왔는지도 보이게). 많은 순으로 정렬."""
+    response.headers["Cache-Control"] = "public, max-age=300"
+    counts: Counter = Counter()
+    for cluster in _cache.values():
+        for article in cluster.get("articles", []):
+            counts[article.get("outlet", "")] += 1
+    names = [src["outlet"] for src in sources.RSS_SOURCES]
+    rows = [
+        {"outlet": name, "count": counts.get(name, 0), "homepage": sources.OUTLET_HOMEPAGE.get(name)} for name in names
+    ]
+    rows.sort(key=lambda r: (-r["count"], r["outlet"]))
+    return rows
+
+
 @app.get("/categories")
 async def get_categories(response: Response):
     # 2026-09-26: 서버가 30분마다만 캐시를 갱신하는데(_cache) 이 엔드포인트는

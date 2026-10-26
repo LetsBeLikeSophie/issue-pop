@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:issue_pop/api_client.dart' show WordOfDay;
+import 'package:issue_pop/api_client.dart' show OutletStat, WordOfDay;
 import 'package:issue_pop/models/promo.dart';
 import 'package:issue_pop/widgets/web_frame.dart';
 
@@ -10,6 +10,7 @@ Widget _app({
   Future<List<PromoCard>> Function()? loader,
   Future<({int issueCount, int articleCount})> Function()? stats,
   Future<WordOfDay> Function()? word,
+  Future<List<OutletStat>> Function()? outlets,
 }) =>
     MaterialApp(
       home: Scaffold(
@@ -18,6 +19,7 @@ Widget _app({
           promosLoader: loader,
           statsLoader: stats,
           wordLoader: word,
+          outletsLoader: outlets,
           child: const Center(child: Text('앱 화면')),
         ),
       ),
@@ -142,6 +144,44 @@ void main() {
     expect(find.text('후원 페이지에서 열기'), findsOneWidget);
   });
 
+  testWidgets('언론사별 기사 수 차트: 많은 순으로 막대 길이가 비율이고 홈페이지가 있는 언론사는 눌러서 갈 수 있다', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      outlets: () async => const [
+        OutletStat(outlet: '연합뉴스', count: 100, homepage: 'https://www.yna.co.kr'),
+        OutletStat(outlet: '한겨레', count: 50, homepage: 'https://www.hani.co.kr'),
+        OutletStat(outlet: '홈페이지 없음', count: 10),
+        OutletStat(outlet: '이번엔 없음', count: 0, homepage: 'https://example.com'),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('언론사별 기사 수'), findsOneWidget);
+    for (final name in ['연합뉴스', '한겨레', '홈페이지 없음', '이번엔 없음']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    expect(find.text('100'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
+    final top = tester.getSize(find.byKey(const ValueKey('bar-연합뉴스'))).width;
+    final half = tester.getSize(find.byKey(const ValueKey('bar-한겨레'))).width;
+    expect(half, closeTo(top / 2, 1.0)); // 비율대로
+    expect(tester.getSize(find.byKey(const ValueKey('bar-이번엔 없음'))).width, lessThan(4)); // 0건은 아주 짧게
+    // 이름이 눌리는 대상(링크 있음)과 안 눌리는 대상(링크 없음)
+    expect(find.ancestor(of: find.text('연합뉴스'), matching: find.byType(InkWell)), findsOneWidget);
+    expect(find.ancestor(of: find.text('홈페이지 없음'), matching: find.byType(InkWell)), findsNothing);
+  });
+
+  testWidgets('언론사 통계를 못 받으면 차트만 안 보이고 나머지는 그대로다', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(enabled: true, outlets: () async => throw Exception('서버 점검 중')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('언론사별 기사 수'), findsNothing);
+    expect(find.text('Issue Pop'), findsOneWidget);
+    expect(find.text('앱 화면'), findsOneWidget);
+  });
+
   testWidgets('서버 카드를 못 받으면(오류) 기본 카드로 대체한다', (tester) async {
     _size(tester, 1400, 900);
     await tester.pumpWidget(_app(enabled: true, loader: () async => throw Exception('서버 점검 중')));
@@ -150,13 +190,23 @@ void main() {
     expect(find.text('Buy Me a Coffee'), findsOneWidget);
   });
 
-  testWidgets('폰 폭을 넘는 중간 화면(1000px 미만)은 프레임만 보이고 양옆 카드는 숨긴다', (tester) async {
-    _size(tester, 900, 800);
+  testWidgets('폰 폭을 넘는 중간 화면(1200px 미만)은 프레임만 보이고 양옆 카드는 숨긴다(넘침 없음)', (tester) async {
+    _size(tester, 1150, 800);
     await tester.pumpWidget(_app(enabled: true));
     await tester.pumpAndSettle();
 
     expect(find.text('앱 화면'), findsOneWidget);
     expect(find.text('Buy Me a Coffee'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('양옆 칸이 처음 나타나는 폭(1200px)에서도 넘치지 않는다', (tester) async {
+    _size(tester, 1200, 800);
+    await tester.pumpWidget(_app(enabled: true));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Buy Me a Coffee'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('좁은 화면(폰 브라우저)이나 앱에서는 프레임 없이 그대로 보인다', (tester) async {

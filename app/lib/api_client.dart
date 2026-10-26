@@ -369,6 +369,14 @@ class ApiClient {
     _checkOk(res);
   }
 
+  /// 2026-10-27: 웹 화면의 "언론사별 기사 수" 차트용 — 지금 모인 기사가 언론사별로 몇 건인지와 홈페이지 링크(GET /outlet-stats).
+  Future<List<OutletStat>> getOutletStats() async {
+    final res = await _client.get(Uri.parse('$baseUrl/outlet-stats')).timeout(const Duration(seconds: 8));
+    _checkOk(res);
+    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return list.map((e) => OutletStat.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// 2026-10-27: 웹 양옆 홍보 카드(backend/promos.json). 실패하면 호출한 쪽(WebFrame)이 기본 카드로 대체함.
   Future<List<PromoCard>> getPromos() async {
     final res = await _client.get(Uri.parse('$baseUrl/promos')).timeout(const Duration(seconds: 8));
@@ -643,6 +651,21 @@ class StockWatch {
             const [],
         quote: json['quote'] != null ? StockQuote.fromJson(json['quote'] as Map<String, dynamic>) : null,
         loading: json['loading'] == true,
+      );
+}
+
+/// 언론사별 기사 수(웹 차트용) — backend/api.py의 GET /outlet-stats와 1:1.
+class OutletStat {
+  const OutletStat({required this.outlet, required this.count, this.homepage});
+
+  final String outlet;
+  final int count;
+  final String? homepage;
+
+  factory OutletStat.fromJson(Map<String, dynamic> json) => OutletStat(
+        outlet: json['outlet'] as String,
+        count: json['count'] as int,
+        homepage: json['homepage'] as String?,
       );
 }
 

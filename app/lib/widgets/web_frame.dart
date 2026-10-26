@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../api_client.dart' show WordOfDay;
+import '../api_client.dart' show OutletStat, WordOfDay;
 import '../models/promo.dart';
 import '../theme.dart';
 import '../theme_store.dart';
@@ -23,6 +23,7 @@ class WebFrame extends StatefulWidget {
     this.promosLoader,
     this.statsLoader,
     this.wordLoader,
+    this.outletsLoader,
     this.enabled = kIsWeb,
   });
 
@@ -33,17 +34,20 @@ class WebFrame extends StatefulWidget {
   final Future<({int issueCount, int articleCount})> Function()? statsLoader;
   final Future<WordOfDay> Function()? wordLoader;
 
+  /// 왼쪽 칸의 "언론사별 기사 수" 차트용(언론사 이름을 누르면 그 언론사 홈페이지).
+  final Future<List<OutletStat>> Function()? outletsLoader;
+
   /// 기본은 웹일 때만(테스트에서 켜고 끌 수 있게 분리).
   final bool enabled;
 
   /// 이 폭 미만이면 프레임 없이 앱을 꽉 차게 보여줌(폰 브라우저).
   static const frameMinWidth = 720.0;
 
-  /// 이 폭 이상이면 양옆 칸도 보여줌.
-  static const panelsMinWidth = 1040.0;
+  /// 이 폭 이상이면 양옆 칸도 보여줌(프레임 446 + 양옆 칸 2×320 + 간격 72 = 1158보다 커야 넘치지 않음).
+  static const panelsMinWidth = 1200.0;
 
   static const frameWidth = 430.0;
-  static const panelWidth = 280.0;
+  static const panelWidth = 320.0;
 
   @override
   State<WebFrame> createState() => _WebFrameState();
@@ -53,6 +57,7 @@ class _WebFrameState extends State<WebFrame> {
   late final Future<List<PromoCard>> _promos = _load();
   late final Future<({int issueCount, int articleCount})?> _stats = _safe(widget.statsLoader);
   late final Future<WordOfDay?> _word = _safe(widget.wordLoader);
+  late final Future<List<OutletStat>?> _outlets = _safe(widget.outletsLoader);
 
   Future<List<PromoCard>> _load() async {
     final loader = widget.promosLoader;
@@ -118,6 +123,14 @@ class _WebFrameState extends State<WebFrame> {
                                   final stats = snap.data;
                                   if (stats == null) return const SizedBox.shrink();
                                   return Padding(padding: const EdgeInsets.only(top: 14), child: _StatsCard(stats: stats));
+                                },
+                              ),
+                              FutureBuilder<List<OutletStat>?>(
+                                future: _outlets,
+                                builder: (context, snap) {
+                                  final rows = snap.data;
+                                  if (rows == null || rows.isEmpty) return const SizedBox.shrink();
+                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _OutletChartCard(rows: rows));
                                 },
                               ),
                               FutureBuilder<WordOfDay?>(
@@ -283,6 +296,96 @@ class _StatsCard extends StatelessWidget {
             TextSpan(text: '건 기사', style: TextStyle(fontSize: 13, color: AppColors.inkSoft)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "언론사별 기사 수" — 지금(최근 약 30시간) 모인 기사가 언론사마다 몇 건인지를 가로 막대로 보여주고, 이름을 누르면 그 언론사
+/// 홈페이지로 감. 막대 길이는 가장 많은 언론사를 기준으로 한 비율.
+class _OutletChartCard extends StatelessWidget {
+  const _OutletChartCard({required this.rows});
+
+  final List<OutletStat> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxCount = rows.fold<int>(1, (m, r) => math.max(m, r.count));
+    return _InfoCard(
+      label: '언론사별 기사 수',
+      child: Column(
+        children: [
+          for (final row in rows) _OutletBarRow(row: row, maxCount: maxCount),
+        ],
+      ),
+    );
+  }
+}
+
+class _OutletBarRow extends StatelessWidget {
+  const _OutletBarRow({required this.row, required this.maxCount});
+
+  final OutletStat row;
+  final int maxCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final homepage = row.homepage;
+    final name = SizedBox(
+      width: 78,
+      child: Text(
+        row.outlet,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12,
+          color: homepage == null ? AppColors.inkSoft : AppColors.accent,
+          decoration: homepage == null ? null : TextDecoration.underline,
+          decorationColor: AppColors.accent.withValues(alpha: 0.35),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          homepage == null
+              ? name
+              : InkWell(
+                  onTap: () => launchUrl(Uri.parse(homepage), mode: LaunchMode.externalApplication),
+                  child: name,
+                ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                // 0건이어도 자리가 보이게 얇은 점선 대신 아주 짧은 막대, 그 외엔 비율(최소 4px)
+                final width = row.count == 0 ? 2.0 : math.max(4.0, c.maxWidth * row.count / maxCount);
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    key: ValueKey('bar-${row.outlet}'),
+                    width: width,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: row.count == 0 ? AppColors.line : AppColors.accent,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '${row.count}',
+              textAlign: TextAlign.right,
+              style: AppTypography.mono(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.ink),
+            ),
+          ),
+        ],
       ),
     );
   }
