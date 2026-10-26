@@ -91,6 +91,57 @@ void main() {
     expect(find.text('Issue Pop'), findsOneWidget);
   });
 
+  testWidgets('양옆 칸 글씨는 Material 안에서 그려져 노란 밑줄(형광펜처럼 보임) 없이 앱 기본 글자 스타일을 받는다', (tester) async {
+    _size(tester, 1400, 900);
+    // 실제 앱처럼 MaterialApp.builder 안(Scaffold 바깥)에 둠 — 여기서 Material이 없으면 Flutter 기본 스타일(노란 밑줄·고정폭 글꼴)이 붙음.
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => WebFrame(enabled: true, child: child!),
+      home: const Scaffold(body: Center(child: Text('앱 화면'))),
+    ));
+    await tester.pumpAndSettle();
+
+    final style = DefaultTextStyle.of(tester.element(find.text('Issue Pop'))).style;
+    expect(style.decoration, isNot(TextDecoration.underline));
+    expect(style.fontFamily, isNot('monospace'));
+    expect(find.text('오늘 어떤 이슈가 많이 보도됐는지, 한눈에'), findsOneWidget);
+  });
+
+  testWidgets('버튼이 없는 안내 카드(준비 중)는 버튼 없이 글만 보인다', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      loader: () async => const [
+        PromoCard(id: 'app', title: '앱으로 더 편하게', body: '스토어에 등록되면 여기서 QR로 받을 수 있어요. (준비 중)', left: true),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('앱으로 더 편하게'), findsOneWidget);
+    expect(find.textContaining('준비 중'), findsOneWidget);
+    expect(find.byType(OutlinedButton), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
+  });
+
+  testWidgets('임베드를 쓸 수 없는 곳(앱·테스트)에서는 후원 위젯 대신 링크 버튼이 나온다', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      loader: () async => const [
+        PromoCard(
+          id: 'coffee',
+          title: 'Buy Me a Coffee',
+          button: '후원 페이지에서 열기',
+          url: 'https://buymeacoffee.com/itssophie',
+          highlight: true,
+          embed: 'https://buymeacoffee.com/widget/page/itssophie',
+        ),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('후원 페이지에서 열기'), findsOneWidget);
+  });
+
   testWidgets('서버 카드를 못 받으면(오류) 기본 카드로 대체한다', (tester) async {
     _size(tester, 1400, 900);
     await tester.pumpWidget(_app(enabled: true, loader: () async => throw Exception('서버 점검 중')));

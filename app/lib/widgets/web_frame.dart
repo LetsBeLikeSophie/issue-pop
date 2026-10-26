@@ -8,6 +8,7 @@ import '../api_client.dart' show WordOfDay;
 import '../models/promo.dart';
 import '../theme.dart';
 import '../theme_store.dart';
+import 'embed_view.dart';
 
 /// 2026-10-27: 웹(넓은 화면)에서 앱을 폰 폭의 프레임으로 가운데 고정하고 양옆에 소개·홍보 카드를 보여주는 틀.
 /// 가로로 넓은 화면에 앱이 그대로 퍼져 보이던 걸 "폰 화면"처럼 보이게 하려는 것. 좁은 화면(폰 브라우저)이나 앱에서는
@@ -84,9 +85,13 @@ class _WebFrameState extends State<WebFrame> {
         // 위아래 여백(28씩)을 두고, 너무 길어지지 않게 상한을 둠.
         final frameHeight = math.max(480.0, math.min(c.maxHeight - 56, 960.0));
         final media = MediaQuery.of(context);
-        return ColoredBox(
-          color: AppColors.bg,
-          child: Center(
+        // Material이 있어야 양옆 칸의 글씨가 앱 글꼴(Noto Sans KR)과 기본 글자 스타일을 받음. MaterialApp.builder는 Scaffold 바깥이라
+        // 이게 없으면 Flutter 기본 스타일(노란 밑줄이 형광펜처럼 보이고 글꼴이 달라짐)로 그려졌음.
+        return Material(
+          type: MaterialType.transparency,
+          child: ColoredBox(
+            color: AppColors.bg,
+            child: Center(
             child: FutureBuilder<List<PromoCard>>(
               future: _promos,
               initialData: const <PromoCard>[],
@@ -151,6 +156,7 @@ class _WebFrameState extends State<WebFrame> {
                   ],
                 );
               },
+            ),
             ),
           ),
         );
@@ -366,6 +372,12 @@ class _PromoCardView extends StatelessWidget {
 
   final PromoCard card;
 
+  /// 임베드는 Buy Me a Coffee 위젯 주소만 허용(서버 파일이 잘못돼도 엉뚱한 사이트가 안 붙게).
+  bool get _embeddable {
+    final host = Uri.tryParse(card.embed)?.host ?? '';
+    return canEmbed && card.embed.isNotEmpty && (host == 'buymeacoffee.com' || host.endsWith('.buymeacoffee.com'));
+  }
+
   @override
   Widget build(BuildContext context) {
     void open() => launchUrl(Uri.parse(card.url), mode: LaunchMode.externalApplication);
@@ -384,17 +396,41 @@ class _PromoCardView extends StatelessWidget {
             const SizedBox(height: 6),
             Text(card.body, style: TextStyle(fontSize: 13, color: AppColors.inkSoft, height: 1.5)),
           ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: card.highlight
-                ? FilledButton(
-                    onPressed: open,
-                    style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-                    child: Text(card.button),
-                  )
-                : OutlinedButton(onPressed: open, child: Text(card.button)),
-          ),
+          if (card.image.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  card.image,
+                  width: 180,
+                  height: 180,
+                  filterQuality: FilterQuality.none, // QR이 흐려지지 않게
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ],
+          if (_embeddable) ...[
+            const SizedBox(height: 10),
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: buildEmbed(card.embed, card.embedHeight)),
+          ],
+          if (card.hasButton) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              // 임베드가 보이면 그 안에 후원 버튼이 이미 있으니 링크는 작은 보조 버튼으로, 아니면(앱·임베드 불가) 큰 버튼.
+              child: _embeddable
+                  ? TextButton(onPressed: open, child: Text(card.button))
+                  : card.highlight
+                      ? FilledButton(
+                          onPressed: open,
+                          style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+                          child: Text(card.button),
+                        )
+                      : OutlinedButton(onPressed: open, child: Text(card.button)),
+            ),
+          ],
         ],
       ),
     );

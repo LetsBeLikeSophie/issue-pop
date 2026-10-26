@@ -20,7 +20,7 @@ assert 'Issue Pop(이하 "이슈팝")' in html
 # 콘텐츠 제외 요청 창구와 연락 이메일(Cloudflare 난독화를 피하려고 &#64; 사용)
 assert "콘텐츠 이용 안내 및 삭제 요청" in html and "콘텐츠 제외 요청: contact&#64;issue-pop.com" in html
 # 실제 수집·전달과 맞는 항목들
-for needle in ("기기 번호", "Firebase 설치 ID", "Google Fonts", "Google Gmail", "Google Firebase Cloud Messaging"):
+for needle in ("기기 번호", "Firebase 설치 ID", "Google Fonts", "Google Gmail", "Google Firebase Cloud Messaging", "후원 위젯(Buy Me a Coffee)"):
     assert needle in html, needle
 assert "8. 방침 변경" in html
 

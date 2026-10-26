@@ -1095,7 +1095,9 @@ async def health():
 
 # 2026-10-26: 웹(넓은 화면)에서 앱 화면 양옆에 보여주는 홍보 카드 — "Buy Me a Coffee"와 내 다른 앱 소개 등. 내용을 앱 업데이트·서버
 # 재시작 없이 바꿀 수 있게 backend/promos.json 파일을 읽어서 내려줌(파일이 바뀌면 다음 요청에 반영, 최대 5분은 엣지 캐시).
-# 형식: [{"id": "coffee", "side": "right"|"left", "title": "...", "body": "...", "button": "...", "url": "https://...", "highlight": true}]
+# 형식: [{"id": "coffee", "side": "right"|"left", "title": "...", "body": "...", "button": "...", "url": "https://...", "highlight": true,
+#        "image": "https://...(QR 같은 이미지)", "embed": "https://...(페이지 안에 붙일 iframe 주소)", "embed_height": 300}]
+# title만 필수. button·url은 둘 다 있을 때만 버튼이 생김(없으면 "준비 중" 같은 안내 카드). 링크는 https만 허용.
 PROMOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "promos.json")
 _PROMO_DEFAULTS = [
     {
@@ -1106,6 +1108,9 @@ _PROMO_DEFAULTS = [
         "button": "후원하기",
         "url": "https://buymeacoffee.com/itssophie",
         "highlight": True,
+        "image": "",
+        "embed": "",
+        "embed_height": 300,
     }
 ]
 _PROMO_MAX_ITEMS = 8
@@ -1117,23 +1122,39 @@ def _clean_promo(raw: object) -> dict | None:
     if not isinstance(raw, dict):
         return None
 
-    def text(key: str, limit: int, required: bool = True) -> str | None:
+    def text(key: str, limit: int) -> str:
         value = raw.get(key)
-        if not isinstance(value, str) or not value.strip():
-            return None if required else ""
-        return value.strip()[:limit]
+        return value.strip()[:limit] if isinstance(value, str) else ""
 
-    title, button, url = text("title", 40), text("button", 20), text("url", 300)
-    if not title or not button or not url or not url.startswith("https://"):
+    def https_url(key: str) -> str | None:
+        """없으면 "", https가 아니거나 너무 길면 None(그 항목을 버림)."""
+        value = text(key, 400)
+        if not value:
+            return ""
+        return value if value.startswith("https://") and len(value) <= 300 else None
+
+    title = text("title", 40)
+    url, image, embed = https_url("url"), https_url("image"), https_url("embed")
+    if not title or url is None or image is None or embed is None:
         return None
+    button = text("button", 20)
+    if not url or not button:  # 링크와 버튼은 짝 — 하나만 있으면 버튼 없는 안내 카드로 둠
+        url, button = "", ""
+    try:
+        embed_height = int(raw.get("embed_height", 300))
+    except (TypeError, ValueError):
+        embed_height = 300
     return {
-        "id": text("id", 40, required=False) or title,
+        "id": text("id", 40) or title,
         "side": "left" if raw.get("side") == "left" else "right",
         "title": title,
-        "body": text("body", 140, required=False),
+        "body": text("body", 140),
         "button": button,
         "url": url,
         "highlight": raw.get("highlight") is True,
+        "image": image,
+        "embed": embed,
+        "embed_height": max(100, min(embed_height, 700)),
     }
 
 
@@ -2469,7 +2490,9 @@ async def privacy_policy():
     (수탁 정보: 문의 내용, 입력한 경우 답장받을 이메일)</li>
   </ul>
   <p>또한 화면에 쓰는 글꼴을 Google Fonts에서 내려받으며, 이때 이용자의 IP 주소 등 접속 정보가 Google에
-  전달될 수 있습니다.</p>
+  전달될 수 있습니다. 웹 버전에는 후원 위젯(Buy Me a Coffee)이 페이지 안에 표시될 수 있으며, 이 위젯을 불러올 때
+  해당 서비스에 이용자의 접속 정보(IP 주소 등)가 전달될 수 있습니다. 후원 입력 내용은 해당 서비스가 처리하며 이슈팝
+  서버로는 전달되지 않습니다.</p>
 
   <h2>5. 이용자의 권리</h2>
   <p>이용자는 앱 내 설정 화면에서 언제든지 알림을 끄거나 등록한 키워드·

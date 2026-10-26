@@ -26,14 +26,20 @@ def write(path, content):
 
 write.counter = 1
 
-# 1) 저장소에 들어 있는 기본 파일: Buy Me a Coffee 한 장
+# 1) 저장소에 들어 있는 기본 파일: 앱 안내(준비 중) 카드 + Buy Me a Coffee(임베드)
 api.PROMOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "promos.json")
 api._promo_cache.update(mtime=None, items=None)
 r = client.get("/promos")
 assert r.status_code == 200 and "max-age=300" in r.headers["cache-control"]
 cards = r.json()
-assert len(cards) == 1 and cards[0]["title"] == "Buy Me a Coffee" and cards[0]["url"] == "https://buymeacoffee.com/itssophie"
-assert cards[0]["side"] == "right" and cards[0]["highlight"] is True
+by_id = {c["id"]: c for c in cards}
+assert set(by_id) == {"app", "coffee"}
+coffee = by_id["coffee"]
+assert coffee["title"] == "Buy Me a Coffee" and coffee["url"] == "https://buymeacoffee.com/itssophie"
+assert coffee["side"] == "right" and coffee["highlight"] is True
+assert coffee["embed"].startswith("https://buymeacoffee.com/widget/page/") and coffee["embed_height"] == 300
+# 앱 받기는 스토어 출시 전이라 링크·버튼 없는 "준비 중" 안내 카드
+assert by_id["app"]["side"] == "left" and by_id["app"]["url"] == "" and by_id["app"]["button"] == ""
 
 tmp = tempfile.mkdtemp()
 path = os.path.join(tmp, "promos.json")
@@ -66,6 +72,24 @@ cards = client.get("/promos").json()
 assert len(cards) == 8
 assert len(cards[0]["title"]) == 40 and len(cards[0]["body"]) == 140 and len(cards[0]["button"]) == 20
 assert all(c["url"].startswith("https://") for c in cards)
+
+# 4-1) 버튼·링크는 짝(하나만 있으면 안내 카드), image/embed는 https만, 높이는 100~700으로 제한
+write(path, [
+    {"title": "안내만", "body": "준비 중", "button": "버튼만 있음"},
+    {"title": "링크만", "url": "https://ok.example.com"},
+    {"title": "QR", "image": "https://api.issue-pop.com/downloads/qr-store.png", "button": "받기", "url": "https://play.google.com/x"},
+    {"title": "http 이미지", "image": "http://insecure.example.com/a.png"},
+    {"title": "http 임베드", "embed": "http://insecure.example.com/w"},
+    {"title": "너무 큰 임베드", "embed": "https://ok.example.com/w", "embed_height": 99999},
+    {"title": "작은 임베드", "embed": "https://ok.example.com/w", "embed_height": 5},
+    {"title": "이상한 높이", "embed": "https://ok.example.com/w", "embed_height": "큼"},
+])
+cards = {c["title"]: c for c in client.get("/promos").json()}
+assert set(cards) == {"안내만", "링크만", "QR", "너무 큰 임베드", "작은 임베드", "이상한 높이"}, set(cards)
+assert cards["안내만"]["button"] == "" and cards["안내만"]["url"] == ""
+assert cards["링크만"]["button"] == "" and cards["링크만"]["url"] == ""
+assert cards["QR"]["image"].endswith("qr-store.png") and cards["QR"]["url"].startswith("https://play.google.com")
+assert cards["너무 큰 임베드"]["embed_height"] == 700 and cards["작은 임베드"]["embed_height"] == 100 and cards["이상한 높이"]["embed_height"] == 300
 
 # 5) 파일이 깨졌거나 목록이 아니면 기본값으로 되돌아감(앱이 깨지지 않음)
 write(path, "{ 이건 JSON이 아님")
