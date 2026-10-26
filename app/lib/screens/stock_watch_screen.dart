@@ -633,7 +633,7 @@ class _StockCardState extends State<_StockCard> {
                           // expandable_issue_card.dart와 같은 처리).
                           for (var i = 0; i < news.length; i++) ...[
                             if (i != 0) Divider(height: 1, color: AppColors.divider),
-                            _NewsRow(item: news[i]),
+                            StockNewsRow(item: news[i]),
                           ],
                         ],
                       ),
@@ -706,8 +706,8 @@ class _SummaryStat extends StatelessWidget {
   }
 }
 
-class _NewsRow extends StatelessWidget {
-  const _NewsRow({required this.item});
+class StockNewsRow extends StatelessWidget {
+  const StockNewsRow({super.key, required this.item});
 
   final StockNewsItem item;
 
@@ -738,9 +738,19 @@ class _NewsRow extends StatelessWidget {
             ),
             // 번역 성공하면 원문(영어)을 옅은 글씨로 아래에 같이 보여줌 —
             // 번역 실패(키 없음/API 오류)하면 이 줄 없이 원문만 위에 나옴.
+            // 2026-10-26(출시 전 점검 IP-16): 위의 한국어 제목은 AI(Claude)가 번역한 것이라 틀릴 수 있는데 언론사가 쓴 제목처럼
+            // 보였음 — 원문 줄 앞에 "AI 번역" 표시를 붙여 구분함(원문은 그대로 함께 보여줌).
             if (translated != null) ...[
               const SizedBox(height: 2),
-              Text(item.title, style: TextStyle(fontSize: 10, color: AppColors.inkFaint, height: 1.3)),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'AI 번역', style: TextStyle(fontWeight: FontWeight.w700)),
+                    TextSpan(text: ' · 원문 ${item.title}'),
+                  ],
+                ),
+                style: TextStyle(fontSize: 10, color: AppColors.inkFaint, height: 1.3),
+              ),
             ],
             const SizedBox(height: 1),
             Text.rich(
