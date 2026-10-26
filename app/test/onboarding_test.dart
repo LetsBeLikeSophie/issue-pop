@@ -54,6 +54,37 @@ void main() {
     expect((await SharedPreferences.getInstance()).getBool('onboarding_seen_v1'), isTrue);
   });
 
+  testWidgets('시작하기를 빠르게 두 번 눌러도 소개 화면만 닫히고 아래 화면은 그대로다(출시 전 점검 IP-15)', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const OnboardingScreen())),
+              child: const Text('열기'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    final button = find.text('시작하기');
+    await tester.tap(button);
+    await tester.tap(button, warnIfMissed: false); // 첫 pop이 끝나기 전에 한 번 더
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OnboardingScreen), findsNothing);
+    expect(find.text('열기'), findsOneWidget, reason: '두 번째 누름이 아래 화면까지 닫으면 안 됨');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('건너뛰기도 바로 닫고 본 것으로 기록한다', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(MaterialApp(

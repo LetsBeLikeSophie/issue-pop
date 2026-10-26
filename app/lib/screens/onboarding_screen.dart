@@ -80,7 +80,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  /// 2026-10-26(출시 전 점검 IP-15): "시작하기"/"건너뛰기"를 빠르게 두 번 누르면 markSeen을 기다리는 사이 두 번째 호출이 또 pop해서
+  /// 소개 화면 아래의 홈 화면까지 닫힐 수 있었음 — 한 번 시작하면 다시 실행하지 않음.
+  bool _finishing = false;
+
   Future<void> _finish() async {
+    if (_finishing) return;
+    _finishing = true;
     await OnboardingScreen.markSeen();
     if (mounted) Navigator.of(context).pop();
   }
