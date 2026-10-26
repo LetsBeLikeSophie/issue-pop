@@ -170,4 +170,37 @@ class BrokenSMTP(FakeSMTP):
 smtplib.SMTP = BrokenSMTP
 assert client.post("/feedback", json={"message": "서버 죽음"}).status_code == 200
 
+# 10) 출시 전 점검 IP-04: 길이·개수 상한, 비밀값 확인이 외부 시세 조회보다 먼저, 속도 제한
+lim = client.post("/devices", json={"push_token": "limit-token", "claim": True}).json()
+lid2, lsec = lim["device_id"], lim["device_secret"]
+assert client.post("/devices", json={"push_token": "x" * 5000}).status_code == 422
+assert client.post("/devices", json={"push_token": ""}).status_code == 422
+assert client.post("/watches", json={"device_id": lid2, "keyword": "가" * 51}, headers=H(lsec)).status_code == 422
+assert client.post("/watches", json={"device_id": lid2, "keyword": ""}, headers=H(lsec)).status_code == 422
+
+api.MAX_KEYWORDS_PER_DEVICE = 3
+for i in range(3):
+    assert client.post("/watches", json={"device_id": lid2, "keyword": f"키워드{i}"}, headers=H(lsec)).status_code == 200
+assert client.post("/watches", json={"device_id": lid2, "keyword": "넷째"}, headers=H(lsec)).status_code == 409
+api.MAX_KEYWORDS_PER_DEVICE = 50
+
+api.MAX_STOCKS_PER_DEVICE = 2
+for tk in ("AAPL", "MSFT"):
+    assert client.post("/stocks", json={"device_id": lid2, "ticker": tk}, headers=H(lsec)).status_code == 200
+assert client.post("/stocks", json={"device_id": lid2, "ticker": "NVDA"}, headers=H(lsec)).status_code == 409
+assert client.post("/stocks", json={"device_id": lid2, "ticker": "AAPL"}, headers=H(lsec)).status_code == 200  # 이미 있는 종목은 그대로 통과
+api.MAX_STOCKS_PER_DEVICE = 30
+
+quote_calls = []
+api.quotes.fetch_quote = lambda t: quote_calls.append(t) or None
+assert client.post("/stocks", json={"device_id": lid2, "ticker": "ZZZZNOPE"}).status_code == 403  # 비밀값 없이 모르는 티커
+assert client.post("/stocks", json={"device_id": lid2, "ticker": "ZZZZNOPE"}, headers=H("wrong")).status_code == 403
+assert quote_calls == [], "비밀값 확인 전에 외부 시세 조회가 나감"
+assert client.post("/stocks", json={"device_id": lid2, "ticker": "ZZZZNOPE"}, headers=H(lsec)).status_code == 422  # 확인 후엔 조회함
+assert quote_calls == ["ZZZZNOPE"]
+
+# 기기 등록은 IP당 시간당 60번까지
+codes = [client.post("/devices", json={"push_token": f"flood-{i}"}).status_code for i in range(80)]
+assert 429 in codes and codes.index(429) <= 70, codes
+
 print("test_device_secret: ALL OK")

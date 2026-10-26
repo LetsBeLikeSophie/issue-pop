@@ -62,6 +62,10 @@ from pipeline import run
 
 REFRESH_INTERVAL_SECONDS = 30 * 60  # 30분마다 재수집+재클러스터링
 HEALTH_STALE_AFTER_SECONDS = 90 * 60  # 마지막 갱신이 이보다 오래되면 /health가 "stale"
+# 2026-10-26(출시 전 점검 IP-04): 기기 하나가 종목·키워드를 무한정 등록하면 30분마다 시세·뉴스 호출과 번역이 그만큼 늘어 갱신 전체가
+# 느려짐(_refresh_lock 안에서 돎) — 정상 사용에는 넉넉한 상한을 둠.
+MAX_STOCKS_PER_DEVICE = 30
+MAX_KEYWORDS_PER_DEVICE = 50
 # 2026-09-11: 클러스터 감사(cluster_audit.py) — 트래픽 적은 새벽 시간에
 # 하루 한 번만 돎(라이브 클러스터링과는 별개, LLM 배치 호출이라 비쌀 건
 # 없지만 그래도 굳이 피크 시간에 돌 이유는 없어서).
@@ -1237,7 +1241,7 @@ async def set_summary(issue_id: str, body: SummaryIn, _: None = Depends(_require
 
 
 class DeviceIn(BaseModel):
-    push_token: str
+    push_token: str = Field(min_length=1, max_length=4096)  # FCM 토큰은 보통 160자 안팎
 
 
 class RegisterDeviceIn(DeviceIn):
@@ -1247,7 +1251,8 @@ class RegisterDeviceIn(DeviceIn):
 
 
 @app.post("/devices")
-async def register_device(body: RegisterDeviceIn):
+@limiter.limit("60/hour")
+async def register_device(request: Request, body: RegisterDeviceIn):
     """5번(커스텀 키워드 알림, 무료) — 로그인 없이도 알림 보내려면
     최소한 이 기기가 어떤 push_token인지는 서버가 알아야 함.
 
@@ -1302,13 +1307,19 @@ async def update_device_push_token(device_id: int, body: DeviceIn, x_device_secr
 
 class WatchIn(BaseModel):
     device_id: int
-    keyword: str
+    keyword: str = Field(min_length=1, max_length=50)
 
 
 @app.post("/watches")
-async def add_watch(body: WatchIn, x_device_secret: str | None = Header(default=None)):
+@limiter.limit("30/minute")
+async def add_watch(request: Request, body: WatchIn, x_device_secret: str | None = Header(default=None)):
     with db.get_session() as session:
+        from sqlmodel import select
+
         device = _device_for(session, body.device_id, x_device_secret, "device not registered")
+        current = session.exec(select(db.DeviceKeywordWatch.id).where(db.DeviceKeywordWatch.device_id == body.device_id)).all()
+        if len(current) >= MAX_KEYWORDS_PER_DEVICE:
+            raise HTTPException(status_code=409, detail=f"keyword limit reached ({MAX_KEYWORDS_PER_DEVICE})")
         device.last_active_at = db.now()
         session.add(device)
         watch = db.DeviceKeywordWatch(device_id=body.device_id, keyword=body.keyword)
@@ -1424,14 +1435,30 @@ async def _warm_ticker(ticker: str) -> None:
 
 class StockWatchIn(BaseModel):
     device_id: int
-    ticker: str
+    ticker: str = Field(min_length=1, max_length=20)
 
 
 @app.post("/stocks")
-async def add_stock_watch(body: StockWatchIn, x_device_secret: str | None = Header(default=None)):
+@limiter.limit("30/minute")
+async def add_stock_watch(request: Request, body: StockWatchIn, x_device_secret: str | None = Header(default=None)):
     ticker = body.ticker.strip().upper()
     if not ticker:
         raise HTTPException(status_code=422, detail="ticker must not be empty")
+    # 2026-10-26(출시 전 점검 IP-04): 비밀값 확인과 개수 상한을 시세 조회(Finnhub 호출)보다 먼저 함 — 예전엔 인증 없이도 모르는
+    # 티커를 보내면 그때마다 외부 시세 조회와(통과하면) 번역이 나갔음.
+    with db.get_session() as session:
+        from sqlmodel import select
+
+        _device_for(session, body.device_id, x_device_secret, "device not registered")
+        already = session.exec(
+            select(db.DeviceStockWatch.id).where(
+                db.DeviceStockWatch.device_id == body.device_id, db.DeviceStockWatch.ticker == ticker
+            )
+        ).first()
+        if already is None:
+            count = len(session.exec(select(db.DeviceStockWatch.id).where(db.DeviceStockWatch.device_id == body.device_id)).all())
+            if count >= MAX_STOCKS_PER_DEVICE:
+                raise HTTPException(status_code=409, detail=f"stock limit reached ({MAX_STOCKS_PER_DEVICE})")
     # 2026-10-18: 없는 티커는 등록하지 않음 — 예전엔 아무 문자열이나 등록돼서 가격이 영영 안 뜨는 카드가 생겼음("없는 게 추가되면 안
     # 되지"). 카탈로그(인기 종목 + SEC 상장 목록)에 있으면 바로 통과, 직접 입력한 티커는 시세를 한 번 조회해서(빠름) 실제로 거래되는
     # 종목인지 확인함(Finnhub은 없는 심볼에 가격 0을 돌려줘서 fetch_quote가 None). 이미 시세 캐시에 있으면 다른 기기가 확인한 것.
