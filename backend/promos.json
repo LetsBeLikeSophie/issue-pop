@@ -1,0 +1,11 @@
+[
+  {
+    "id": "coffee",
+    "side": "right",
+    "title": "Buy Me a Coffee",
+    "body": "이슈팝이 마음에 드셨다면 커피 한 잔으로 응원해 주세요.",
+    "button": "후원하기",
+    "url": "https://buymeacoffee.com/itssophie",
+    "highlight": true
+  }
+]

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import html
 import os
 import re
@@ -373,6 +374,10 @@ async def _refresh_loop() -> None:
     while True:
         await asyncio.sleep(REFRESH_INTERVAL_SECONDS)
         await refresh_cache()  # 예외는 refresh_cache 안에서 처리함
+        try:
+            await asyncio.to_thread(_flush_visitors)
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("visitors_flush", e)
 
 
 def _log_loop_error(name: str, e: Exception) -> None:
@@ -1086,6 +1091,73 @@ async def health():
         # 공개 응답에는 내부 예외 문구를 싣지 않음(자세한 내용은 서버 로그) — 실패했는지 여부만 알림.
         "last_error": "refresh_failed" if _last_error else None,
     }
+
+
+# 2026-10-26: 웹(넓은 화면)에서 앱 화면 양옆에 보여주는 홍보 카드 — "Buy Me a Coffee"와 내 다른 앱 소개 등. 내용을 앱 업데이트·서버
+# 재시작 없이 바꿀 수 있게 backend/promos.json 파일을 읽어서 내려줌(파일이 바뀌면 다음 요청에 반영, 최대 5분은 엣지 캐시).
+# 형식: [{"id": "coffee", "side": "right"|"left", "title": "...", "body": "...", "button": "...", "url": "https://...", "highlight": true}]
+PROMOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "promos.json")
+_PROMO_DEFAULTS = [
+    {
+        "id": "coffee",
+        "side": "right",
+        "title": "Buy Me a Coffee",
+        "body": "이슈팝이 마음에 드셨다면 커피 한 잔으로 응원해 주세요.",
+        "button": "후원하기",
+        "url": "https://buymeacoffee.com/itssophie",
+        "highlight": True,
+    }
+]
+_PROMO_MAX_ITEMS = 8
+_promo_cache: dict = {"mtime": None, "items": None}
+
+
+def _clean_promo(raw: object) -> dict | None:
+    """파일 내용이 잘못돼도(오타·너무 긴 글·http 링크) 앱이 깨지지 않게 항목마다 검증함 — 못 쓰는 항목은 건너뜀."""
+    if not isinstance(raw, dict):
+        return None
+
+    def text(key: str, limit: int, required: bool = True) -> str | None:
+        value = raw.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None if required else ""
+        return value.strip()[:limit]
+
+    title, button, url = text("title", 40), text("button", 20), text("url", 300)
+    if not title or not button or not url or not url.startswith("https://"):
+        return None
+    return {
+        "id": text("id", 40, required=False) or title,
+        "side": "left" if raw.get("side") == "left" else "right",
+        "title": title,
+        "body": text("body", 140, required=False),
+        "button": button,
+        "url": url,
+        "highlight": raw.get("highlight") is True,
+    }
+
+
+def _load_promos() -> list[dict]:
+    try:
+        mtime = os.path.getmtime(PROMOS_FILE)
+    except OSError:
+        return [dict(p) for p in _PROMO_DEFAULTS]
+    if _promo_cache["mtime"] != mtime:
+        try:
+            with open(PROMOS_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            items = [c for c in (_clean_promo(x) for x in data) if c][:_PROMO_MAX_ITEMS] if isinstance(data, list) else None
+        except (OSError, ValueError):
+            items = None
+        _promo_cache["mtime"], _promo_cache["items"] = mtime, items
+    items = _promo_cache["items"]
+    return [dict(p) for p in (items if items is not None else _PROMO_DEFAULTS)]
+
+
+@app.get("/promos")
+async def get_promos(response: Response):
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return _load_promos()
 
 
 @app.get("/sources")
@@ -2141,6 +2213,59 @@ PRESENCE_MIN_TO_SHOW = 3  # 이보다 적으면 서버가 show=false를 줌(숫�
 _presence: dict[str, float] = {}
 _presence_last_purge = 0.0
 
+# 2026-10-26: "오늘 방문자" — 오늘(KST) 신호를 보낸 서로 다른 설치/브라우저 수. 집합은 서버 메모리에만 두고(식별자는 저장하지 않음),
+# 숫자만 하루 단위로 DB(visitor_days)에 남김. 서버를 재시작하면 그날 집합이 비워져서 재시작 전 사람은 다시 신호를 보낼 때까지 빠짐 —
+# 그래서 표시값은 max(DB에 남긴 값, 지금 집합 크기)로 최소한 줄어들지는 않게 함(약간 적게 잡힐 수 있음).
+_visitors_date: str | None = None
+_visitors_today: set[str] = set()
+
+
+def _kst_today() -> str:
+    return datetime.now(KST).strftime("%Y-%m-%d")
+
+
+def _flush_visitors() -> None:
+    """오늘 집합의 크기를 visitor_days에 덮어씀(이미 더 큰 값이 있으면 유지)."""
+    if _visitors_date is None:
+        return
+    count = len(_visitors_today)
+    with db.get_session() as session:
+        row = session.get(db.VisitorDay, _visitors_date)
+        if row is None:
+            session.add(db.VisitorDay(date=_visitors_date, count=count))
+        elif count > row.count:
+            row.count = count
+            row.updated_at = db.now()
+            session.add(row)
+        session.commit()
+
+
+def _record_visitor(client_id: str) -> None:
+    """신호를 보낸 설치를 오늘 방문자에 넣음. 날짜가 바뀌었으면 어제 값을 저장하고 새로 시작."""
+    global _visitors_date
+    today = _kst_today()
+    if _visitors_date != today:
+        if _visitors_date is not None:
+            _flush_visitors()  # 어제까지의 값을 확정해서 저장
+        _visitors_date = today
+        _visitors_today.clear()
+    _visitors_today.add(client_id)
+
+
+def _visitor_stats(now_ts: float | None = None, days: int = 7) -> dict:
+    now_ts = now_ts or time.time()
+    today = _kst_today()
+    online = sum(1 for ts in _presence.values() if ts >= now_ts - PRESENCE_WINDOW_SECONDS)
+    in_memory = len(_visitors_today) if _visitors_date == today else 0
+    with db.get_session() as session:
+        from sqlmodel import select
+
+        rows = session.exec(select(db.VisitorDay).order_by(db.VisitorDay.date.desc()).limit(days + 1)).all()
+    saved = {r.date: r.count for r in rows}
+    saved[today] = max(saved.get(today, 0), in_memory)
+    recent = [{"date": d, "count": saved[d]} for d in sorted(saved, reverse=True)[:days]]
+    return {"online_10min": online, "today": saved[today], "date": today, "recent_days": recent}
+
 
 def _known_keywords() -> set[str]:
     return {c["keyword"] for c in _cache.values()}
@@ -2239,6 +2364,7 @@ async def presence_ping(request: Request, body: PresenceIn):
         raise HTTPException(status_code=422, detail="invalid client_id")
     now_ts = time.time()
     _presence[body.client_id] = now_ts
+    _record_visitor(body.client_id)
     if now_ts - _presence_last_purge > 60:
         _presence_last_purge = now_ts
         cutoff = now_ts - PRESENCE_WINDOW_SECONDS
@@ -2246,6 +2372,13 @@ async def presence_ping(request: Request, body: PresenceIn):
             del _presence[cid]
     online = sum(1 for ts in _presence.values() if ts >= now_ts - PRESENCE_WINDOW_SECONDS)
     return {"online": online, "show": online >= PRESENCE_MIN_TO_SHOW, "window_minutes": PRESENCE_WINDOW_SECONDS // 60}
+
+
+@app.get("/admin/visitors")
+async def admin_visitors(_: None = Depends(_require_admin)):
+    """운영자용 방문자 수: 최근 10분에 신호를 보낸 설치 수, 오늘(KST) 방문자 수, 최근 7일 일별 수. 앱과 웹을 합친 값이고
+    같은 사람이 앱과 웹을 둘 다 쓰면 둘로 셈. 앱이 켜져 있는 동안 1분마다 신호를 보내는 구조라 "방문"은 앱/웹을 연 설치 수에 가까움."""
+    return await asyncio.to_thread(_visitor_stats)
 
 
 @app.get("/privacy", response_class=HTMLResponse)
@@ -2298,7 +2431,7 @@ async def privacy_policy():
         <td>위 기기 식별자에만 연결됨</td></tr>
     <tr><td>임의 설치 식별자와 카드 반응(좋아요·화나요 등)</td><td>앱 실행 시 / 카드에 반응을 고를 때</td>
         <td>앱 설치마다 만든 임의의 값(이름·연락처와 무관)으로, 한 카드에 반응이 하나만 남도록 하고
-        "최근 N명이 봤어요" 집계에만 사용. 접속 집계는 서버 메모리에서만 잠시 사용하고 저장하지 않음</td></tr>
+        "최근 N명이 봤어요"와 방문자 수 집계에만 사용. 식별자는 서버 메모리에서만 잠시 사용하고, 하루 단위 방문자 수(숫자)만 저장함</td></tr>
     <tr><td>문의 내용, 서버가 부여한 기기 번호, 답장받을 이메일(선택)</td><td>"문의하기" 이용 시</td>
         <td>기기 번호는 문의가 어느 기기에서 왔는지 확인하는 용도로 함께 저장됨. 이메일은 입력한 경우에만 수집되며,
         답장 목적에만 사용</td></tr>

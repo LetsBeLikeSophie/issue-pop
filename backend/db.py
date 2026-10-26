@@ -72,6 +72,17 @@ class Article(SQLModel, table=True):
     published_at: str | None = None
 
 
+class VisitorDay(SQLModel, table=True):
+    """2026-10-26: 하루 단위 방문자 수(서로 다른 설치/브라우저 수)만 저장 — 숫자만 남기고 개별 식별자(client_id)는 저장하지 않음.
+    오늘 값은 서버 메모리의 집합에서 주기적으로(갱신 주기마다) 이 표에 덮어씀(api._flush_visitors)."""
+
+    __tablename__ = "visitor_days"
+
+    date: str = Field(primary_key=True)  # KST "YYYY-MM-DD"
+    count: int = 0
+    updated_at: datetime = Field(default_factory=now)
+
+
 class ClusterSummary(SQLModel, table=True):
     """AI 요약 캐시(4번 유료 기능용). 이슈 하나당 1개, 재사용됨 —
     유저가 몇 명이든 LLM은 이슈당 딱 한 번만 호출하기로 한 설계."""
