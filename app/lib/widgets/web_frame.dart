@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../api_client.dart' show OutletStat, WordOfDay;
+import '../api_client.dart' show OutletStat, WordEntry, WordOfDay;
 import '../models/promo.dart';
 import '../theme.dart';
 import '../theme_store.dart';
@@ -26,6 +26,7 @@ class WebFrame extends StatefulWidget {
     this.statsLoader,
     this.wordLoader,
     this.outletsLoader,
+    this.wordHistoryLoader,
     this.enabled = kIsWeb,
   });
 
@@ -38,6 +39,9 @@ class WebFrame extends StatefulWidget {
 
   /// 왼쪽 칸의 "언론사별 기사 수" 차트용(언론사 이름을 누르면 그 언론사 홈페이지).
   final Future<List<OutletStat>> Function()? outletsLoader;
+
+  /// 지난 오늘의 단어(최신순). 받으면 오늘의 단어 카드가 좌우로 넘겨 보는 카드가 되고, 못 받으면 [wordLoader]의 오늘 단어만 보임.
+  final Future<List<WordEntry>> Function()? wordHistoryLoader;
 
   /// 기본은 웹일 때만(테스트에서 켜고 끌 수 있게 분리).
   final bool enabled;
@@ -64,6 +68,7 @@ class _WebFrameState extends State<WebFrame> {
   late final Future<({int issueCount, int articleCount})?> _stats = _safe(widget.statsLoader);
   late final Future<WordOfDay?> _word = _safe(widget.wordLoader);
   late final Future<List<OutletStat>?> _outlets = _safe(widget.outletsLoader);
+  late final Future<List<WordEntry>?> _wordHistory = _safe(widget.wordHistoryLoader);
 
   Future<List<PromoCard>> _load() async {
     final loader = widget.promosLoader;
@@ -164,12 +169,22 @@ class _WebFrameState extends State<WebFrame> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _ThemePickerCard(),
-                              FutureBuilder<WordOfDay?>(
-                                future: _word,
-                                builder: (context, snap) {
-                                  final word = snap.data;
-                                  if (word?.word == null) return const SizedBox.shrink();
-                                  return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCard(word: word!));
+                              FutureBuilder<List<WordEntry>?>(
+                                future: _wordHistory,
+                                builder: (context, historySnap) {
+                                  final history = historySnap.data;
+                                  if (history != null && history.isNotEmpty) {
+                                    return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCarouselCard(entries: history));
+                                  }
+                                  // 지난 단어 목록을 못 받았으면 오늘 단어 한 장만
+                                  return FutureBuilder<WordOfDay?>(
+                                    future: _word,
+                                    builder: (context, snap) {
+                                      final word = snap.data;
+                                      if (word?.word == null) return const SizedBox.shrink();
+                                      return Padding(padding: const EdgeInsets.only(top: 14), child: _WordCard(word: word!));
+                                    },
+                                  );
                                 },
                               ),
                             ],
@@ -432,6 +447,91 @@ class _WordCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(word.definition!, maxLines: 4, overflow: TextOverflow.ellipsis, style: _cardBody()),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "오늘의 단어" — 지난 단어(최근 30일)를 좌우로 넘겨 봄: 마우스/터치패드는 양옆 화살표, 터치는 스와이프. 첫 장이 오늘.
+class _WordCarouselCard extends StatefulWidget {
+  const _WordCarouselCard({required this.entries});
+
+  final List<WordEntry> entries;
+
+  @override
+  State<_WordCarouselCard> createState() => _WordCarouselCardState();
+}
+
+class _WordCarouselCardState extends State<_WordCarouselCard> {
+  final _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _go(int to) => _controller.animateToPage(to, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+
+  /// "2026-10-27" → "10월 27일", 첫 장(오늘)은 "오늘".
+  String _dateLabel(int i) {
+    if (i == 0) return '오늘';
+    final parts = widget.entries[i].date.split('-');
+    if (parts.length != 3) return widget.entries[i].date;
+    return '${int.tryParse(parts[1]) ?? parts[1]}월 ${int.tryParse(parts[2]) ?? parts[2]}일';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = widget.entries;
+    final last = entries.length - 1;
+    return _InfoCard(
+      label: '오늘의 단어',
+      child: Column(
+        children: [
+          SizedBox(
+            height: 92,
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: entries.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (context, i) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entries[i].word, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.accent, height: 1.3)),
+                  if ((entries[i].definition ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(entries[i].definition!, maxLines: 3, overflow: TextOverflow.ellipsis, style: _cardBody()),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              // 왼쪽 = 더 최근(오늘 쪽), 오른쪽 = 더 지난 날. 끝에서는 비활성.
+              IconButton(
+                tooltip: '더 최근 단어',
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                onPressed: _index > 0 ? () => _go(_index - 1) : null,
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Expanded(
+                child: Text(_dateLabel(_index), textAlign: TextAlign.center, style: _cardMeta()),
+              ),
+              IconButton(
+                tooltip: '이전 단어',
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                onPressed: _index < last ? () => _go(_index + 1) : null,
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ),
         ],
       ),
     );

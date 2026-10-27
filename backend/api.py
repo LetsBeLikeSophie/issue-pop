@@ -1956,6 +1956,18 @@ async def get_word_of_day():
     return {"date": row.date, "word": row.word, "example": row.example, "definition": row.definition}
 
 
+@app.get("/word-of-day/history")
+async def get_word_of_day_history(response: Response, days: int = Query(30, ge=1, le=90)):
+    """2026-10-27: 지난 "오늘의 단어"(최신순, 기본 30일). 단어는 하루에 하나씩 DB(word_of_day)에 계속 쌓여 있고 지우지 않음 —
+    웹에서 좌우로 넘겨 보는 카드용. 저장된 값만 읽음(새로 계산하지 않음)."""
+    response.headers["Cache-Control"] = "public, max-age=300"
+    with db.get_session() as session:
+        from sqlmodel import select
+
+        rows = session.exec(select(db.WordOfDay).order_by(db.WordOfDay.date.desc()).limit(days)).all()
+    return [{"date": r.date, "word": r.word, "definition": r.definition} for r in rows if r.word]
+
+
 class WordOfDayAlertIn(BaseModel):
     enabled: bool
     hour: int

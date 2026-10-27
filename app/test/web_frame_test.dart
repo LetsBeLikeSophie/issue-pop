@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:issue_pop/api_client.dart' show OutletStat, WordOfDay;
+import 'package:issue_pop/api_client.dart' show OutletStat, WordEntry, WordOfDay;
 import 'package:issue_pop/models/promo.dart';
 import 'package:issue_pop/theme.dart' show AppColors;
 import 'package:issue_pop/theme_store.dart';
@@ -14,6 +14,7 @@ Widget _app({
   Future<({int issueCount, int articleCount})> Function()? stats,
   Future<WordOfDay> Function()? word,
   Future<List<OutletStat>> Function()? outlets,
+  Future<List<WordEntry>> Function()? wordHistory,
 }) =>
     MaterialApp(
       home: Scaffold(
@@ -23,6 +24,7 @@ Widget _app({
           statsLoader: stats,
           wordLoader: word,
           outletsLoader: outlets,
+          wordHistoryLoader: wordHistory,
           child: const Center(child: Text('앱 화면')),
         ),
       ),
@@ -220,6 +222,54 @@ void main() {
     // 이름이 눌리는 대상(링크 있음)과 안 눌리는 대상(링크 없음)
     expect(find.ancestor(of: find.text('연합뉴스'), matching: find.byType(InkWell)), findsOneWidget);
     expect(find.ancestor(of: find.text('홈페이지 없음'), matching: find.byType(InkWell)), findsNothing);
+  });
+
+  testWidgets('오늘의 단어: 지난 30일치를 좌우로 넘겨 본다(첫 장이 오늘, 양 끝에서는 화살표 비활성)', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      wordHistory: () async => const [
+        WordEntry(date: '2026-10-27', word: '승부수', definition: '판국의 승패를 좌우하는 수'),
+        WordEntry(date: '2026-10-26', word: '하마평', definition: '관직에 임명될 후보자에 대한 평'),
+        WordEntry(date: '2026-10-25', word: '당일치기', definition: '하루에 끝내는 일'),
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('오늘의 단어'), findsOneWidget);
+    expect(find.text('승부수'), findsOneWidget);
+    expect(find.text('오늘'), findsOneWidget);
+    IconButton button(String tooltip) => tester.widget<IconButton>(find.widgetWithIcon(IconButton, tooltip == '이전 단어' ? Icons.chevron_right : Icons.chevron_left));
+    expect(button('더 최근 단어').onPressed, isNull); // 첫 장이라 더 최근은 없음
+    expect(button('이전 단어').onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('이전 단어'));
+    await tester.pumpAndSettle();
+    expect(find.text('하마평'), findsOneWidget);
+    expect(find.text('10월 26일'), findsOneWidget);
+    expect(button('더 최근 단어').onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('이전 단어'));
+    await tester.pumpAndSettle();
+    expect(find.text('당일치기'), findsOneWidget);
+    expect(button('이전 단어').onPressed, isNull); // 맨 끝
+
+    await tester.tap(find.byTooltip('더 최근 단어'));
+    await tester.pumpAndSettle();
+    expect(find.text('하마평'), findsOneWidget);
+  });
+
+  testWidgets('지난 단어 목록을 못 받으면 오늘 단어 한 장만 보인다', (tester) async {
+    _size(tester, 1400, 900);
+    await tester.pumpWidget(_app(
+      enabled: true,
+      wordHistory: () async => throw Exception('서버 점검 중'),
+      word: () async => const WordOfDay(word: '승부수', example: '예문', definition: '판국의 승패를 좌우하는 수'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('승부수'), findsOneWidget);
+    expect(find.byTooltip('이전 단어'), findsNothing);
   });
 
   testWidgets('언론사 통계를 못 받으면 차트만 안 보이고 나머지는 그대로다', (tester) async {

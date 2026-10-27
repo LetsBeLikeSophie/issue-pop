@@ -278,6 +278,14 @@ class ApiClient {
   /// 2026-09-26: "오늘의 이슈팝이랑 왜 시각을 못 고르냐"는 피드백으로
   /// bool 하나에서 [WordOfDayAlertSettings](enabled+hour)로 확장함 —
   /// digest_hour와 완전히 같은 패턴(서버 고정 9시 → 기기별 선택).
+  /// 2026-10-27: 지난 "오늘의 단어"(최신순, 기본 30일) — 웹에서 좌우로 넘겨 보는 카드용(GET /word-of-day/history).
+  Future<List<WordEntry>> getWordHistory({int days = 30}) async {
+    final res = await _client.get(Uri.parse('$baseUrl/word-of-day/history?days=$days')).timeout(const Duration(seconds: 8));
+    _checkOk(res);
+    final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
+    return list.map((e) => WordEntry.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   Future<WordOfDayAlertSettings> getWordOfDayAlert(int deviceId) async {
     final uri = Uri.parse('$baseUrl/devices/$deviceId/word-of-day-alert');
     final res = await _client.get(uri, headers: _dev());
@@ -651,6 +659,21 @@ class StockWatch {
             const [],
         quote: json['quote'] != null ? StockQuote.fromJson(json['quote'] as Map<String, dynamic>) : null,
         loading: json['loading'] == true,
+      );
+}
+
+/// 지난 오늘의 단어 한 건(날짜는 KST "YYYY-MM-DD").
+class WordEntry {
+  const WordEntry({required this.date, required this.word, this.definition});
+
+  final String date;
+  final String word;
+  final String? definition;
+
+  factory WordEntry.fromJson(Map<String, dynamic> json) => WordEntry(
+        date: json['date'] as String,
+        word: json['word'] as String,
+        definition: json['definition'] as String?,
       );
 }
 
