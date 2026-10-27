@@ -62,7 +62,7 @@ _MIN_ISSUE_COUNT = 2
 _MAX_CANDIDATES = 15
 
 
-def pick_word(cache: dict) -> tuple[str, str, str | None] | None:
+def pick_word(cache: dict, exclude: frozenset[str] | set[str] = frozenset()) -> tuple[str, str, str | None] | None:
     """오늘 캐시(_cache.values(), 각 c["articles"]에 기사 목록)에서 골라
     (단어, 예문, 뜻풀이)로 반환. 후보가 하나도 없으면 None.
 
@@ -71,7 +71,10 @@ def pick_word(cache: dict) -> tuple[str, str, str | None] | None:
     적당히 어려운지"는 LLM(Haiku, llm.pick_best_word)에게 맡김 — 반복
     횟수만으로는 "발전소"처럼 그냥 흔한 말이 1등으로 뽑히는 문제가
     있었음(회자=화제성이지 난이도가 아니라서). LLM이 실패하거나 키가
-    없으면 후보 중 첫 번째(반복 최다)로 폴백함."""
+    없으면 후보 중 첫 번째(반복 최다)로 폴백함.
+
+    2026-10-27: exclude에 든 단어(이미 "오늘의 단어"로 쓴 단어)는 후보에서 뺌 — 같은 단어가 몇 주 뒤에 또 나오던("승부수"
+    10/17, 10/27) 걸 막으려고. 사전 조회 전에 빼서 외부 API 호출도 아낌."""
     issue_counts: dict[str, set[str]] = {}
     examples: dict[str, str] = {}
     for issue_id, c in cache.items():
@@ -94,7 +97,7 @@ def pick_word(cache: dict) -> tuple[str, str, str | None] | None:
                 issue_counts.setdefault(word, set()).add(issue_id)
                 examples.setdefault(word, title)
 
-    recurring = [w for w, ids in issue_counts.items() if len(ids) >= _MIN_ISSUE_COUNT]
+    recurring = [w for w, ids in issue_counts.items() if len(ids) >= _MIN_ISSUE_COUNT and w not in exclude]
     if not recurring:
         return None
 

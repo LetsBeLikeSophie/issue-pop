@@ -1913,6 +1913,24 @@ _word_of_day_retry_at = 0.0
 _word_of_day_lock = threading.Lock()
 
 
+WORD_OF_DAY_RECENT_DAYS = 30
+
+
+def _pick_unused_word(session) -> tuple[str, str, str | None] | None:
+    """이미 쓴 단어는 제외하고 고름(2026-10-27). 새 후보가 하나도 없는 날엔(드묾) 최근 30일 안에 쓴 단어만 제외해서 다시 시도함 —
+    그래도 단어 없는 날보다는 오래전에 쓴 단어가 나오는 게 나아서."""
+    from sqlmodel import select
+
+    rows = session.exec(select(db.WordOfDay.date, db.WordOfDay.word)).all()
+    used_all = {w for _d, w in rows if w}
+    picked = word_of_day.pick_word(_cache, exclude=used_all)
+    if picked is not None:
+        return picked
+    cutoff = (datetime.now(KST) - timedelta(days=WORD_OF_DAY_RECENT_DAYS)).strftime("%Y-%m-%d")
+    used_recent = {w for d, w in rows if w and d >= cutoff}
+    return word_of_day.pick_word(_cache, exclude=used_recent)
+
+
 def _get_or_create_word_of_day(compute: bool = True) -> db.WordOfDay | None:
     """오늘(KST) 단어가 이미 골라져 있으면 그대로 재사용하고, 없으면 지금
     캐시에서 하나 뽑아 저장함 — 재계산 주기(30분)마다 바뀌면 "오늘의
@@ -1929,7 +1947,7 @@ def _get_or_create_word_of_day(compute: bool = True) -> db.WordOfDay | None:
             return None  # 다른 곳에서 이미 계산 중
         try:
             try:
-                picked = word_of_day.pick_word(_cache)
+                picked = _pick_unused_word(session)
             except Exception as e:  # noqa: BLE001 - 사전·LLM 오류도 실패로 보고 잠시 쉼
                 print(f"[word_of_day] 계산 실패: {type(e).__name__}: {str(e)[:120]}")
                 picked = None

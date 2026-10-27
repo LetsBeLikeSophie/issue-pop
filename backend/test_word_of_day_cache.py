@@ -21,7 +21,7 @@ calls = []
 outcome = {"value": None}
 
 
-def fake_pick(cache):
+def fake_pick(cache, exclude=frozenset()):
     calls.append(1)
     if isinstance(outcome["value"], Exception):
         raise outcome["value"]
@@ -36,10 +36,10 @@ r = client.get("/word-of-day").json()
 assert r["word"] is None and calls == []
 
 # 2) 백그라운드 계산이 실패(None)하면 30분 동안은 다시 계산하지 않음
-assert api._get_or_create_word_of_day() is None and len(calls) == 1
+assert api._get_or_create_word_of_day() is None and len(calls) == 2  # 1차(쓴 단어 전체 제외) + 2차(최근 30일 것만 제외)
 for _ in range(5):
     assert api._get_or_create_word_of_day() is None
-assert len(calls) == 1, "실패한 계산을 다시 시도함"
+assert len(calls) == 2, "실패한 계산을 다시 시도함"
 
 # 3) 예외로 실패해도 마찬가지(예외가 밖으로 안 새고, 쉬는 시간이 걸림)
 api._word_of_day_retry_at = 0
