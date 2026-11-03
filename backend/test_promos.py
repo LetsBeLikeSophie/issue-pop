@@ -38,8 +38,11 @@ coffee = by_id["coffee"]
 assert coffee["title"] == "Buy Me a Coffee" and coffee["url"] == "https://buymeacoffee.com/itssophie"
 assert coffee["side"] == "right" and coffee["highlight"] is True
 assert coffee["embed"].startswith("https://buymeacoffee.com/widget/page/") and coffee["embed_height"] == 400
-# 앱 받기는 스토어 출시 전이라 링크·버튼 없는 "준비 중" 안내 카드
-assert by_id["app"]["side"] == "right" and by_id["app"]["url"] == "" and by_id["app"]["button"] == ""
+# 앱 받기: 2026-11-03 Play 스토어 출시 후 QR 이미지 + Google Play 링크 카드
+app_card = by_id["app"]
+assert app_card["side"] == "right" and app_card["button"] == "Google Play에서 받기"
+assert app_card["url"] == "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
+assert app_card["image"].startswith("https://api.issue-pop.com/downloads/") and app_card["image"].endswith(".png?v=1")
 
 tmp = tempfile.mkdtemp()
 path = os.path.join(tmp, "promos.json")

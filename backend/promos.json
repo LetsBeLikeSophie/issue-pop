@@ -14,6 +14,9 @@
     "id": "app",
     "side": "right",
     "title": "앱으로 더 편하게",
-    "body": "알림과 홈 화면 위젯은 앱에서 쓸 수 있어요. 앱 스토어에 등록되면 여기서 QR로 받을 수 있어요. (준비 중)"
+    "body": "알림과 홈 화면 위젯은 앱에서 쓸 수 있어요. QR을 찍거나 아래 버튼으로 Google Play에서 받아 보세요.",
+    "button": "Google Play에서 받기",
+    "url": "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop",
+    "image": "https://api.issue-pop.com/downloads/issue-pop-play-qr.png?v=1"
   }
 ]
