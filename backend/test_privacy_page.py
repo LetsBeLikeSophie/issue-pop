@@ -23,5 +23,8 @@ assert "콘텐츠 이용 안내 및 삭제 요청" in html and "콘텐츠 제외
 for needle in ("기기 번호", "Firebase 설치 ID", "Google Fonts", "Google Gmail", "Google Firebase Cloud Messaging", "후원 위젯(Buy Me a Coffee)"):
     assert needle in html, needle
 assert "8. 방침 변경" in html
+# 앱 기본(화이트) 테마 색 — 옛 연녹색(#EEF1EA)이 남지 않았는지
+assert "background: #FAFAF9" in html and "color: #17356B" in html
+assert "#EEF1EA" not in html and "#35503F" not in html
 
 print("test_privacy_page: ALL OK")

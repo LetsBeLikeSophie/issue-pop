@@ -2464,17 +2464,17 @@ async def privacy_policy():
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>개인정보처리방침 — Issue Pop</title>
 <style>
-  body { font-family: -apple-system, "Malgun Gothic", sans-serif; background: #EEF1EA;
-         color: #232A20; max-width: 680px; margin: 0 auto; padding: 32px 20px 60px; line-height: 1.6; }
+  body { font-family: -apple-system, "Malgun Gothic", sans-serif; background: #FAFAF9;
+         color: #14161C; max-width: 680px; margin: 0 auto; padding: 32px 20px 60px; line-height: 1.6; }
   h1 { font-size: 22px; margin-bottom: 4px; }
-  .updated { color: #8B9280; font-size: 13px; margin-bottom: 24px; }
-  h2 { font-size: 16px; margin-top: 28px; margin-bottom: 8px; color: #35503F; }
+  .updated { color: #9A9CA3; font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 16px; margin-top: 28px; margin-bottom: 8px; color: #17356B; }
   p, li { font-size: 14px; }
   ul { padding-left: 20px; }
   table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-  th, td { text-align: left; padding: 8px; border: 1px solid #D7DBC9; }
-  th { background: #E4E9DA; }
-  .contact { background: #fff; border: 1px solid #D7DBC9; border-radius: 10px; padding: 14px; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px; border: 1px solid #E7E8EB; }
+  th { background: #F5F5F3; }
+  .contact { background: #fff; border: 1px solid #E7E8EB; border-radius: 10px; padding: 14px; margin-top: 8px; }
 </style>
 </head>
 <body>
