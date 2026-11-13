@@ -15,11 +15,13 @@ Widget _app({
   Future<WordOfDay> Function()? word,
   Future<List<OutletStat>> Function()? outlets,
   Future<List<WordEntry>> Function()? wordHistory,
+  bool? banner,
 }) =>
     MaterialApp(
       home: Scaffold(
         body: WebFrame(
           enabled: enabled,
+          showAppBanner: banner,
           promosLoader: loader,
           statsLoader: stats,
           wordLoader: word,
@@ -348,5 +350,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Buy Me a Coffee'), findsNothing);
     expect(find.text('앱 화면'), findsOneWidget);
+  });
+
+  group('폰 브라우저 "앱으로 보기" 띠', () {
+    testWidgets('좁은 화면 + 켜져 있으면 맨 위에 띠가 보이고 앱 화면은 그 아래에 있다', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _size(tester, 390, 800);
+      await tester.pumpWidget(_app(enabled: true, banner: true));
+      await tester.pumpAndSettle();
+
+      expect(find.text('앱으로 보기'), findsOneWidget);
+      expect(find.textContaining('홈 화면 위젯'), findsOneWidget);
+      expect(find.text('받기'), findsOneWidget);
+      expect(tester.getRect(find.text('앱 화면')).top, greaterThan(tester.getRect(find.text('앱으로 보기')).bottom));
+    });
+
+    testWidgets('꺼져 있거나(iOS 등) 넓은 화면이면 안 보인다', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _size(tester, 390, 800);
+      await tester.pumpWidget(_app(enabled: true, banner: false));
+      await tester.pumpAndSettle();
+      expect(find.text('앱으로 보기'), findsNothing);
+
+      _size(tester, 1400, 900);
+      await tester.pumpWidget(_app(enabled: true, banner: true));
+      await tester.pumpAndSettle();
+      expect(find.text('앱으로 보기'), findsNothing); // 넓은 화면은 양옆 QR 카드가 대신함
+    });
+
+    testWidgets('닫으면 사라지고, 14일 안에는 다시 안 뜨며, 14일이 지나면 다시 뜬다', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      _size(tester, 390, 800);
+      await tester.pumpWidget(_app(enabled: true, banner: true));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('닫기'));
+      await tester.pumpAndSettle();
+      expect(find.text('앱으로 보기'), findsNothing);
+
+      // 다시 열어도(방금 닫음) 안 뜸
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(_app(enabled: true, banner: true));
+      await tester.pumpAndSettle();
+      expect(find.text('앱으로 보기'), findsNothing);
+
+      // 15일 전에 닫았으면 다시 뜸
+      final old = DateTime.now().subtract(const Duration(days: 15)).millisecondsSinceEpoch;
+      SharedPreferences.setMockInitialValues({'mobile_app_banner_dismissed_at': old});
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(_app(enabled: true, banner: true));
+      await tester.pumpAndSettle();
+      expect(find.text('앱으로 보기'), findsOneWidget);
+    });
   });
 }

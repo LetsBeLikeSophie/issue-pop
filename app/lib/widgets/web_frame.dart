@@ -2,8 +2,9 @@
 // (이 파일의 일부 위젯은 일부러 const로 만들지 않음 — const 위젯은 테마가 바뀌어도 다시 안 그려져서 옛 색이 남았음)
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart' show OutletStat, WordEntry, WordOfDay;
@@ -28,9 +29,15 @@ class WebFrame extends StatefulWidget {
     this.outletsLoader,
     this.wordHistoryLoader,
     this.enabled = kIsWeb,
+    this.showAppBanner,
   });
 
   final Widget child;
+
+  /// 폰 크기 웹에서 "앱으로 보기" 띠를 보일지. null이면 웹 + 안드로이드 브라우저일 때만(테스트에서 켜고 끌 수 있게 분리).
+  final bool? showAppBanner;
+
+  bool get _bannerOn => showAppBanner ?? (kIsWeb && defaultTargetPlatform == TargetPlatform.android);
   final Future<List<PromoCard>> Function()? promosLoader;
 
   /// 왼쪽 칸의 "오늘의 숫자"(이슈·기사 수)와 "오늘의 단어" 카드용. 못 받으면 그 카드만 안 보임.
@@ -96,7 +103,16 @@ class _WebFrameState extends State<WebFrame> {
     if (!widget.enabled) return widget.child;
     return LayoutBuilder(
       builder: (context, c) {
-        if (c.maxWidth < WebFrame.frameMinWidth) return widget.child;
+        if (c.maxWidth < WebFrame.frameMinWidth) {
+          // 폰 브라우저: 앱 설치 안내 띠를 맨 위에(안드로이드 브라우저에서만 — iOS 앱은 아직 없음).
+          if (!widget._bannerOn) return widget.child;
+          return Column(
+            children: [
+              const _MobileAppBanner(),
+              Expanded(child: widget.child),
+            ],
+          );
+        }
         final showPanels = c.maxWidth >= WebFrame.panelsMinWidth;
         // 위아래 여백(28씩)을 두고, 너무 길어지지 않게 상한을 둠.
         final frameHeight = math.max(480.0, math.min(c.maxHeight - 56, 960.0));
@@ -200,6 +216,102 @@ class _WebFrameState extends State<WebFrame> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Play 스토어 앱 주소. referrer는 "폰 웹 배너에서 온 설치"를 Play Console에서 구분해 보려는 것(개인정보 없음).
+const kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=com.issuepop.issue_pop'
+    '&referrer=utm_source%3Dissuepop_web%26utm_medium%3Dmobile_banner';
+
+/// 닫은 뒤 이 기간 동안은 다시 안 보여줌.
+const _kBannerHideDays = 14;
+const _kBannerDismissedKey = 'mobile_app_banner_dismissed_at';
+
+/// 2026-11-14: 폰 브라우저로 웹에 들어온 사람에게 "앱으로 보기"를 알리는 얇은 띠. PC에선 양옆 카드에 QR이 있는데 폰에선
+/// 그게 없어서 앱(알림·홈 화면 위젯은 앱에서만 됨)으로 가는 길이 없었음. 닫으면 [_kBannerHideDays]일간 숨김.
+class _MobileAppBanner extends StatefulWidget {
+  const _MobileAppBanner();
+
+  @override
+  State<_MobileAppBanner> createState() => _MobileAppBannerState();
+}
+
+class _MobileAppBannerState extends State<_MobileAppBanner> {
+  /// 저장된 값을 읽기 전까지는 숨김(보였다 사라지는 깜빡임 방지).
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    var hidden = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final at = prefs.getInt(_kBannerDismissedKey);
+      if (at != null) {
+        final age = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at));
+        hidden = age.inDays < _kBannerHideDays;
+      }
+    } catch (_) {
+      // 저장소를 못 읽어도(사생활 보호 모드 등) 띠는 그냥 보여줌
+    }
+    if (mounted && !hidden) setState(() => _visible = true);
+  }
+
+  Future<void> _dismiss() async {
+    setState(() => _visible = false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kBannerDismissedKey, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    return Material(
+      color: AppColors.surface,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.line))),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('앱으로 보기', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  const SizedBox(height: 1),
+                  Text(
+                    '알림과 홈 화면 위젯은 앱에서 쓸 수 있어요',
+                    style: TextStyle(fontSize: 12, color: AppColors.inkSoft, height: 1.3),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => launchUrl(Uri.parse(kPlayStoreUrl), mode: LaunchMode.externalApplication),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              child: const Text('받기'),
+            ),
+            IconButton(
+              tooltip: '닫기',
+              onPressed: _dismiss,
+              icon: Icon(Icons.close, size: 18, color: AppColors.inkFaint),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
