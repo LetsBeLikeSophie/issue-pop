@@ -376,7 +376,12 @@ def catalog() -> list[dict]:
     return result
 
 
-def fetch_ticker_news(ticker: str, limit: int = 5) -> list[dict]:
+# 종목당 보여주는(=번역하는) 뉴스 개수. 2026-11-10: 5 → 3. 앱이 가져온 건수를 전부
+# 펼쳐 보여주는 구조라 번역도 같은 수만큼 나갔음 — 번역 호출이 약 40% 줄어듦.
+NEWS_PER_TICKER = 3
+
+
+def fetch_ticker_news(ticker: str, limit: int = NEWS_PER_TICKER) -> list[dict]:
     """야후 파이낸스 RSS에서 이 티커의 최신 뉴스를 가져옴. 실패하면(없는
     티커, 네트워크 오류 등) 조용히 빈 리스트 — 한 티커 실패가 전체
     갱신을 막으면 안 됨(다른 소스들과 같은 방어 원칙)."""
@@ -416,8 +421,44 @@ def _translate_cached(session, text: str) -> str | None:
 
 
 def _attach_translations(items: list[dict], session) -> None:
-    for item in items:
-        item["title_ko"] = _translate_cached(session, item["title"])
+    _attach_translations_many([items], session)
+
+
+def _attach_translations_many(item_lists: list[list[dict]], session) -> None:
+    """캐시에 없는 헤드라인만 모아 한 번에 번역함(2026-11-10) — 티커마다/헤드라인마다
+    따로 호출하던 걸 묶어서 호출 수를 줄임. 같은 헤드라인이 여러 티커에 걸려 있어도
+    한 번만 번역함. 묶음 응답에서 빠진 줄은 낱개 호출로 한 번 더 시도."""
+    cache: dict[str, str] = {}
+    pending: dict[str, str] = {}  # 해시 → 원문(중복 제거, 순서 유지)
+    for items in item_lists:
+        for item in items:
+            text = item["title"]
+            h = hashlib.sha1(text.encode("utf-8")).hexdigest()
+            if h in cache or h in pending:
+                continue
+            row = session.get(db.TranslatedHeadline, h)
+            if row is not None:
+                cache[h] = row.translated_text
+            else:
+                pending[h] = text
+
+    if pending:
+        hashes = list(pending)
+        texts = [pending[h] for h in hashes]
+        results = translate.translate_many(texts)
+        for h, text, ko in zip(hashes, texts, results):
+            if ko is None:
+                ko = translate.translate_to_ko(text)  # 묶음에서 빠진 줄만 낱개로 재시도
+            if ko is None:
+                continue
+            session.add(db.TranslatedHeadline(text_hash=h, original_text=text, translated_text=ko))
+            cache[h] = ko
+        session.commit()
+
+    for items in item_lists:
+        for item in items:
+            h = hashlib.sha1(item["title"].encode("utf-8")).hexdigest()
+            item["title_ko"] = cache.get(h)
 
 
 def fetch_all(tickers: list[str]) -> dict[str, list[dict]]:
@@ -427,12 +468,11 @@ def fetch_all(tickers: list[str]) -> dict[str, list[dict]]:
     캐싱, 실패하면 title_ko는 None — 프론트가 원문만 보여주면 됨)."""
     result = {t: fetch_ticker_news(t) for t in tickers}
     with db.get_session() as session:
-        for items in result.values():
-            _attach_translations(items, session)
+        _attach_translations_many(list(result.values()), session)
     return result
 
 
-def fetch_one_with_translation(ticker: str, limit: int = 5) -> list[dict]:
+def fetch_one_with_translation(ticker: str, limit: int = NEWS_PER_TICKER) -> list[dict]:
     """새로 등록한 티커 하나만 즉시 가져옴(번역 포함) — 안 그러면 다음
     30분 갱신 주기까지 "아직 받아온 뉴스가 없어요"만 보여서("추가하면
     바로 안 받아와지냐"는 피드백으로 추가) api.py의 POST /stocks에서 씀."""

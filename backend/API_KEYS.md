@@ -20,10 +20,10 @@
 
 | Console 키 이름 | 환경변수 | 쓰는 곳 | 호출 규모 |
 |---|---|---|---|
-| `issuepop-category-prod` | `ANTHROPIC_KEY_CATEGORY` | `category.py` 이슈 카테고리 분류 | 하루 수천 회(제일 많음, 응답 20토큰) |
+| `issuepop-category-prod` | `ANTHROPIC_KEY_CATEGORY` | `category.py` 이슈 카테고리 분류 | 하루 300회 안팎(2026-11 실측, 응답 20토큰) |
 | `issuepop-audit-prod` | `ANTHROPIC_KEY_AUDIT` | `cluster_audit.py` 하루 1회 품질 감사 | 하루 수십 회 |
 | `issuepop-wordofday-prod` | `ANTHROPIC_KEY_WORDOFDAY` | `word_of_day.py` 오늘의 단어 | 하루 1회 |
-| `issuepop-translate-prod` | `ANTHROPIC_KEY_TRANSLATE` | `translate.py` 종목 뉴스 제목 번역 | 하루 100~300회 |
+| `issuepop-translate-prod` | `ANTHROPIC_KEY_TRANSLATE` | `translate.py` 종목 뉴스 제목 번역 | 하루 120~420건 번역(2026-11 실측, 응답이 길어 비용은 제일 큼 — 2026-11-10부터 종목당 3건 + 묶음 호출로 절감) |
 
 - 코드: `llm.complete(..., purpose="category")`가 `ANTHROPIC_KEY_CATEGORY`를 먼저 찾고, 없으면 예전 공용
   `ANTHROPIC_API_KEY`로 폴백한다(키를 하나씩 옮겨가도 안 깨짐). 번역은 예전 이름

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import requests
 
@@ -30,6 +31,79 @@ _MODEL = "claude-haiku-4-5"
 
 def _api_key() -> str | None:
     return os.environ.get("ANTHROPIC_KEY_TRANSLATE") or os.environ.get("ANTHROPIC_TRANSLATE_API_KEY")
+
+
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
+
+
+def _unwrap_quotes(s: str) -> str:
+    """모델이 번역문 전체를 따옴표로 감싸 답했을 때만 겉 따옴표를 벗김.
+    2026-11-10: 예전엔 strip("\\"'")로 양끝 따옴표를 무조건 떼서, 헤드라인 끝이
+    인용으로 끝나는 경우(예: ...'대박 아니면 매도') 닫는 따옴표만 사라지고 짝이
+    깨졌음(실측 30건 중 3건). 감싼 경우가 아니면 그대로 둠."""
+    s = s.strip()
+    if len(s) >= 2 and s[0] in _QUOTE_PAIRS and s[-1] == _QUOTE_PAIRS[s[0]]:
+        inner = s[1:-1]
+        if s[0] not in inner and s[-1] not in inner:
+            return inner.strip()
+    return s
+
+
+def _post(payload: dict, api_key: str) -> str:
+    res = requests.post(
+        _API_URL,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        data=json.dumps(payload),
+        timeout=30,
+    )
+    res.raise_for_status()
+    return res.json()["content"][0]["text"].strip()
+
+
+_BATCH_LINE = re.compile(r"^\s*(\d+)\s*[.)]\s*(.+?)\s*$")
+BATCH_SIZE = 10
+
+
+def translate_many(texts: list[str]) -> list[str | None]:
+    """여러 헤드라인을 한 번의 호출로 번역(2026-11-10). 호출마다 붙는 시스템
+    프롬프트 입력 토큰과 요청 오버헤드를 나눠 쓰려는 것. 번호를 붙여 보내고
+    같은 번호로 받아서 순서를 맞춤 — 응답이 일부 빠지거나 형식이 깨지면 그
+    줄만 None(호출부가 낱개 호출로 다시 시도). 키 없음/API 실패는 전부 None."""
+    results: list[str | None] = [None] * len(texts)
+    api_key = _api_key()
+    if not api_key:
+        return results
+    for start in range(0, len(texts), BATCH_SIZE):
+        chunk = texts[start : start + BATCH_SIZE]
+        lines = [f"{i}. {' '.join(t.split())}" for i, t in enumerate(chunk, 1)]
+        try:
+            payload = {
+                "model": _MODEL,
+                "max_tokens": 150 * len(chunk),
+                "temperature": 0,
+                "system": (
+                    "너는 뉴스 헤드라인 번역기야. 번호가 붙은 영어 뉴스 헤드라인이 여러 줄 "
+                    "들어오면 각각을 자연스러운 한국어 뉴스 헤드라인 톤으로 번역해. "
+                    "같은 번호를 붙여서 한 줄에 하나씩, '번호. 번역문' 형식으로만 답해. "
+                    "설명이나 따옴표는 붙이지 마."
+                ),
+                "messages": [{"role": "user", "content": "\n".join(lines)}],
+            }
+            out = _post(payload, api_key)
+        except Exception:  # noqa: BLE001 - 실패하면 이 묶음은 None으로 두고 낱개 폴백
+            continue
+        for line in out.splitlines():
+            m = _BATCH_LINE.match(line)
+            if not m:
+                continue
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(chunk) and results[start + idx] is None:
+                results[start + idx] = _unwrap_quotes(m.group(2)) or None
+    return results
 
 
 def translate_to_ko(text: str) -> str | None:
@@ -55,17 +129,6 @@ def translate_to_ko(text: str) -> str | None:
             ),
             "messages": [{"role": "user", "content": text}],
         }
-        res = requests.post(
-            _API_URL,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            data=json.dumps(payload),
-            timeout=20,
-        )
-        res.raise_for_status()
-        return res.json()["content"][0]["text"].strip().strip("\"'")
+        return _unwrap_quotes(_post(payload, api_key)) or None
     except Exception:  # noqa: BLE001 - 번역 실패해도 원문을 보여주면 되니 전체 갱신을 막으면 안 됨
         return None
