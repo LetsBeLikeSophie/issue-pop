@@ -1586,3 +1586,21 @@ canvaskit 때와 마찬가지로 대시보드 Cache Rule이 필요함(계정 접
    시도가 실패했다는 사실 자체와 `sources.py`의 `political_leaning`
    코드테이블은 여전히 유효한 참고 정보로 남아있음 — 나중에 다른
    맥락(예: 매체 다양성 통계)에서 재사용 가능.
+
+## 업데이트: SNS 자동 게시 (2026-11-26)
+
+`/trending` 상위 5개로 매일 카드(1080×1350 PNG)와 릴스(1080×1920, 13.5초, 무음 MP4)를 만들어
+Threads(07:40) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 코드: `social.py`(흐름·게시·토큰 갱신),
+`social_card.py` / `social_video.py`(렌더러), `api.py`의 `_social_loop`과 `/social/*` 엔드포인트. 테스트: `python3 test_social.py`
+(서버에서 실제 렌더링까지 보려면 `SOCIAL_RENDER_TEST=1`).
+
+- 기본값은 전부 "안 올라가는" 쪽: `SOCIAL_ENABLED`가 꺼져 있으면 아무것도 안 하고, 켜도 `SOCIAL_DRY_RUN=1`이면 API를 안 부름.
+- 확인 후 게시(`SOCIAL_REQUIRE_APPROVAL=1`, 기본): 07:00에 만든 미리보기를 `SOCIAL_PREVIEW_MAIL_TO`로 메일 보냄(계정은
+  `FEEDBACK_SMTP_*` 재사용). 링크(`/social/review/<날짜>?sig=…`, `SOCIAL_SIGNING_SECRET`으로 서명)를 열어 **승인 버튼**을 눌러야
+  올라감 — 메일 앱이 링크를 미리 열어 봐도 승인되지 않게 승인은 POST로만 받음. 안정되면 `SOCIAL_REQUIRE_APPROVAL=0`(그래도 반려는 가능).
+- 미디어는 `SOCIAL_MEDIA_DIR`(기본 `backend/data/social/`, git 제외)에 `<날짜>-<무작위>/`로 저장, `/social/media/...`로 공개
+  (Meta가 이 URL에서 가져감 — Cloudflare 경유로 들어오므로 nginx 허용 목록과 충돌 없음).
+- 토큰: `IG_USER_ID`, `IG_ACCESS_TOKEN`, `THREADS_USER_ID`, `THREADS_ACCESS_TOKEN`은 systemd env.conf에만. 장기 토큰은 45일마다
+  자동 갱신해 `data/social/tokens.json`(600)에 저장. env 토큰을 새로 바꾸면 그게 우선.
+- 서버 준비: `sudo apt install ffmpeg fonts-noto-cjk fonts-noto-cjk-extra`(Black·Medium 굵기는 extra에 있음).
+- 시각·채널 조정: `SOCIAL_TIMES="preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"`, `SOCIAL_CHANNELS="threads,ig_feed"`.

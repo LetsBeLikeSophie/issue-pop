@@ -46,7 +46,7 @@ from firebase_admin import exceptions as fb_exceptions
 from firebase_admin import messaging
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -57,6 +57,7 @@ import category
 import cluster_audit
 import db
 import quotes
+import social
 import sources
 import stocks
 import word_of_day
@@ -807,6 +808,39 @@ async def _stock_catalog_refresh_loop() -> None:
             _log_loop_error("stock_catalog", e)
 
 
+SOCIAL_CHECK_INTERVAL_SECONDS = 60
+SOCIAL_TOKEN_CHECK_INTERVAL_SECONDS = 6 * 60 * 60
+
+
+def _social_issues() -> list[dict]:
+    """/trending과 같은 순서(매체 수 → 기사 수)의 상위 이슈."""
+    return sorted(_cache.values(), key=lambda c: (-c["outlet_count"], -c["article_count"]))[:5]
+
+
+async def _social_loop() -> None:
+    """2026-11-26: 이슈팝 SNS 자동 게시(Instagram 피드·릴스 + Threads) — 자세한 흐름은 social.py 독스트링.
+    SOCIAL_ENABLED=1일 때만 동작하고, 기본은 dry-run(실제 게시 안 함) + 확인 후 게시."""
+    last_token_check = 0.0
+    while True:
+        await asyncio.sleep(SOCIAL_CHECK_INTERVAL_SECONDS)
+        if not social.enabled():
+            continue
+        try:
+            did = await asyncio.to_thread(social.tick, _social_issues)
+            if did:
+                print(f"[social] {did}")
+        except Exception as e:  # noqa: BLE001
+            _log_loop_error("social", e)
+        if time.time() - last_token_check >= SOCIAL_TOKEN_CHECK_INTERVAL_SECONDS:
+            last_token_check = time.time()
+            try:
+                refreshed = await asyncio.to_thread(social.refresh_tokens_if_due)
+                if refreshed:
+                    print(f"[social] 장기 토큰 갱신: {refreshed}")
+            except Exception as e:  # noqa: BLE001
+                _log_loop_error("social_token", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
@@ -816,12 +850,14 @@ async def lifespan(app: FastAPI):
     cluster_audit_task = asyncio.create_task(_cluster_audit_loop())
     word_of_day_task = asyncio.create_task(_word_of_day_loop())
     stock_catalog_task = asyncio.create_task(_stock_catalog_refresh_loop())
+    social_task = asyncio.create_task(_social_loop())
     yield
     refresh_task.cancel()
     digest_task.cancel()
     cluster_audit_task.cancel()
     word_of_day_task.cancel()
     stock_catalog_task.cancel()
+    social_task.cancel()
 
 
 # 2026-10-23: /docs, /openapi.json을 끔 — 숨겨둔 개발용 엔드포인트 목록까지 전부 공개되던 것을 막음.
@@ -1309,6 +1345,39 @@ async def get_trending(
         items = [(cid, c) for cid, c in items if c["category"] == category]
     items.sort(key=lambda kv: (-kv[1]["outlet_count"], -kv[1]["article_count"]))
     return [_to_detail(cid, c) for cid, c in items[:limit]]
+
+
+_SOCIAL_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.get("/social/media/{dirname}/{name}", include_in_schema=False)
+async def social_media(dirname: str, name: str):
+    """SNS 게시용 카드·영상. Instagram/Threads가 이 공개 URL에서 미디어를 가져감(social.py 참고)."""
+    path = social.media_file(dirname, name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type=social.MEDIA_FILES[name], headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/social/review/{date}", response_class=HTMLResponse, include_in_schema=False)
+async def social_review(date: str, sig: str = ""):
+    """미리보기 메일의 확인 링크. 보기만 함 — 승인/반려는 페이지의 버튼(POST)으로."""
+    if not _SOCIAL_DATE_RE.match(date) or not social.verify(date, sig):
+        raise HTTPException(status_code=404, detail="not found")
+    state = await asyncio.to_thread(social.load_state, date)
+    if state is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse(social.review_html(state, sig), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/social/review/{date}", include_in_schema=False)
+async def social_decide(date: str, sig: str = "", action: str = ""):
+    if not _SOCIAL_DATE_RE.match(date) or not social.verify(date, sig) or action not in ("approve", "reject"):
+        raise HTTPException(status_code=404, detail="not found")
+    state = await asyncio.to_thread(social.decide, date, action == "approve")
+    if state is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return RedirectResponse(f"/social/review/{date}?sig={sig}", status_code=303)
 
 
 @app.get("/issues/{issue_id}", response_model=IssueDetail)

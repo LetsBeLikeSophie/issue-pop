@@ -32,3 +32,6 @@ MONETIZATION.md
 # 빌드 산출물(AAB) — 용량 크고 매번 재빌드 가능해서 git엔 안 올림,
 # 로컬 보관용으로만 releases/ 밑에 둠
 releases/
+
+# SNS 자동 게시: 날짜별 카드·영상과 갱신된 Meta 장기 토큰(tokens.json) — 절대 커밋 금지
+backend/data/
