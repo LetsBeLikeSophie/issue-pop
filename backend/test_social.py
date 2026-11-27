@@ -258,6 +258,11 @@ social.tick(get_issues, at(7, 0, day=25))
 sig25 = social.sign("2026-11-25")
 r = client.get(f"/social/review/2026-11-25?sig={sig25}")
 assert "승인" in r.text and social.load_state("2026-11-25")["approved"] is None  # GET으로는 안 바뀜
+# 메일의 [승인]으로 열면: 큰 버튼 하나("이대로 올리기")만 보이고, 여는 것만으로는 안 바뀜
+r = client.get(f"/social/review/2026-11-25?sig={sig25}&do=approve")
+assert "이대로 올리기" in r.text and "action=approve" in r.text and social.load_state("2026-11-25")["approved"] is None
+r = client.get(f"/social/review/2026-11-25?sig={sig25}&do=reject")
+assert "이번엔 안 올리기" in r.text and social.load_state("2026-11-25")["approved"] is None
 assert client.post(f"/social/review/2026-11-25?sig=bad&action=approve").status_code == 404
 r = client.post(f"/social/review/2026-11-25?sig={sig25}&action=approve", follow_redirects=False)
 assert r.status_code == 303 and social.load_state("2026-11-25")["approved"] is True
@@ -491,6 +496,8 @@ assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에�
 assert "/social/review/devlog-2026-11-29?sig=" in body and "/social/review/devlog-2026-11-29?sig=" in html
 # 메일 한눈에: 목적, 몇 번 올라가는지, 채널(플랫폼·형식)별 그림과 글
 assert "21:00  인스타 피드 · 스레드" in html and "21:00  인스타 피드 · 스레드" in subj
+# 메일 버튼은 [승인] [반려] 두 개 — 둘 다 확인 페이지(GET)를 열 뿐, 반영은 페이지의 큰 버튼(POST)
+assert "do=approve" in html and "do=reject" in html and "&do=approve" in body
 assert "slide1.png" in html and "그림은 위와 같음" in html and "만든 이유" in subj
 # 이슈팝: 08:00 한 번에 피드 + 스토리(스토리는 글 없음)
 sent_mail.clear()

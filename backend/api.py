@@ -1360,14 +1360,15 @@ async def social_media(dirname: str, name: str):
 
 
 @app.get("/social/review/{date}", response_class=HTMLResponse, include_in_schema=False)
-async def social_review(date: str, sig: str = ""):
-    """미리보기 메일의 확인 링크. 보기만 함 — 승인/반려는 페이지의 버튼(POST)으로."""
+async def social_review(date: str, sig: str = "", do: str = ""):
+    """미리보기 메일의 확인 링크. 보기만 함 — 승인/반려는 페이지의 버튼(POST)으로.
+    do=approve|reject면 그 버튼 하나만 크게 보여 줌(한 번 더 누르면 반영)."""
     if not _SOCIAL_DATE_RE.match(date) or not social.verify(date, sig):
         raise HTTPException(status_code=404, detail="not found")
     state = await asyncio.to_thread(social.load_state, date)
     if state is None:
         raise HTTPException(status_code=404, detail="not found")
-    return HTMLResponse(social.review_html(state, sig), headers={"Cache-Control": "no-store"})
+    return HTMLResponse(social.review_html(state, sig, do), headers={"Cache-Control": "no-store"})
 
 
 @app.post("/social/review/{date}", include_in_schema=False)

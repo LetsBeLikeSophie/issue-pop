@@ -527,12 +527,18 @@ def _plan_html(state: dict, with_status: bool = False) -> str:
     return html
 
 
-def _button(url: str, shadow: bool) -> str:
+def _buttons(url: str) -> str:
+    """메일의 [승인] [반려] 두 버튼. 누르면 확인 페이지가 열리고, 거기서 큰 버튼 하나를 한 번 더 눌러야 반영됨
+    (메일 앱·보안 검사가 링크를 미리 열어도 승인되지 않게 — 링크(GET)는 보기만, 반영은 POST)."""
     from html import escape
 
-    return (f'<a href="{escape(url)}" style="display:block;text-align:center;background:#8A6BD8;color:#fff;font-size:18px;'
-            f'font-weight:800;text-decoration:none;padding:15px;border-radius:12px;margin:16px 0;'
-            f'{"box-shadow:4px 4px 0 #3B3640" if shadow else ""}">확인하고 승인하기 →</a>')
+    a = ('display:block;text-align:center;font-size:18px;font-weight:800;text-decoration:none;padding:14px 0;'
+         'border-radius:12px;border:2px solid #3B3640')
+    return (f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0"><tr>'
+            f'<td width="64%" style="padding-right:6px"><a href="{escape(url)}&amp;do=approve" '
+            f'style="{a};background:#8A6BD8;color:#fff">✅ 승인</a></td>'
+            f'<td width="36%" style="padding-left:6px"><a href="{escape(url)}&amp;do=reject" '
+            f'style="{a};background:#fff;color:#3B3640">반려</a></td></tr></table>')
 
 
 def send_preview_email(state: dict) -> bool:
@@ -558,7 +564,8 @@ def send_preview_email(state: dict) -> bool:
     msg["Subject"] = (f"[SNS] {_day_label(state)} {title} — " + " / ".join(summary))[:150]
     msg["From"] = user
     msg["To"] = to
-    lines = [f"{_day_label(state)} {title}", *summary, note, "", f"확인·승인: {url}", ""]
+    lines = [f"{_day_label(state)} {title}", *summary, note, "",
+             f"승인: {url}&do=approve", f"반려: {url}&do=reject", "(누르면 페이지가 열려요 → 큰 버튼 한 번 더)", ""]
     for p in plan:
         lines.append(f"[{p['time'][0]:02d}:{p['time'][1]:02d}] {p['format']}" + (f" ({p['lang']})" if p["lang"] else ""))
         if p["text"]:
@@ -572,7 +579,9 @@ def send_preview_email(state: dict) -> bool:
         f'<div style="font-size:13px;color:#8A6BD8;font-weight:700">{escape(_day_label(state))} · {escape(title)}</div>'
         f'<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:10px 14px;margin-top:8px">'
         f'{rows}<div style="font-size:13px;color:#777;margin-top:4px">{escape(note)}</div></div>'
-        f'{_button(url, True)}{_plan_html(state)}{_button(url, False)}'
+        f'{_buttons(url)}<div style="font-size:13px;color:#777;text-align:center;margin-top:-8px">'
+        f'누르면 페이지가 열려요 → 큰 버튼 한 번 더 누르면 끝</div>'
+        f'{_plan_html(state)}{_buttons(url)}'
         f'</div></body></html>', subtype="html")
     host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
     port = int(os.environ.get("FEEDBACK_SMTP_PORT") or 587)
@@ -597,8 +606,9 @@ def decide(key: str, approve: bool) -> dict | None:
 _STATUS_KO = {"pending": "대기", "posted": "게시됨", "skipped": "건너뜀", "failed": "실패"}
 
 
-def review_html(state: dict, sig: str) -> str:
-    """메일 링크로 여는 확인 페이지. 승인/반려는 버튼(POST)으로만 — 메일 앱이 링크를 미리 열어 봐도 승인되지 않게."""
+def review_html(state: dict, sig: str, do: str = "") -> str:
+    """메일 링크로 여는 확인 페이지. 승인/반려는 버튼(POST)으로만 — 메일 앱이 링크를 미리 열어 봐도 승인되지 않게.
+    do=approve|reject(메일의 [승인]/[반려]로 열었을 때)면 맨 위에 그 버튼 하나만 크게."""
     from html import escape
 
     if state["approved"] is True:
@@ -619,6 +629,15 @@ def review_html(state: dict, sig: str) -> str:
             f'<form method="post" action="{action}&action=reject" style="display:inline">'
             f'<button>반려(이번엔 안 올림)</button></form>'
         )
+    top = buttons
+    if buttons and state["approved"] is None and do in ("approve", "reject"):
+        big = ("width:100%;font-size:22px;padding:18px 0;margin:12px 0 4px;"
+               + ("background:#8A6BD8;color:#fff" if do == "approve" else "background:#fff;color:#3B3640"))
+        label = "✅ 이대로 올리기" if do == "approve" else "⛔ 이번엔 안 올리기"
+        other = "reject" if do == "approve" else "approve"
+        top = (f'<form method="post" action="{action}&action={do}"><button style="{big}">{label}</button></form>'
+               f'<div style="text-align:center;font-size:14px"><a href="{action}&do={other}" style="color:#777">'
+               f'{"반려할래요" if do == "approve" else "승인할래요"}</a></div>')
     body = _plan_html(state, with_status=True)
     if state.get("empty"):
         body = "<p>이 기간엔 올릴 게 없어요(게임 화면이 안 바뀌었거나 커밋 없음).</p>"
@@ -632,7 +651,7 @@ background:#fff;box-shadow:3px 3px 0 #3B3640}}</style></head><body>
 <div style="font-size:13px;color:#8A6BD8;font-weight:700">{escape(_day_label(state))} · {escape(title)}</div>
 <div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:10px 14px;margin-top:8px;line-height:1.6">
 {summary}<div style="font-size:14px;margin-top:4px">{decision}{' · 테스트(안 올라감)' if dry_run() else ''}</div></div>
-<p>{buttons}</p>
+<div>{top}</div>
 {body}
 <p>{buttons}</p>
 </body></html>"""
