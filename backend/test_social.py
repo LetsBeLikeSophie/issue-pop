@@ -240,9 +240,9 @@ import devlog  # noqa: E402
 import devlog_card  # noqa: E402
 
 # 가리기: 키·메일·주소·링크는 글에 안 나감
-red = devlog.redact("키 sk-ant-abc123def456ghi 메일 me@x.com 서버 168.110.25.49 https://x.y/z?t=1 "
+red = devlog.redact("키 sk-ant-abc123def456ghi 메일 me@x.com 서버 203.0.113.7 https://x.y/z?t=1 "
                     "토큰 EAAQlKabcdefgh 해시 " + "a" * 40)
-assert "sk-ant" not in red and "me@x.com" not in red and "168.110" not in red and "https://" not in red
+assert "sk-ant" not in red and "me@x.com" not in red and "203.0.113" not in red and "https://" not in red
 assert "EAAQ" not in red and "a" * 40 not in red
 assert devlog._clean_message("고침\n\nCo-Authored-By: Claude <noreply@anthropic.com>") == "고침"
 
