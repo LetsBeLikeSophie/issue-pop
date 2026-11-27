@@ -150,6 +150,21 @@ def render_card(issues: list[dict], now: datetime | None = None, top_n: int = 5)
     return buf.getvalue()
 
 
+def render_story(card_png: bytes) -> bytes:
+    """인스타 스토리(1080x1920, 9:16): 같은 카드를 네이비 바탕 가운데에. 위아래는 스토리 화면 UI(프로필·답장)에
+    가려도 괜찮게 비워 둠."""
+    card = Image.open(io.BytesIO(card_png)).convert("RGB")
+    img = Image.new("RGB", (1080, 1920), NAVY)
+    img.paste(card, (0, (1920 - card.height) // 2 - 40))
+    d = ImageDraw.Draw(img)
+    msg = "매일 아침 8시, 오늘의 이슈 TOP 5"
+    f = _font("Bold", 38)
+    d.text(((1080 - d.textlength(msg, font=f)) // 2, 1920 - 230), msg, font=f, fill=(205, 214, 232))
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
 def caption(issues: list[dict], now: datetime | None = None, top_n: int = 5) -> str:
     now = now or datetime.now(ZoneInfo("Asia/Seoul"))
     lines = [f"📰 {now.month}월 {now.day}일 오늘 가장 많이 보도된 이슈 TOP {min(top_n, len(issues))}", ""]

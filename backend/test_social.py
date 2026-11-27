@@ -42,9 +42,24 @@ if os.environ.get("SOCIAL_RENDER_TEST") == "1":
     assert os.path.getsize(out) > 50_000
     print("render smoke ok")
 
+# 스토리(9:16)는 카드를 가운데에 — 실제로 그려 봄(폰트는 아래 글씨에만 필요해서 가짜 폰트 로더로)
+import io  # noqa: E402
+
+from PIL import Image as _Img  # noqa: E402
+
+_buf = io.BytesIO()
+_Img.new("RGB", (1080, 1350), (250, 250, 247)).save(_buf, "PNG")
+_real_font = social_card._font
+social_card._font = lambda weight, size: social_card.ImageFont.load_default()
+story = _Img.open(io.BytesIO(social_card.render_story(_buf.getvalue())))
+assert story.size == (1080, 1920) and story.getpixel((540, 960)) == (250, 250, 247)
+assert story.getpixel((540, 20)) == social_card.NAVY
+social_card._font = _real_font
+
 # 렌더러는 가짜로(로컬엔 서버 폰트가 없음)
 render_calls = []
 social_card.render_card = lambda issues, now=None, top_n=5: render_calls.append("card") or b"PNGDATA"
+social_card.render_story = lambda card: render_calls.append("story") or b"STORY"
 
 
 def fake_video(issues, out_path, now=None, top_n=5):
@@ -64,11 +79,21 @@ get_issues = lambda: ISSUES  # noqa: E731
 
 # 0) 기본 일정: 이슈팝은 Threads·피드 둘 다 08:00, Threads 글엔 플레이스토어 링크(눌림), 인스타 캡션은 프로필 링크 안내
 d = social.times()
-assert d["threads"] == d["ig_feed"] == (8, 0) and d["ig_reel"] == (12, 10)
+assert d["threads"] == d["ig_feed"] == d["ig_story"] == (8, 0) and d["ig_reel"] == (12, 10)
 assert social.PLAY_URL in social.threads_text(ISSUES) and len(social.threads_text(ISSUES)) <= 500
 assert "프로필 링크" in social_card.caption(ISSUES)
-# 아래 순서 확인은 채널마다 시각이 달라야 쉬워서 예전 일정으로 고정해서 봄
+# 기본 채널: 피드 + 스토리 + Threads, 릴스는 꺼짐(영상도 안 만듦)
+assert "ig_story" in social.channels() and "ig_reel" not in social.channels()
+social.tick(get_issues, at(7, 0, day=20))
+s20 = social.load_state("2026-11-20")
+assert set(s20["posts"]) == {"threads", "ig_feed", "ig_story"} and render_calls == ["card", "story"]
+assert social.media_file(s20["dir"], "story.png") is not None
+social.decide("2026-11-20", True)
+assert sorted(social.tick(get_issues, at(8, 0, day=20))) == ["ig_feed", "ig_story", "threads"]
+render_calls.clear()
+# 아래 순서 확인은 채널마다 시각이 달라야 쉬워서 예전 일정(+릴스 켬)으로 고정해서 봄
 os.environ["SOCIAL_TIMES"] = "preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"
+os.environ["SOCIAL_CHANNELS"] = "threads,ig_feed,ig_reel"
 
 # 1) 07:00 전에는 아무것도 안 함
 assert social.tick(get_issues, at(6, 59)) == []
@@ -79,11 +104,11 @@ assert social.tick(get_issues, at(7, 0)) == ["generate"]
 st = social.load_state("2026-11-26")
 assert len(st["issues"]) == 5 and st["issues"][0]["keyword"] == "키워드0" and "articles" not in st["issues"][0]
 assert st["preview_sent"] is True and st["approved"] is None
-assert render_calls == ["card", "video"]
+assert render_calls == ["card", "story", "video"]
 assert social.DIR_RE.match(st["dir"]) and st["dir"].startswith("2026-11-26-")
 assert "TOP 5" in st["caption"] and len(st["threads_text"]) <= 500
 # 다시 돌려도 다시 만들지 않음
-assert social.tick(get_issues, at(7, 1)) == [] and render_calls == ["card", "video"]
+assert social.tick(get_issues, at(7, 1)) == [] and render_calls == ["card", "story", "video"]
 
 # 3) 승인 전에는 게시 시각이 지나도 안 올라감
 assert social.tick(get_issues, at(7, 41)) == []
@@ -290,6 +315,7 @@ assert len(devlog_card.render_episode(ep, {"icon": pic, "shot": pic, "capture": 
 
 # 루프: 20:00 생성(목요일=한 줄 일지) → 승인 → 21:00 Threads(글만)
 os.environ["SOCIAL_DEVLOG"] = "1"
+os.environ.pop("SOCIAL_CHANNELS", None)  # 기본 채널(개발 일지 포함)
 os.environ["SOCIAL_TIMES"] = ""  # 기본 일정
 fetched = []
 devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or COMMITS
@@ -359,6 +385,9 @@ posts = [c for c in calls if c[0] == "POST"]
 assert [p[2].get("is_carousel_item") for p in posts[:2]] == ["true", "true"]
 assert posts[2][2]["media_type"] == "CAROUSEL" and posts[2][2]["children"] == "C1,C1"
 assert posts[3][1].endswith("/media_publish")
+calls.clear()
+assert social.publish_instagram("story", "https://x/story.png", "", sleep=lambda s: None) == "P1"
+assert calls[0][2]["media_type"] == "STORIES" and "caption" not in calls[0][2]
 calls.clear()
 assert social.publish_threads(None, "글만", sleep=lambda s: None) == "P1"
 assert calls[0][2]["media_type"] == "TEXT" and "image_url" not in calls[0][2]

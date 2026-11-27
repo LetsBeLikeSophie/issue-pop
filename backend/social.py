@@ -53,22 +53,25 @@ from zoneinfo import ZoneInfo
 import requests
 
 KST = ZoneInfo("Asia/Seoul")
-ISSUEPOP_CHANNELS = ("threads", "ig_feed", "ig_reel")
+ISSUEPOP_CHANNELS = ("threads", "ig_feed", "ig_story", "ig_reel")
 DEVLOG_CHANNELS = ("devlog_threads",)                  # 매일(커밋 있는 날만) Threads 한 줄 일지
 EPISODE_CHANNELS = ("episode_ig", "episode_threads")   # 주 1회 "이번 주 만든 것"
 CHANNELS = ISSUEPOP_CHANNELS + DEVLOG_CHANNELS + EPISODE_CHANNELS
-CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_reel": "Instagram 릴스",
+CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_story": "Instagram 스토리",
+                  "ig_reel": "Instagram 릴스",
                   "devlog_threads": "Threads 개발 일지", "episode_ig": "Instagram 캐러셀(주간 에피소드)",
                   "episode_threads": "Threads 주간 에피소드"}
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
-DEFAULT_TIMES = ("preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10,"
+# 릴스는 기본으로 끔(2026-11-27: 이슈팝은 매일 뉴스 남기듯 피드 + 스토리가 맞다고 정함). SOCIAL_CHANNELS로 다시 켤 수 있음
+DEFAULT_OFF = ("ig_reel",)
+DEFAULT_TIMES = ("preview=07:00,threads=08:00,ig_feed=08:00,ig_story=08:00,ig_reel=12:10,"
                  "devlog_preview=20:00,devlog_threads=21:00,episode_ig=21:00,episode_threads=21:00")
 MAX_ATTEMPTS = 3
 GEN_RETRY_MINUTES = 15  # 생성(렌더·GitHub·Claude)이 실패하면 이만큼 쉬었다 다시, 3번까지
 TOKEN_REFRESH_AFTER_DAYS = 45  # 장기 토큰은 60일 — 넉넉히 앞서 갱신
 KEY_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}$")  # 승인 단위: 이슈팝은 날짜, 개발 일지는 devlog-날짜
 DIR_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
-MEDIA_FILES = {"card.png": "image/png", "reel.mp4": "video/mp4",
+MEDIA_FILES = {"card.png": "image/png", "story.png": "image/png", "reel.mp4": "video/mp4",
                **{f"slide{i}.png": "image/png" for i in range(1, 11)}}
 
 _lock = threading.Lock()  # 상태 파일 읽고 쓰기(루프 스레드 ↔ 승인 요청)
@@ -123,7 +126,7 @@ def times() -> dict[str, tuple[int, int]]:
 def channels() -> list[str]:
     raw = os.environ.get("SOCIAL_CHANNELS")
     if not raw:
-        return list(CHANNELS)
+        return [c for c in CHANNELS if c not in DEFAULT_OFF]
     return [c.strip() for c in raw.split(",") if c.strip() in CHANNELS]
 
 
@@ -234,8 +237,11 @@ def generate(issues: list[dict], now: datetime | None = None) -> dict:
     dirname = f"{date}-{secrets.token_hex(8)}"
     out = media_root() / dirname
     out.mkdir(parents=True, exist_ok=True)
-    (out / "card.png").write_bytes(social_card.render_card(top, now=now))
-    social_video.render_video(top, str(out / "reel.mp4"), now=now)
+    card = social_card.render_card(top, now=now)
+    (out / "card.png").write_bytes(card)
+    (out / "story.png").write_bytes(social_card.render_story(card))
+    if "ig_reel" in channels():  # 영상은 1 OCPU에서 1분 넘게 걸려서 릴스를 켰을 때만
+        social_video.render_video(top, str(out / "reel.mp4"), now=now)
 
     state = {
         "kind": "issuepop",
@@ -249,7 +255,7 @@ def generate(issues: list[dict], now: datetime | None = None) -> dict:
         "approved": None,  # None=대기, True=승인, False=반려
         "decided_at": None,
         "preview_sent": False,
-        "posts": {c: _new_post() for c in ISSUEPOP_CHANNELS},
+        "posts": {c: _new_post() for c in ISSUEPOP_CHANNELS if c != "ig_reel" or "ig_reel" in channels()},
     }
     with _lock:
         _save_state(state)
@@ -408,7 +414,9 @@ def review_html(state: dict, sig: str) -> str:
     media = ""
     if not devlog:
         media = (f'<h3>카드 (Threads · Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
-                 f'<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>')
+                 f'<h3>스토리</h3><img src="{base}/story.png" alt="스토리" style="max-width:320px">')
+        if "ig_reel" in state["posts"]:
+            media += f'<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>'
     for i in range(1, (state.get("slides") or 0) + 1):
         media += f'<img src="{base}/slide{i}.png" alt="{i}장">'
     if state.get("slides"):
@@ -558,7 +566,9 @@ def publish_instagram(kind: str, media, caption: str, sleep=time.sleep) -> str:
         raise RuntimeError("IG_USER_ID / IG_ACCESS_TOKEN 없음")
     base = _graph_ig(token)
     data = {"caption": caption, "access_token": token}
-    if kind == "image":
+    if kind == "story":  # 스토리는 캡션이 없음(비즈니스 계정만 API로 올릴 수 있음)
+        data = {"media_type": "STORIES", "image_url": media, "access_token": token}
+    elif kind == "image":
         data["image_url"] = media
     elif kind == "carousel":
         children = [_post(f"{base}/{user}/media",
@@ -595,6 +605,8 @@ def _publish(channel: str, state: dict) -> str:
         return publish_threads(media_url(state, "card.png"), state["threads_text"])
     if channel == "ig_feed":
         return publish_instagram("image", media_url(state, "card.png"), state["caption"])
+    if channel == "ig_story":
+        return publish_instagram("story", media_url(state, "story.png"), "")
     if channel == "ig_reel":
         return publish_instagram("reel", media_url(state, "reel.mp4"), state["caption"])
     if channel == "devlog_threads":
