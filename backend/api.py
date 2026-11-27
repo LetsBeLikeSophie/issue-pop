@@ -1347,7 +1347,7 @@ async def get_trending(
     return [_to_detail(cid, c) for cid, c in items[:limit]]
 
 
-_SOCIAL_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SOCIAL_DATE_RE = social.KEY_RE  # "2026-11-27"(이슈팝) 또는 "devlog-2026-11-27"(개발 일지)
 
 
 @app.get("/social/media/{dirname}/{name}", include_in_schema=False)

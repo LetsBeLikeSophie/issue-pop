@@ -17,8 +17,10 @@ os.environ.update(
     SOCIAL_DRY_RUN="1",
     SOCIAL_REQUIRE_APPROVAL="1",
     SOCIAL_PUBLIC_BASE="https://api.example.test",
+    SOCIAL_DEVLOG="0",  # 개발 일지는 맨 아래 14)에서 따로 켜서 확인
 )
-for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_TIMES", "SOCIAL_CHANNELS", "IG_ACCESS_TOKEN", "THREADS_ACCESS_TOKEN"):
+for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_TIMES", "SOCIAL_CHANNELS", "IG_ACCESS_TOKEN", "THREADS_ACCESS_TOKEN",
+          "SOCIAL_EPISODE_WEEKDAY", "ANTHROPIC_KEY_SOCIAL", "ANTHROPIC_API_KEY"):
     os.environ.pop(k, None)
 
 import social  # noqa: E402
@@ -232,5 +234,108 @@ assert "승인" in r.text and social.load_state("2026-11-25")["approved"] is Non
 assert client.post(f"/social/review/2026-11-25?sig=bad&action=approve").status_code == 404
 r = client.post(f"/social/review/2026-11-25?sig={sig25}&action=approve", follow_redirects=False)
 assert r.status_code == 303 and social.load_state("2026-11-25")["approved"] is True
+
+# 14) 개발 일지(만드는 과정 공개): GitHub 커밋 → 한 줄 일지 / 주간 에피소드
+import devlog  # noqa: E402
+import devlog_card  # noqa: E402
+
+# 가리기: 키·메일·주소·링크는 글에 안 나감
+red = devlog.redact("키 sk-ant-abc123def456ghi 메일 me@x.com 서버 168.110.25.49 https://x.y/z?t=1 "
+                    "토큰 EAAQlKabcdefgh 해시 " + "a" * 40)
+assert "sk-ant" not in red and "me@x.com" not in red and "168.110" not in red and "https://" not in red
+assert "EAAQ" not in red and "a" * 40 not in red
+assert devlog._clean_message("고침\n\nCo-Authored-By: Claude <noreply@anthropic.com>") == "고침"
+
+COMMITS = [{"repo": "Appjupjup", "sha": "a1", "date": "", "message": "홈: 티켓 칩 하나로"},
+           {"repo": "Appjupjup", "sha": "a2", "date": "", "message": "캡처는 하루 1장씩"},
+           {"repo": "issue-pop", "sha": "b1", "date": "", "message": "SNS 자동 게시"}]
+groups = devlog.group_by_project(COMMITS)
+assert [(g["name"], g["count"]) for g in groups] == [("앱줍줍", 2), ("이슈팝", 1)]
+
+# Claude 키가 없으면 커밋 제목으로 기본 글
+text = devlog.daily_post(groups, at(20, 0))
+assert "앱줍줍" in text and "#개발일지" in text and len(text) <= 500
+ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
+assert ep["total"] == 3 and [p["name"] for p in ep["projects"]] == ["앱줍줍", "이슈팝"] and ep["caption"]
+
+# Claude 답(JSON)이 오면 그걸 쓰되, 길이 자르고 민감한 건 가림
+devlog._ask = lambda prompt: {"title": "티켓 하나로 정리한 한 주", "intro": "소개",
+                              "projects": [{"repo": "앱줍줍", "headline": "티켓으로 정리", "story": "문제→해결",
+                                            "points": ["하나", "둘"]}],
+                              "caption": "캡션 me@x.com", "threads": "스레드 글"}
+ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
+assert ep["title"] == "티켓 하나로 정리한 한 주" and ep["projects"][0]["headline"] == "티켓으로 정리"
+assert ep["projects"][1]["headline"] == "SNS 자동 게시"  # Claude가 빠뜨린 프로젝트는 커밋 제목으로
+assert "me@x.com" not in ep["caption"] and ep["threads"] == "스레드 글"
+
+# 루프: 20:00 생성(목요일=한 줄 일지) → 승인 → 21:00 Threads(글만)
+os.environ["SOCIAL_DEVLOG"] = "1"
+os.environ["SOCIAL_TIMES"] = ""  # 기본 일정
+fetched = []
+devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or COMMITS
+devlog_card.render_episode = lambda ep: [b"PNG1", b"PNG2", b"PNG3"]
+assert at(20, 0).weekday() == 3
+assert "devlog_generate" not in social.tick(get_issues, at(19, 59))
+assert "devlog_generate" in social.tick(get_issues, at(20, 0))
+dl = social.load_state("devlog-2026-11-26")
+assert dl["devlog_text"] and list(dl["posts"]) == ["devlog_threads"] and dl["weekly"] is False
+assert fetched[-1][1] - fetched[-1][0] == social.timedelta(days=1)
+assert social.load_state("2026-11-26")["kind"] == "issuepop"  # 같은 날 이슈팝 상태와 섞이지 않음
+assert social.tick(get_issues, at(21, 0)) == []  # 승인 전
+social.decide("devlog-2026-11-26", True)
+assert social.tick(get_issues, at(21, 0)) == ["devlog_threads"]
+
+# 커밋 없는 날: 아무것도 안 올림, 메일도 안 보냄
+devlog.fetch_commits = lambda since, until: []
+social.tick(get_issues, at(20, 0, day=27))
+e = social.load_state("devlog-2026-11-27")
+assert e["empty"] is True and e["posts"] == {} and e["preview_sent"] is True
+social.decide("devlog-2026-11-27", True)
+assert social.tick(get_issues, at(21, 0, day=27)) == []
+
+# 일요일: 지난 7일 → 캐러셀(표지+프로젝트) + Threads(표지)
+devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or COMMITS
+social.tick(get_issues, at(20, 0, day=29))
+w = social.load_state("devlog-2026-11-29")
+assert w["weekly"] and w["slides"] == 3 and set(w["posts"]) == {"episode_ig", "episode_threads"}
+assert fetched[-1][1] - fetched[-1][0] == social.timedelta(days=7)
+assert social.media_file(w["dir"], "slide2.png") is not None and social.media_file(w["dir"], "slide11.png") is None
+social.decide("devlog-2026-11-29", True)
+assert sorted(social.tick(get_issues, at(21, 0, day=29))) == ["episode_ig", "episode_threads"]
+
+# 확인 페이지(개발 일지 key도 서명 필요)
+sigw = social.sign("devlog-2026-11-29")
+r = client.get(f"/social/review/devlog-2026-11-29?sig={sigw}")
+assert r.status_code == 200 and "주간 에피소드" in r.text and "slide3.png" in r.text
+assert client.get("/social/review/devlog-2026-11-29?sig=bad").status_code == 404
+assert client.get(f"/social/media/{w['dir']}/slide1.png").content == b"PNG1"
+
+# 생성 실패(GitHub 오류 등): 바로 다시 부르지 않고 15분 쉬고, 3번 실패하면 그날은 포기
+def boom(since, until):
+    raise RuntimeError("github down")
+
+
+devlog.fetch_commits = boom
+for m, should_try in ((0, True), (1, False), (15, True), (30, True), (45, False)):
+    try:
+        social.tick(get_issues, at(20, m, day=24))
+        tried = False
+    except RuntimeError:
+        tried = True
+    assert tried == should_try, (m, tried)
+
+# 실제 게시 흐름(가짜 requests): 캐러셀 = 장마다 컨테이너 → 상태 확인 → 묶음 컨테이너 → 게시, Threads 글만 = TEXT
+social.requests.post, social.requests.get = fake_post, fake_get
+statuses = iter([])
+os.environ["IG_ACCESS_TOKEN"] = "EAATOKEN"
+calls.clear()
+assert social.publish_instagram("carousel", ["https://x/1.png", "https://x/2.png"], "캡션", sleep=lambda s: None) == "P1"
+posts = [c for c in calls if c[0] == "POST"]
+assert [p[2].get("is_carousel_item") for p in posts[:2]] == ["true", "true"]
+assert posts[2][2]["media_type"] == "CAROUSEL" and posts[2][2]["children"] == "C1,C1"
+assert posts[3][1].endswith("/media_publish")
+calls.clear()
+assert social.publish_threads(None, "글만", sleep=lambda s: None) == "P1"
+assert calls[0][2]["media_type"] == "TEXT" and "image_url" not in calls[0][2]
 
 print("ok")

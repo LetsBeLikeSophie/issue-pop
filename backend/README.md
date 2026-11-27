@@ -1604,3 +1604,22 @@ Threads(08:00) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 
   자동 갱신해 `data/social/tokens.json`(600)에 저장. env 토큰을 새로 바꾸면 그게 우선.
 - 서버 준비: `sudo apt install ffmpeg fonts-noto-cjk fonts-noto-cjk-extra`(Black·Medium 굵기는 extra에 있음).
 - 시각·채널 조정: `SOCIAL_TIMES="preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"`, `SOCIAL_CHANNELS="threads,ig_feed"`.
+
+## 업데이트: SNS 개발 일지(만드는 과정 공개) (2026-11-27)
+
+`devlog.py`가 공개 GitHub 저장소(LetsBeLikeSophie)의 커밋 메시지를 모아 글을 쓰고, `social.py`가 이슈팝과 같은
+미리보기·승인·게시 흐름으로 올림(승인은 `devlog-날짜` 단위로 따로).
+
+- **매일 20:00 생성 → 21:00 Threads 한 줄 일지(글만)**: 지난 24시간 커밋이 있는 날만. 없으면 아무것도 안 올림.
+- **일요일엔 대신 주간 에피소드**: 지난 7일 커밋을 프로젝트별로 묶어 인스타 캐러셀(표지 + 프로젝트별 1장, 최대 5개
+  프로젝트) + Threads(표지 이미지 + 글). 카드는 `devlog_card.py` — 소피앱스 브랜드(크림 종이, 잉크 외곽선, 스티커
+  그림자, 라벤더). 로고는 `assets/brand/`의 원본 PNG. 한글 제목은 `Jua-Regular.ttf`가 SOCIAL_FONT_DIR에 있으면
+  Jua, 없으면 Noto Sans CJK Black.
+- **글은 Claude**(`ANTHROPIC_KEY_SOCIAL`, 모델 `SOCIAL_LLM_MODEL` 기본 claude-sonnet-5-5). 키가 없으면 커밋 제목으로
+  만든 기본 글. 가격·매출·사용자 수·키·메일·주소는 쓰지 말라고 지시하고, 커밋 메시지와 결과 글 둘 다 키·메일·IP·
+  링크·긴 토큰 모양을 가림(`devlog.redact`).
+- **소재는 커밋 메시지만**: Claude Code 대화 기록은 키·개인정보가 섞일 수 있어 쓰지 않음. 비공개·포크·보관 저장소와
+  `SOCIAL_DEVLOG_EXCLUDE`(쉼표)에 적은 저장소는 뺌.
+- 생성이 실패하면(GitHub 호출 제한 등) 15분 쉬고 다시, 3번 실패하면 그날은 포기.
+- 이슈팝 Threads·인스타 피드는 둘 다 08:00, Threads 글엔 플레이스토어 링크(Threads는 본문 링크가 눌림).
+  인스타 캡션·댓글 링크는 안 눌려서 "프로필 링크에서" 안내.

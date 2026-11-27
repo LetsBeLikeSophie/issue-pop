@@ -5,7 +5,9 @@
   08:00  Threads  — 카드 이미지 + TOP5 글 + 플레이스토어 링크
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   12:10  Instagram 릴스 — 영상
-승인이 필요한 동안(SOCIAL_REQUIRE_APPROVAL=1, 기본값)은 승인된 날만 게시한다. 게시 시각이 지난 뒤
+  20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
+  21:00  Threads 개발 일지(글만, 커밋 있는 날만) / 일요일엔 대신 주간 에피소드 → 인스타 캐러셀 + Threads
+승인이 필요한 동안(SOCIAL_REQUIRE_APPROVAL=1, 기본값)은 승인된 날만 게시한다(이슈팝·개발 일지 따로 승인). 게시 시각이 지난 뒤
 승인하면 다음 확인 주기(1분)에 바로 올라가되, 너무 늦으면(SOCIAL_LATE_LIMIT_MINUTES) 그 채널은 건너뛴다.
 
 Instagram/Threads API는 우리 서버의 **공개 URL에서 미디어를 가져가는 방식**이라 파일은
@@ -23,9 +25,12 @@ SOCIAL_MEDIA_DIR/<날짜>-<무작위>/ 에 저장하고 GET /social/media/<그 �
   SOCIAL_PREVIEW_MAIL_TO      미리보기 받을 주소(메일 계정은 FEEDBACK_SMTP_* 재사용)
   SOCIAL_PUBLIC_BASE          기본 https://api.issue-pop.com
   SOCIAL_MEDIA_DIR            기본 backend/data/social
-  SOCIAL_TIMES                기본 "preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"
-  SOCIAL_CHANNELS             기본 "threads,ig_feed,ig_reel" (일부만 켤 때)
+  SOCIAL_TIMES                기본 DEFAULT_TIMES(아래) — 일부만 적으면 나머지는 기본값
+  SOCIAL_CHANNELS             기본 전부(CHANNELS) — 일부만 켤 때 쉼표로
   SOCIAL_LATE_LIMIT_MINUTES   기본 180
+  SOCIAL_DEVLOG=0             개발 일지 끔(기본 켬). 저장소 빼기·모델 등은 devlog.py 참고
+  SOCIAL_EPISODE_WEEKDAY      주간 에피소드 요일(월=0 … 일=6, 기본 6)
+  ANTHROPIC_KEY_SOCIAL        개발 일지 글쓰기용 Claude 키(없으면 커밋 제목으로 만든 기본 글)
   IG_USER_ID, IG_ACCESS_TOKEN, THREADS_USER_ID, THREADS_ACCESS_TOKEN
   IG_GRAPH_VERSION            기본 v23.0
   (IG 토큰이 EAA…로 시작하는 시스템 사용자 토큰이면 graph.facebook.com을 쓰고 갱신하지 않음 — 만료 없음.
@@ -48,14 +53,23 @@ from zoneinfo import ZoneInfo
 import requests
 
 KST = ZoneInfo("Asia/Seoul")
-CHANNELS = ("threads", "ig_feed", "ig_reel")
-CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_reel": "Instagram 릴스"}
+ISSUEPOP_CHANNELS = ("threads", "ig_feed", "ig_reel")
+DEVLOG_CHANNELS = ("devlog_threads",)                  # 매일(커밋 있는 날만) Threads 한 줄 일지
+EPISODE_CHANNELS = ("episode_ig", "episode_threads")   # 주 1회 "이번 주 만든 것"
+CHANNELS = ISSUEPOP_CHANNELS + DEVLOG_CHANNELS + EPISODE_CHANNELS
+CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_reel": "Instagram 릴스",
+                  "devlog_threads": "Threads 개발 일지", "episode_ig": "Instagram 캐러셀(주간 에피소드)",
+                  "episode_threads": "Threads 주간 에피소드"}
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
-DEFAULT_TIMES = "preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"
+DEFAULT_TIMES = ("preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10,"
+                 "devlog_preview=20:00,devlog_threads=21:00,episode_ig=21:00,episode_threads=21:00")
 MAX_ATTEMPTS = 3
+GEN_RETRY_MINUTES = 15  # 생성(렌더·GitHub·Claude)이 실패하면 이만큼 쉬었다 다시, 3번까지
 TOKEN_REFRESH_AFTER_DAYS = 45  # 장기 토큰은 60일 — 넉넉히 앞서 갱신
-DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
-MEDIA_FILES = {"card.png": "image/png", "reel.mp4": "video/mp4"}
+KEY_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}$")  # 승인 단위: 이슈팝은 날짜, 개발 일지는 devlog-날짜
+DIR_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
+MEDIA_FILES = {"card.png": "image/png", "reel.mp4": "video/mp4",
+               **{f"slide{i}.png": "image/png" for i in range(1, 11)}}
 
 _lock = threading.Lock()  # 상태 파일 읽고 쓰기(루프 스레드 ↔ 승인 요청)
 
@@ -113,6 +127,15 @@ def channels() -> list[str]:
     return [c.strip() for c in raw.split(",") if c.strip() in CHANNELS]
 
 
+def devlog_enabled() -> bool:
+    return _flag("SOCIAL_DEVLOG", True)
+
+
+def episode_weekday() -> int:
+    """주간 에피소드 요일(월=0 … 일=6). 그날은 한 줄 일지 대신 에피소드를 올림."""
+    return int(os.environ.get("SOCIAL_EPISODE_WEEKDAY") or 6)
+
+
 def late_limit_minutes() -> int:
     return int(os.environ.get("SOCIAL_LATE_LIMIT_MINUTES") or 180)
 
@@ -127,18 +150,19 @@ def _state_path(dirname: str) -> Path:
     return media_root() / dirname / "state.json"
 
 
-def _find_dir(date: str) -> str | None:
+def _find_dir(key: str) -> str | None:
     root = media_root()
     if not root.exists():
         return None
-    for p in sorted(root.glob(f"{date}-*")):
-        if p.is_dir() and DIR_RE.match(p.name) and (p / "state.json").exists():
+    for p in sorted(root.glob(f"{key}-*")):
+        if p.is_dir() and DIR_RE.match(p.name) and p.name[:-17] == key and (p / "state.json").exists():
             return p.name
     return None
 
 
-def load_state(date: str) -> dict | None:
-    d = _find_dir(date)
+def load_state(key: str) -> dict | None:
+    """key: "2026-11-27"(이슈팝) 또는 "devlog-2026-11-27"(개발 일지)."""
+    d = _find_dir(key)
     if d is None:
         return None
     return json.loads(_state_path(d).read_text(encoding="utf-8"))
@@ -214,6 +238,8 @@ def generate(issues: list[dict], now: datetime | None = None) -> dict:
     social_video.render_video(top, str(out / "reel.mp4"), now=now)
 
     state = {
+        "kind": "issuepop",
+        "key": date,
         "date": date,
         "dir": dirname,
         "generated_at": now.isoformat(),
@@ -223,8 +249,50 @@ def generate(issues: list[dict], now: datetime | None = None) -> dict:
         "approved": None,  # None=대기, True=승인, False=반려
         "decided_at": None,
         "preview_sent": False,
-        "posts": {c: {"status": "pending", "attempts": 0, "id": None, "error": None} for c in CHANNELS},
+        "posts": {c: _new_post() for c in ISSUEPOP_CHANNELS},
     }
+    with _lock:
+        _save_state(state)
+    return state
+
+
+def _new_post() -> dict:
+    return {"status": "pending", "attempts": 0, "id": None, "error": None}
+
+
+def generate_devlog(now: datetime | None = None) -> dict:
+    """개발 일지: 에피소드 요일이면 지난 7일 → 캐러셀+글, 아니면 지난 24시간 → Threads 한 줄 일지.
+    커밋이 없으면 empty 상태만 남기고 아무것도 안 올림."""
+    import devlog
+    import devlog_card
+
+    now = now or datetime.now(KST)
+    date = now.strftime("%Y-%m-%d")
+    key = f"devlog-{date}"
+    existing = load_state(key)
+    if existing is not None:
+        return existing
+    weekly = now.weekday() == episode_weekday()
+    since, until = devlog.window(now, 7 if weekly else 1)
+    groups = devlog.group_by_project(devlog.fetch_commits(since, until))
+
+    dirname = f"{key}-{secrets.token_hex(8)}"
+    out = media_root() / dirname
+    out.mkdir(parents=True, exist_ok=True)
+    state = {"kind": "devlog", "key": key, "date": date, "dir": dirname, "generated_at": now.isoformat(),
+             "weekly": weekly, "approved": None, "decided_at": None, "preview_sent": False,
+             "projects": [{"name": g["name"], "count": g["count"]} for g in groups], "posts": {}}
+    if not groups:
+        state["empty"] = True
+    elif weekly:
+        ep = devlog.weekly_episode(groups, since, until)
+        slides = devlog_card.render_episode(ep)
+        for i, png in enumerate(slides, 1):
+            (out / f"slide{i}.png").write_bytes(png)
+        state.update(episode=ep, slides=len(slides), caption=ep["caption"], threads_text=ep["threads"],
+                     posts={c: _new_post() for c in EPISODE_CHANNELS})
+    else:
+        state.update(devlog_text=devlog.daily_post(groups, now), posts={c: _new_post() for c in DEVLOG_CHANNELS})
     with _lock:
         _save_state(state)
     return state
@@ -256,18 +324,28 @@ def send_preview_email(state: dict) -> bool:
         print("[social] 미리보기 메일 설정 없음(SOCIAL_PREVIEW_MAIL_TO / FEEDBACK_SMTP_*) — 건너뜀")
         return False
     t = times()
-    sched = ", ".join(f"{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d}" for c in channels())
-    keywords = " · ".join(it.get("keyword") or "" for it in state["issues"])
+    key = state.get("key", state["date"])
+    sched = ", ".join(f"{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d}" for c in channels() if c in state["posts"])
+    if state.get("kind") == "devlog":
+        names = " · ".join(p["name"] for p in state.get("projects", []))
+        what = "주간 에피소드" if state.get("weekly") else "개발 일지"
+        subject = f"[소피앱스 SNS] {state['date']} {what} 확인 — {names}"
+        body = state.get("caption") or state.get("devlog_text") or ""
+        body_label = "인스타그램 캡션" if state.get("caption") else "Threads 글"
+    else:
+        keywords = " · ".join(it.get("keyword") or "" for it in state["issues"])
+        subject = f"[이슈팝 SNS] {state['date']} 게시 확인 — {keywords}"
+        body, body_label = state["caption"], "인스타그램 캡션"
     msg = EmailMessage()
-    msg["Subject"] = f"[이슈팝 SNS] {state['date']} 게시 확인 — {keywords}"[:150]
+    msg["Subject"] = subject[:150]
     msg["From"] = os.environ.get("FEEDBACK_MAIL_FROM") or user
     msg["To"] = to
     mode = "확인 필요 — 승인해야 올라가요" if require_approval() else "자동 게시 모드 — 반려하면 안 올라가요"
     msg.set_content(
         f"오늘 SNS 게시물 미리보기예요. ({mode})\n\n"
-        f"확인·승인: {review_url(state['date'])}\n\n"
+        f"확인·승인: {review_url(key)}\n\n"
         f"예정: {sched}{' (dry-run: 실제로는 안 올라감)' if dry_run() else ''}\n\n"
-        f"--- 인스타그램 캡션 ---\n{state['caption']}\n"
+        f"--- {body_label} ---\n{body}\n"
     )
     host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
     port = int(os.environ.get("FEEDBACK_SMTP_PORT") or 587)
@@ -278,9 +356,9 @@ def send_preview_email(state: dict) -> bool:
     return True
 
 
-def decide(date: str, approve: bool) -> dict | None:
+def decide(key: str, approve: bool) -> dict | None:
     with _lock:
-        state = load_state(date)
+        state = load_state(key)
         if state is None:
             return None
         state["approved"] = approve
@@ -303,14 +381,16 @@ def review_html(state: dict, sig: str) -> str:
         decision = "⛔ 반려됨 (오늘은 안 올라가요)"
     else:
         decision = "⏳ 대기 중" + (" — 승인해야 올라가요" if require_approval() else " — 반려하지 않으면 예정대로 올라가요")
+    key = state.get("key", state["date"])
+    mine = [c for c in channels() if c in state["posts"]]
     rows = "".join(
         f"<li>{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d} — {_STATUS_KO.get(state['posts'][c]['status'], '')}"
         f"{' · ' + escape(state['posts'][c]['error']) if state['posts'][c].get('error') else ''}</li>"
-        for c in channels()
+        for c in mine
     )
-    action = f"/social/review/{state['date']}?sig={escape(sig)}"
+    action = f"/social/review/{key}?sig={escape(sig)}"
     buttons = ""
-    if any(state["posts"][c]["status"] == "pending" for c in channels()):
+    if any(state["posts"][c]["status"] == "pending" for c in mine):
         buttons = (
             f'<form method="post" action="{action}&action=approve" style="display:inline">'
             f'<button style="background:#17356b;color:#fff">승인</button></form> '
@@ -318,20 +398,35 @@ def review_html(state: dict, sig: str) -> str:
             f'<button>반려(오늘 게시 안 함)</button></form>'
         )
     base = f"/social/media/{state['dir']}"
+    devlog = state.get("kind") == "devlog"
+    title = ("주간 에피소드" if state.get("weekly") else "개발 일지") if devlog else "이슈팝 SNS"
+    media = ""
+    if not devlog:
+        media = (f'<h3>카드 (Threads · Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
+                 f'<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>')
+    for i in range(1, (state.get("slides") or 0) + 1):
+        media += f'<img src="{base}/slide{i}.png" alt="{i}장">'
+    if state.get("slides"):
+        media = "<h3>캐러셀 (1장은 Threads에도)</h3>" + media
+    texts = ""
+    for field, label in (("caption", "Instagram 캡션"), ("threads_text", "Threads 글"),
+                         ("devlog_text", "Threads 개발 일지")):
+        if state.get(field):
+            texts += f"<h3>{label}</h3><pre>{escape(state[field])}</pre>"
+    if state.get("empty"):
+        texts = "<p>이 기간 공개 저장소 커밋이 없어서 올릴 게 없어요.</p>"
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>이슈팝 SNS 확인 {state['date']}</title>
+<title>{title} 확인 {state['date']}</title>
 <style>body{{font-family:sans-serif;max-width:560px;margin:0 auto;padding:16px;color:#14161c}}
 img,video{{width:100%;border-radius:12px;margin:8px 0}} pre{{white-space:pre-wrap;background:#f4f4f1;padding:12px;border-radius:8px}}
 button{{font-size:17px;padding:12px 20px;border-radius:10px;border:1px solid #17356b;margin:4px 0}}</style></head><body>
-<h2>{state['date']} SNS 게시 확인</h2>
+<h2>{state['date']} {title} 게시 확인</h2>
 <p><b>{decision}</b>{' · dry-run(실제로는 안 올라감)' if dry_run() else ''}</p>
 {buttons}
 <ul>{rows}</ul>
-<h3>카드 (Threads · Instagram 피드)</h3><img src="{base}/card.png" alt="카드">
-<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>
-<h3>Instagram 캡션</h3><pre>{escape(state['caption'])}</pre>
-<h3>Threads 글</h3><pre>{escape(state['threads_text'])}</pre>
+{media}
+{texts}
 </body></html>"""
 
 
@@ -451,29 +546,37 @@ def _wait_container(url: str, token: str, field: str, ok: str, fail: tuple[str, 
         sleep(interval)
 
 
-def publish_instagram(kind: str, media: str, caption: str, sleep=time.sleep) -> str:
-    """kind: 'image' | 'reel'. 반환: 게시물 id."""
+def publish_instagram(kind: str, media, caption: str, sleep=time.sleep) -> str:
+    """kind: 'image' | 'reel' | 'carousel'(media=이미지 URL 목록, 2~10장). 반환: 게시물 id."""
     user, token = os.environ.get("IG_USER_ID"), get_token("ig")
     if not user or not token:
         raise RuntimeError("IG_USER_ID / IG_ACCESS_TOKEN 없음")
+    base = _graph_ig(token)
     data = {"caption": caption, "access_token": token}
     if kind == "image":
         data["image_url"] = media
+    elif kind == "carousel":
+        children = [_post(f"{base}/{user}/media",
+                          {"image_url": u, "is_carousel_item": "true", "access_token": token})["id"] for u in media]
+        for cid in children:
+            _wait_container(f"{base}/{cid}", token, "status_code", "FINISHED", ("ERROR", "EXPIRED"),
+                            timeout=120, sleep=sleep)
+        data.update(media_type="CAROUSEL", children=",".join(children))
     else:
         data.update(media_type="REELS", video_url=media, share_to_feed="true")
-    base = _graph_ig(token)
     container = _post(f"{base}/{user}/media", data)["id"]
     _wait_container(f"{base}/{container}", token, "status_code", "FINISHED", ("ERROR", "EXPIRED"),
                     timeout=600 if kind == "reel" else 120, sleep=sleep)
     return _post(f"{base}/{user}/media_publish", {"creation_id": container, "access_token": token})["id"]
 
 
-def publish_threads(image: str, text: str, sleep=time.sleep) -> str:
+def publish_threads(image: str | None, text: str, sleep=time.sleep) -> str:
+    """image가 None이면 글만(TEXT)."""
     user, token = os.environ.get("THREADS_USER_ID"), get_token("threads")
     if not user or not token:
         raise RuntimeError("THREADS_USER_ID / THREADS_ACCESS_TOKEN 없음")
-    container = _post(f"{GRAPH_THREADS}/{user}/threads",
-                      {"media_type": "IMAGE", "image_url": image, "text": text, "access_token": token})["id"]
+    data = {"media_type": "IMAGE", "image_url": image} if image else {"media_type": "TEXT"}
+    container = _post(f"{GRAPH_THREADS}/{user}/threads", {**data, "text": text, "access_token": token})["id"]
     _wait_container(f"{GRAPH_THREADS}/{container}", token, "status", "FINISHED", ("ERROR", "EXPIRED"),
                     timeout=120, sleep=sleep)
     return _post(f"{GRAPH_THREADS}/{user}/threads_publish", {"creation_id": container, "access_token": token})["id"]
@@ -487,36 +590,64 @@ def _publish(channel: str, state: dict) -> str:
         return publish_threads(media_url(state, "card.png"), state["threads_text"])
     if channel == "ig_feed":
         return publish_instagram("image", media_url(state, "card.png"), state["caption"])
-    return publish_instagram("reel", media_url(state, "reel.mp4"), state["caption"])
+    if channel == "ig_reel":
+        return publish_instagram("reel", media_url(state, "reel.mp4"), state["caption"])
+    if channel == "devlog_threads":
+        return publish_threads(None, state["devlog_text"])
+    if channel == "episode_ig":
+        slides = [media_url(state, f"slide{i}.png") for i in range(1, state["slides"] + 1)]
+        return publish_instagram("carousel", slides, state["caption"])
+    if channel == "episode_threads":
+        return publish_threads(media_url(state, "slide1.png"), state["threads_text"])
+    raise ValueError(channel)
 
 
 # ---------- 루프 한 번 ----------
 
+_gen_failures: dict[str, tuple[int, datetime]] = {}  # key → (실패 횟수, 마지막 실패 시각)
+
+
 def tick(get_issues, now: datetime | None = None) -> list[str]:
-    """1분마다 호출. 해야 할 일(생성·메일·게시·토큰 갱신)을 하고 한 일 목록을 반환."""
+    """1분마다 호출. 해야 할 일(생성·메일·게시)을 하고 한 일 목록을 반환."""
     now = now or datetime.now(KST)
     date = now.strftime("%Y-%m-%d")
+    did = _run_batch(date, "preview", ISSUEPOP_CHANNELS, lambda: generate(get_issues(), now=now), now, "")
+    if devlog_enabled():
+        did += _run_batch(f"devlog-{date}", "devlog_preview", DEVLOG_CHANNELS + EPISODE_CHANNELS,
+                          lambda: generate_devlog(now), now, "devlog_")
+    return did
+
+
+def _run_batch(key: str, preview: str, batch_channels: tuple, make, now: datetime, tag: str) -> list[str]:
+    """한 묶음(이슈팝 하루치 / 개발 일지 하루치): 생성 → 미리보기 메일 → 승인 확인 → 채널별 시각에 게시."""
     t = times()
     did: list[str] = []
-
-    if now >= _at(now, t["preview"]):
-        state = load_state(date)
-        if state is None:
-            first_post = min(_at(now, t[c]) for c in channels()) if channels() else _at(now, t["preview"])
-            if now > first_post + timedelta(minutes=late_limit_minutes()):
-                return did  # 오늘은 이미 너무 늦음(예: 서버가 하루 종일 꺼져 있다가 저녁에 켜짐)
-            state = generate(get_issues(), now=now)
-            did.append("generate")
-        if not state["preview_sent"]:
-            sent = send_preview_email(state)
-            with _lock:
-                state = load_state(date)
-                state["preview_sent"] = True  # 설정이 없어 못 보낸 경우도 다시 시도하지 않음
-                _save_state(state)
-            if sent:
-                did.append("preview_mail")
-    else:
+    if now < _at(now, t[preview]):
         return did
+    state = load_state(key)
+    if state is None:
+        active = [c for c in channels() if c in batch_channels]
+        first_post = min((_at(now, t[c]) for c in active), default=_at(now, t[preview]))
+        if now > first_post + timedelta(minutes=late_limit_minutes()):
+            return did  # 오늘은 이미 너무 늦음(예: 서버가 하루 종일 꺼져 있다가 저녁에 켜짐)
+        fails, last = _gen_failures.get(key, (0, None))
+        if fails >= MAX_ATTEMPTS or (last and now - last < timedelta(minutes=GEN_RETRY_MINUTES)):
+            return did  # 생성이 계속 실패하면 쉬었다가(GitHub 호출 제한 등), 3번 넘으면 그날은 포기
+        try:
+            state = make()
+        except Exception:
+            _gen_failures[key] = (fails + 1, now)
+            raise
+        _gen_failures.pop(key, None)
+        did.append(f"{tag}generate")
+    if not state["preview_sent"]:
+        sent = False if state.get("empty") else send_preview_email(state)
+        with _lock:
+            state = load_state(key)
+            state["preview_sent"] = True  # 설정이 없어 못 보낸 경우도 다시 시도하지 않음
+            _save_state(state)
+        if sent:
+            did.append(f"{tag}preview_mail")
 
     if state["approved"] is False:
         return did
@@ -524,6 +655,8 @@ def tick(get_issues, now: datetime | None = None) -> list[str]:
         return did
 
     for c in channels():
+        if c not in state["posts"]:
+            continue
         post = state["posts"][c]
         if post["status"] in ("posted", "skipped", "failed"):
             continue
@@ -546,7 +679,7 @@ def tick(get_issues, now: datetime | None = None) -> list[str]:
                     post["status"] = "failed"
                 print(f"[social] {CHANNEL_LABELS[c]} 게시 실패({post['attempts']}회): {post['error']}")
         with _lock:
-            fresh = load_state(date)
+            fresh = load_state(key)
             fresh["posts"][c] = post
             _save_state(fresh)
             state = fresh

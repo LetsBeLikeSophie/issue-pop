@@ -43,6 +43,7 @@ def complete(
     max_tokens: int = 1024,
     temperature: float | None = None,
     purpose: str | None = None,
+    model: str | None = None,
 ) -> str | None:
     """Claude Haiku에 프롬프트 하나를 보내고 텍스트 응답을 받음. 키가
     없거나 API 실패 시 None(호출부가 각자 폴백 처리).
@@ -58,7 +59,7 @@ def complete(
         return None
     try:
         payload = {
-            "model": _MODEL,
+            "model": model or _MODEL,  # 글쓰기처럼 품질이 중요한 곳(social의 개발 일지)만 더 좋은 모델을 넘김
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }
