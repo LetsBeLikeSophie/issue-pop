@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -218,13 +219,26 @@ _RULES = """규칙:
 THREADS_TONE = """Threads 글 말투(소피가 직접 쓰는 것처럼):
 - 반말, 친구한테 말하듯. 줄 짧게 끊어서 2~4줄.
 - 귀여운 소리 나는 맞춤법 살짝: "만들구 이쏘", "귀차나서", "~했지렁", "~자너", "딱조은", "마니".
-- 글자 하나를 자음·모음으로 쪼개 쓰기(한 글에 한 번쯤): "ㄴ ㅏ를 위한", "창업하시ㄱ ㅓ든", "했ㅈ ㅣ렁".
+- 글자 하나를 자음·모음으로 쪼개 쓰기는 가끔만(두 글에 한 번꼴, 쓸 때도 한 번): "ㄴ ㅏ를 위한", "창업하시ㄱ ㅓ든", "했ㅈ ㅣ렁".
 - 자기 디스 농담 가끔: 토큰 녹이는 중💸, 휴먼이 병목, 반나절 걸려 겨우 이만큼.
 - 끝은 팔로워한테 가볍게 묻거나 부탁: "다들 어떤 거 해?", "어때 보여?", "잘 부탁해".
 - 이모지는 👾 💜 를 꼭 섞고, 필요하면 💸 💦 🔥 조금. 해시태그는 맨 끝 하나만.
 - 예(실제 소피 글): "불타는 금요일 반나절 걸려 자동화 중인데 / 한게 겨우 이메일 뚫고 이런것 뿌니네 / 다들 어떤걸 자동화 하구 있으까"
   "무료로 만들어 놓은 뉴스앱 매달 -6천원💸", "제 피씨는 클로드가 장악ㅋㅋㅋ 휴먼이 병목"
 """
+
+
+# 기본 글의 쪼개 쓰기(ㄴ ㅏ, 했ㅈ ㅣ렁)는 글마다 다 넣지 않고 섞음(2026-11-27 사용자 요청) — seed로 정해서 다시 만들어도 같음
+_JAMO_PLAIN = (("ㄴ ㅏ를 위해 ", ""), ("ㄴ ㅏ ", ""), ("ㅈ ㅣ렁", "지렁"))
+
+
+def mix_jamo(text: str, seed: str) -> str:
+    """seed에 따라 반쯤은 쪼개 쓴 글 그대로, 반쯤은 보통 글로."""
+    if int(hashlib.sha256(seed.encode()).hexdigest(), 16) % 2 == 0:
+        return text
+    for a, b in _JAMO_PLAIN:
+        text = text.replace(a, b)
+    return text
 
 
 def _ask(prompt: str) -> dict | None:
@@ -284,7 +298,8 @@ def game_visual(groups: list[dict], since: datetime, until: datetime, now: datet
 형식: {{"text": "..."}}
 
 {_commit_block([g], 15)}""") or {}
-        text = _str(data, "text") or f"{g['name']} 오늘 화면 바뀌었ㅈ ㅣ렁👾\n전 → 후 어때 보여?💜\n#게임개발"
+        text = _str(data, "text") or mix_jamo(f"{g['name']} 오늘 화면 바뀌었ㅈ ㅣ렁👾\n전 → 후 어때 보여?💜\n#게임개발",
+                                                f"{g['repo']}{after[1]}")
         return {"repo": g["repo"], "name": g["name"], "tagline": g["tagline"], "color": g.get("color"),
                 "before": before, "after": after[1], "text": redact(text)[:300]}
     return None
@@ -378,7 +393,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
     if g is not None:
         ep.update(name=g["name"], tagline=g["tagline"], repo=g["repo"], icon=g.get("icon"), color=g.get("color"))
     caption = _str(data, "caption") or f"{fb}\n\n프로필 링크에서 만나 보세요.\n\n#개발일지 #1인개발 #바이브코딩"
-    threads = _str(data, "threads") or f"{th}\n#개발일지"
+    threads = _str(data, "threads") or mix_jamo(f"{th}\n#개발일지", f"{angle}{end:%Y-%m-%d}")
     others = [x["name"] for x in groups if x is not g and x["app"] and not x["game"]][:4] if g else []
     return {**ep, "angle": angle, "count": g["count"] if g else total, "total": total,
             "span": f"{start.month}월 {start.day}일 ~ {end.month}월 {end.day}일", "others": others,

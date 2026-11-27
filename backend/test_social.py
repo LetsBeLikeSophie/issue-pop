@@ -325,7 +325,11 @@ end = at(20, 0, day=29)
 ep = devlog.weekly_episode(groups, start, end)
 assert ep["angle"] == "story" and ep["name"] == "앱줍줍" and ep["line1"] and ep["line2"]
 assert ep["color"] == (242, 106, 27) and "프로필 링크" in ep["caption"] and len(ep["threads"]) <= 400
-assert "👾" in ep["threads"] and "💜" in ep["threads"] and "ㄴ ㅏ 만들구 이쏘" in ep["threads"]  # 기본 글도 소피 말투
+assert "👾" in ep["threads"] and "💜" in ep["threads"] and "만들구 이쏘" in ep["threads"]  # 기본 글도 소피 말투
+# 쪼개 쓰기(ㄴ ㅏ)는 섞어서: 같은 seed면 늘 같고, 여러 글 중 일부만
+mixed = [devlog.mix_jamo("그래서 ㄴ ㅏ 만들구 이쏘 했ㅈ ㅣ렁", str(i)) for i in range(20)]
+assert any("ㄴ ㅏ" in m for m in mixed) and "그래서 만들구 이쏘 했지렁" in mixed
+assert devlog.mix_jamo("ㄴ ㅏ", "x") == devlog.mix_jamo("ㄴ ㅏ", "x")
 vibe = devlog.weekly_episode(many, start, end, [{"angle": "story", "repo": "appjupjup"}])
 assert vibe["angle"] == "vibe" and vibe["number"] == 24 and vibe["repo"] == "" and vibe["line1"]
 newep = devlog.weekly_episode(new_app, start, end)
@@ -425,7 +429,7 @@ for lang in ("ko", "en"):
         assert "itssophie.dev" not in text and "http" not in text and len(text) <= 1000
     th = ripe_promo.threads_text(lang, s_)
     assert "👾" in th and "💜" in th and len(th) <= 500  # Threads는 소피 말투
-assert "ㄴ ㅏ" in ripe_promo.threads_text("ko", ripe_promo.SETS["ko"][0])  # 자모 쪼개 쓰기
+assert "만들구 이쏘" in ripe_promo.threads_text("ko", ripe_promo.SETS["ko"][0])
 assert "예시" in ripe_promo.caption("ko", k) and "example" in ripe_promo.caption("en", ripe_promo.SETS["en"][0])
 os.environ["SOCIAL_PROMO"] = "1"
 os.environ["SOCIAL_DEVLOG"] = "0"
