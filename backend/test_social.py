@@ -60,6 +60,14 @@ def at(h, m, day=26):
 
 get_issues = lambda: ISSUES  # noqa: E731
 
+# 0) 기본 일정: 이슈팝은 Threads·피드 둘 다 08:00, Threads 글엔 플레이스토어 링크(눌림), 인스타 캡션은 프로필 링크 안내
+d = social.times()
+assert d["threads"] == d["ig_feed"] == (8, 0) and d["ig_reel"] == (12, 10)
+assert social.PLAY_URL in social.threads_text(ISSUES) and len(social.threads_text(ISSUES)) <= 500
+assert "프로필 링크" in social_card.caption(ISSUES)
+# 아래 순서 확인은 채널마다 시각이 달라야 쉬워서 예전 일정으로 고정해서 봄
+os.environ["SOCIAL_TIMES"] = "preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"
+
 # 1) 07:00 전에는 아무것도 안 함
 assert social.tick(get_issues, at(6, 59)) == []
 assert social.load_state("2026-11-26") is None

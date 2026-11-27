@@ -156,5 +156,5 @@ def caption(issues: list[dict], now: datetime | None = None, top_n: int = 5) -> 
     for i, it in enumerate(issues[:top_n], 1):
         lines.append(f"{i}. {_keyword(it)} — {it.get('outlet_count', 0)}개 매체 · {it.get('article_count', 0)}건")
     lines += ["", "여러 언론사 기사를 이슈별로 묶어 보도량 순으로 보여 드려요.",
-              "앱 ‘이슈팝’ (Google Play)", "", "#오늘의뉴스 #뉴스요약 #이슈 #시사 #이슈팝"]
+              "앱 ‘이슈팝’ 다운로드는 프로필 링크에서 (Google Play)", "", "#오늘의뉴스 #뉴스요약 #이슈 #시사 #이슈팝"]
     return "\n".join(lines)

@@ -1590,7 +1590,7 @@ canvaskit 때와 마찬가지로 대시보드 Cache Rule이 필요함(계정 접
 ## 업데이트: SNS 자동 게시 (2026-11-26)
 
 `/trending` 상위 5개로 매일 카드(1080×1350 PNG)와 릴스(1080×1920, 13.5초, 무음 MP4)를 만들어
-Threads(07:40) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 코드: `social.py`(흐름·게시·토큰 갱신),
+Threads(08:00) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 코드: `social.py`(흐름·게시·토큰 갱신),
 `social_card.py` / `social_video.py`(렌더러), `api.py`의 `_social_loop`과 `/social/*` 엔드포인트. 테스트: `python3 test_social.py`
 (서버에서 실제 렌더링까지 보려면 `SOCIAL_RENDER_TEST=1`).
 
@@ -1603,4 +1603,4 @@ Threads(07:40) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 
 - 토큰: `IG_USER_ID`, `IG_ACCESS_TOKEN`, `THREADS_USER_ID`, `THREADS_ACCESS_TOKEN`은 systemd env.conf에만. 장기 토큰은 45일마다
   자동 갱신해 `data/social/tokens.json`(600)에 저장. env 토큰을 새로 바꾸면 그게 우선.
 - 서버 준비: `sudo apt install ffmpeg fonts-noto-cjk fonts-noto-cjk-extra`(Black·Medium 굵기는 extra에 있음).
-- 시각·채널 조정: `SOCIAL_TIMES="preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"`, `SOCIAL_CHANNELS="threads,ig_feed"`.
+- 시각·채널 조정: `SOCIAL_TIMES="preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"`, `SOCIAL_CHANNELS="threads,ig_feed"`.

@@ -2,8 +2,8 @@
 
 하루 흐름(KST, 시각은 환경변수로 바꿀 수 있음):
   07:00  오늘자 카드(PNG)·영상(MP4) 생성 → 미리보기 메일 발송(승인 링크)
-  07:40  Threads  — 카드 이미지 + TOP5 글
-  08:00  Instagram 피드 — 카드
+  08:00  Threads  — 카드 이미지 + TOP5 글 + 플레이스토어 링크
+  08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   12:10  Instagram 릴스 — 영상
 승인이 필요한 동안(SOCIAL_REQUIRE_APPROVAL=1, 기본값)은 승인된 날만 게시한다. 게시 시각이 지난 뒤
 승인하면 다음 확인 주기(1분)에 바로 올라가되, 너무 늦으면(SOCIAL_LATE_LIMIT_MINUTES) 그 채널은 건너뛴다.
@@ -23,7 +23,7 @@ SOCIAL_MEDIA_DIR/<날짜>-<무작위>/ 에 저장하고 GET /social/media/<그 �
   SOCIAL_PREVIEW_MAIL_TO      미리보기 받을 주소(메일 계정은 FEEDBACK_SMTP_* 재사용)
   SOCIAL_PUBLIC_BASE          기본 https://api.issue-pop.com
   SOCIAL_MEDIA_DIR            기본 backend/data/social
-  SOCIAL_TIMES                기본 "preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"
+  SOCIAL_TIMES                기본 "preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"
   SOCIAL_CHANNELS             기본 "threads,ig_feed,ig_reel" (일부만 켤 때)
   SOCIAL_LATE_LIMIT_MINUTES   기본 180
   IG_USER_ID, IG_ACCESS_TOKEN, THREADS_USER_ID, THREADS_ACCESS_TOKEN
@@ -50,7 +50,8 @@ import requests
 KST = ZoneInfo("Asia/Seoul")
 CHANNELS = ("threads", "ig_feed", "ig_reel")
 CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_reel": "Instagram 릴스"}
-DEFAULT_TIMES = "preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"
+PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
+DEFAULT_TIMES = "preview=07:00,threads=08:00,ig_feed=08:00,ig_reel=12:10"
 MAX_ATTEMPTS = 3
 TOKEN_REFRESH_AFTER_DAYS = 45  # 장기 토큰은 60일 — 넉넉히 앞서 갱신
 DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
@@ -237,7 +238,8 @@ def threads_text(issues: list[dict], now: datetime | None = None) -> str:
     lines = [f"📰 {now.month}월 {now.day}일 오늘 가장 많이 보도된 이슈 TOP {min(5, len(issues))}", ""]
     for i, it in enumerate(issues[:5], 1):
         lines.append(f"{i}. {_keyword(it)} — {it.get('outlet_count', 0)}개 매체 · {it.get('article_count', 0)}건")
-    lines += ["", "매체별 기사는 앱 ‘이슈팝’에서 (Google Play)", "#오늘의뉴스"]
+    # Threads는 본문 링크가 눌림(Mosseri: 링크를 일부러 낮추지 않음). 인스타 캡션 링크는 안 눌려서 거긴 프로필 링크로 안내
+    lines += ["", "매체별 기사는 앱 ‘이슈팝’에서 👇", PLAY_URL, "#오늘의뉴스"]
     return "\n".join(lines)[:500]
 
 
