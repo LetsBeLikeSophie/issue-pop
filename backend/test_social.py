@@ -212,6 +212,11 @@ calls.clear()
 assert social.publish_threads("https://x/card.png", "글", sleep=lambda s: None) == "P1"
 assert calls[0][1] == "https://graph.threads.net/v1.0/222/threads" and calls[0][2]["media_type"] == "IMAGE"
 assert calls[-1][1].endswith("/222/threads_publish")
+assert "topic_tag" not in calls[0][2]
+calls.clear()
+assert social.publish_threads(None, "글", sleep=lambda s: None, topic="창업") == "P1"
+assert calls[0][2]["topic_tag"] == "창업"
+assert social.THREADS_TOPICS["promo_en_threads"] == "startup" and social.THREADS_TOPICS["devlog_threads"] == "자동화"
 
 # 11) 실패하면 3번까지 다시 시도 후 failed
 os.environ["SOCIAL_DRY_RUN"] = "0"
@@ -306,7 +311,7 @@ assert devlog.fetch_image("x", None) is None
 # 게임 개발 일지: 그 기간 새 캡처가 있는 게임만(화면 위주), 전 = 바로 앞 캡처
 v = devlog.game_visual(groups, at(20, 0, day=26), at(20, 0, day=27), at(20, 0, day=27))
 assert v["name"] == "지옥철" and v["after"] == "social/2026-11-27-home.jpg"
-assert v["before"] == "social/2026-11-25-ticket.png" and "#게임개발" in v["text"]
+assert v["before"] == "social/2026-11-25-ticket.png" and "#" not in v["text"]  # 해시태그 대신 주제 태그
 assert devlog.game_visual(groups, at(20, 0, day=28), at(20, 0, day=29), at(20, 0, day=29)) is None  # 새 화면 없음
 assert devlog.game_visual(groups[:2], at(20, 0, day=26), at(20, 0, day=27), at(20, 0, day=27)) is None  # 게임 없음
 
@@ -496,6 +501,7 @@ assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에�
 assert "/social/review/devlog-2026-11-29?sig=" in body and "/social/review/devlog-2026-11-29?sig=" in html
 # 메일 한눈에: 목적, 몇 번 올라가는지, 채널(플랫폼·형식)별 그림과 글
 assert "21:00  인스타 피드 · 스레드" in html and "21:00  인스타 피드 · 스레드" in subj
+assert "주제 창업" in html  # Threads 주제 태그가 메일에 보임
 # 메일 버튼은 [승인] [반려] 두 개 — 둘 다 확인 페이지(GET)를 열 뿐, 반영은 페이지의 큰 버튼(POST)
 assert "do=approve" in html and "do=reject" in html and "&do=approve" in body
 assert "slide1.png" in html and "그림은 위와 같음" in html and "만든 이유" in subj

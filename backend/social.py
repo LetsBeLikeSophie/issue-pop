@@ -505,6 +505,7 @@ def _plan_html(state: dict, with_status: bool = False) -> str:
                      f'<div><span style="display:inline-block;background:{color};color:#fff;font-weight:700;font-size:13px;'
                      f'padding:3px 9px;border-radius:999px">{escape(p["platform"])}</span> '
                      f'<b style="font-size:15px">{escape(p["format"])}</b>'
+                     f'{(" · 주제 " + escape(THREADS_TOPICS[p["channel"]])) if p["channel"] in THREADS_TOPICS else ""}'
                      f'{" (글 없음)" if not p["text"] and p["channel"] == "ig_story" else ""}{status}</div>')
             for f in p["files"]:
                 url = media_url(state, f)
@@ -799,12 +800,19 @@ def publish_instagram(kind: str, media, caption: str, sleep=time.sleep) -> str:
     return _post(f"{base}/{user}/media_publish", {"creation_id": container, "access_token": token})["id"]
 
 
-def publish_threads(image: str | None, text: str, sleep=time.sleep) -> str:
-    """image가 None이면 글만(TEXT)."""
+# Threads 주제 태그(글 하나에 하나). 개발 태그보다 창업·자동화 쪽으로 (사용자 요청 2026-11-28)
+THREADS_TOPICS = {"devlog_threads": "자동화", "episode_threads": "창업",
+                  "promo_ko_threads": "창업", "promo_en_threads": "startup"}
+
+
+def publish_threads(image: str | None, text: str, sleep=time.sleep, topic: str | None = None) -> str:
+    """image가 None이면 글만(TEXT). topic은 Threads 주제 태그."""
     user, token = os.environ.get("THREADS_USER_ID"), get_token("threads")
     if not user or not token:
         raise RuntimeError("THREADS_USER_ID / THREADS_ACCESS_TOKEN 없음")
     data = {"media_type": "IMAGE", "image_url": image} if image else {"media_type": "TEXT"}
+    if topic:
+        data["topic_tag"] = topic
     container = _post(f"{GRAPH_THREADS}/{user}/threads", {**data, "text": text, "access_token": token})["id"]
     _wait_container(f"{GRAPH_THREADS}/{container}", token, "status", "FINISHED", ("ERROR", "EXPIRED"),
                     timeout=120, sleep=sleep)
@@ -825,7 +833,7 @@ def _publish(channel: str, state: dict) -> str:
         return publish_instagram("reel", media_url(state, "reel.mp4"), state["caption"])
     if channel == "devlog_threads":
         image = media_url(state, "slide1.png") if state.get("slides") else None
-        return publish_threads(image, state["devlog_text"])
+        return publish_threads(image, state["devlog_text"], topic=THREADS_TOPICS[channel])
     if channel == "episode_ig":
         if state["slides"] == 1:
             return publish_instagram("image", media_url(state, "slide1.png"), state["caption"])
@@ -836,9 +844,10 @@ def _publish(channel: str, state: dict) -> str:
         image = media_url(state, f"{lang}.png")
         if channel.endswith("_ig"):
             return publish_instagram("image", image, state["promo"][lang]["caption"])
-        return publish_threads(image, state["promo"][lang]["threads"])
+        return publish_threads(image, state["promo"][lang]["threads"], topic=THREADS_TOPICS[channel])
     if channel == "episode_threads":
-        return publish_threads(media_url(state, "slide1.png"), state["threads_text"])
+        return publish_threads(media_url(state, "slide1.png"), state["threads_text"],
+                               topic=THREADS_TOPICS[channel])
     raise ValueError(channel)
 
 

@@ -291,14 +291,14 @@ def game_visual(groups: list[dict], since: datetime, until: datetime, now: datet
         older = [c for c in caps if c < after and c[0] < after[0]] or [c for c in caps if c < after]
         before = older[-1][1] if older else None
         data = _ask(f"""게임 "{g['name']}"({g['tagline']})의 오늘 화면이 바뀌었어. Threads에 이미지와 같이 올릴 짧은 글.
-화면(그래픽·시야·연출)에서 뭐가 달라졌는지만, 3줄 이내 70자 이내. 마지막 줄 #게임개발
+화면(그래픽·시야·연출)에서 뭐가 달라졌는지만, 3줄 이내 70자 이내. 해시태그는 넣지 마(주제 태그는 따로 붙음)
 캡처 파일 이름: 전={before or '없음'}, 후={after[1]}
 {THREADS_TONE}
 {_RULES}
 형식: {{"text": "..."}}
 
 {_commit_block([g], 15)}""") or {}
-        text = _str(data, "text") or mix_jamo(f"{g['name']} 오늘 화면 바뀌었ㅈ ㅣ렁👾\n전 → 후 어때 보여?💜\n#게임개발",
+        text = _str(data, "text") or mix_jamo(f"{g['name']} 오늘 화면 바뀌었ㅈ ㅣ렁👾\n전 → 후 어때 보여?💜",
                                                 f"{g['repo']}{after[1]}")
         return {"repo": g["repo"], "name": g["name"], "tagline": g["tagline"], "color": g.get("color"),
                 "before": before, "after": after[1], "text": redact(text)[:300]}
@@ -341,7 +341,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
     total = sum(x["count"] for x in groups)
     n_projects = len([x for x in groups if x["app"]])
     tail = """- caption: 인스타 캡션(250자 이내). 첫 줄 한마디 → 한두 줄 → "프로필 링크에서" → #개발일지 #1인개발 #바이브코딩
-- threads: Threads 글(150자 이내, 이미지와 같이 올라감, 마지막 줄 #개발일지). 아래 Threads 말투로.
+- threads: Threads 글(150자 이내, 이미지와 같이 올라감, 해시태그 없이 — 주제 태그는 따로 붙음). 아래 Threads 말투로.
 """ + THREADS_TONE
     if angle == "vibe":
         data = _ask(f"""이번 주 바이브 코딩 기록: 프로젝트 {n_projects}개에 커밋 {total}번. 이미지에는 큰 숫자 {total}과 두 줄만 들어가.
@@ -393,7 +393,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
     if g is not None:
         ep.update(name=g["name"], tagline=g["tagline"], repo=g["repo"], icon=g.get("icon"), color=g.get("color"))
     caption = _str(data, "caption") or f"{fb}\n\n프로필 링크에서 만나 보세요.\n\n#개발일지 #1인개발 #바이브코딩"
-    threads = _str(data, "threads") or mix_jamo(f"{th}\n#개발일지", f"{angle}{end:%Y-%m-%d}")
+    threads = _str(data, "threads") or mix_jamo(th, f"{angle}{end:%Y-%m-%d}")
     others = [x["name"] for x in groups if x is not g and x["app"] and not x["game"]][:4] if g else []
     return {**ep, "angle": angle, "count": g["count"] if g else total, "total": total,
             "span": f"{start.month}월 {start.day}일 ~ {end.month}월 {end.day}일", "others": others,
