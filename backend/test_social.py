@@ -441,6 +441,7 @@ assert sorted(social.tick(get_issues, wed(23, 0))) == ["promo_en_ig", "promo_en_
 sigp = social.sign("promo-2026-12-02")
 r = client.get(f"/social/review/promo-2026-12-02?sig={sigp}")
 assert r.status_code == 200 and "Ripe Weekly" in r.text and "en.png" in r.text and "ripe.itssophie.dev" not in r.text
+assert "① 12:10 · 한국어" in r.text and "② 23:00 · 영어" in r.text and "출시 전 알리기" in r.text
 ripe_promo.render = _real_render
 os.environ["SOCIAL_PROMO"] = "0"
 os.environ["SOCIAL_DEVLOG"] = "1"
@@ -468,7 +469,8 @@ class FakeSMTP:
         sent_mail.append(("login", user, pw))
 
     def send_message(self, msg):
-        sent_mail.append(("msg", msg["From"], msg["To"], msg["Subject"], msg.get_content()))
+        sent_mail.append(("msg", msg["From"], msg["To"], msg["Subject"], msg.get_body(("plain",)).get_content(),
+                          msg.get_body(("html",)).get_content()))
 
 
 smtplib.SMTP, _real_smtp = FakeSMTP, smtplib.SMTP
@@ -476,9 +478,20 @@ os.environ.update(SOCIAL_PREVIEW_MAIL_TO="threads@example.test", SOCIAL_SMTP_USE
                   SOCIAL_SMTP_PASSWORD="app-pw", FEEDBACK_SMTP_USER="feedback@example.test")
 assert social.send_preview_email(social.load_state("devlog-2026-11-29")) is True
 assert sent_mail[0] == ("login", "sns@example.test", "app-pw")
-_, frm, to, subj, body = sent_mail[1]
-assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에피소드" in subj
-assert "/social/review/devlog-2026-11-29?sig=" in body
+_, frm, to, subj, body, html = sent_mail[1]
+assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에피소드" in subj and "21:00" in subj
+assert "/social/review/devlog-2026-11-29?sig=" in body and "/social/review/devlog-2026-11-29?sig=" in html
+# 메일 한눈에: 목적, 몇 번 올라가는지, 채널(플랫폼·형식)별 그림과 글
+assert "목적" in html and "1번 · 게시물 2개" in html and "피드 게시물" in html and "Threads" in html
+assert "slide1.png" in html and "그림: 위와 같은 장" in html and "A · 한 줄 임팩트" in html
+# 이슈팝: 08:00 한 번에 피드 + 스토리(스토리는 글 없음)
+sent_mail.clear()
+st25 = social.load_state("2026-11-25")
+st25["posts"] = {c: social._new_post() for c in ("ig_feed", "ig_story")}  # 기본 채널(피드 + 스토리)
+assert social.send_preview_email(st25) is True
+_, _, _, subj, body, html = sent_mail[1]
+assert "08:00" in subj and "Instagram 피드 게시물 + Instagram 스토리" in html and "story.png" in html
+assert "24시간 뒤 사라짐" in html and "[08:00] Instagram 스토리" in body
 smtplib.SMTP = _real_smtp
 for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_SMTP_USER", "SOCIAL_SMTP_PASSWORD", "FEEDBACK_SMTP_USER"):
     os.environ.pop(k)

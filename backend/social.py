@@ -411,9 +411,133 @@ def threads_text(issues: list[dict], now: datetime | None = None) -> str:
 
 # ---------- 미리보기 메일 ----------
 
+# 채널마다: (플랫폼, 형식 설명) — 메일·확인 페이지에서 "어디에 어떤 모양으로" 올라가는지 보여 줌
+CHANNEL_FORMAT = {
+    "ig_feed": ("Instagram", "피드 게시물 · 사진 1장 + 캡션"),
+    "ig_story": ("Instagram", "스토리 · 사진만(글 없음), 24시간 뒤 사라짐"),
+    "ig_reel": ("Instagram", "릴스 · 영상 + 캡션"),
+    "threads": ("Threads", "글 + 사진"),
+    "devlog_threads": ("Threads", "글 + 사진(전→후)"),
+    "episode_ig": ("Instagram", "피드 게시물 · 사진 + 캡션"),
+    "episode_threads": ("Threads", "글 + 사진"),
+}
+for _l in ("ko", "en"):
+    CHANNEL_FORMAT[f"promo_{_l}_ig"] = ("Instagram", "피드 게시물 · 사진 1장 + 캡션")
+    CHANNEL_FORMAT[f"promo_{_l}_threads"] = ("Threads", "글 + 사진")
+ANGLE_LABELS = {"story": "A · 한 줄 임팩트(만든 이유)", "new": "C · 메모(새 앱 소개)", "vibe": "D · 숫자(이번 주 바이브 코딩)"}
+_WEEKDAY_KO = "월화수목금토일"
+
+
+def _about(state: dict) -> tuple[str, str]:
+    """(제목, 목적) — 이 게시물을 왜 올리는지 한 줄."""
+    kind = state.get("kind")
+    if kind == "promo":
+        return (f"Ripe Weekly 홍보 — {state['promo']['ko']['topic']} / {state['promo']['en']['topic']}",
+                "Ripe Weekly 출시 전 알리기: 어떤 앱인지 한 장으로 보여 주고 팔로우해 두게 하기. "
+                "같은 그림을 한국어(점심)·영어(미국 아침) 두 번 올려요. 링크는 안 넣음(웹은 아직 무료·유료 확인 없이 AI 토큰을 씀).")
+    if kind == "devlog" and state.get("weekly"):
+        ep = state.get("episode") or {}
+        return (f"앱 에피소드 — {ep.get('name') or '이번 주 바이브 코딩'}",
+                f"앱 만드는 이야기로 소피앱스 계정 팔로우 늘리기. 이번 주 소재: {ANGLE_LABELS.get(ep.get('angle'), '')}")
+    if kind == "devlog":
+        name = (state.get("game") or {}).get("name") or " · ".join(p["name"] for p in state.get("projects", []))
+        return (f"게임 개발 일지 — {name}", "게임 만드는 과정 보여 주기: 화면이 바뀐 날만, 전→후 한 장.")
+    keywords = " · ".join(it.get("keyword") or "" for it in state.get("issues", []))
+    return (f"이슈팝 오늘의 이슈 — {keywords}",
+            "이슈팝 앱 알리기: 출근길에 오늘 가장 많이 보도된 이슈 TOP5를 보여 주고, 프로필 링크로 앱 설치까지.")
+
+
+def _post_plan(state: dict) -> list[dict]:
+    """올라갈 게시물 하나하나: 채널·시각·형식·그림·글. 시각 순."""
+    t = times()
+    out = []
+    for c in channels():
+        if c not in state.get("posts", {}):
+            continue
+        lang = c.split("_")[1] if c.startswith("promo_") else None
+        if lang:
+            files = [f"{lang}.png"]
+            text = state["promo"][lang]["caption" if c.endswith("_ig") else "threads"]
+        elif c in ("ig_feed", "threads"):
+            files, text = ["card.png"], state.get("caption" if c == "ig_feed" else "threads_text")
+        elif c == "ig_story":
+            files, text = ["story.png"], None
+        elif c == "ig_reel":
+            files, text = ["reel.mp4"], state.get("caption")
+        else:  # 개발 일지·에피소드
+            files = [f"slide{i}.png" for i in range(1, (state.get("slides") or 0) + 1)]
+            text = state.get({"devlog_threads": "devlog_text", "episode_ig": "caption"}.get(c, "threads_text"))
+        platform, fmt = CHANNEL_FORMAT.get(c, (CHANNEL_LABELS[c], ""))
+        out.append({"channel": c, "time": t[c], "platform": platform, "format": fmt,
+                    "lang": {"ko": "한국어", "en": "영어"}.get(lang), "files": files, "text": text,
+                    "status": state["posts"][c]["status"], "error": state["posts"][c].get("error")})
+    return sorted(out, key=lambda x: x["time"])
+
+
+def _day_label(state: dict) -> str:
+    d = datetime.strptime(state["date"], "%Y-%m-%d")
+    return f"{d.month}월 {d.day}일({_WEEKDAY_KO[d.weekday()]})"
+
+
+def _plan_html(state: dict, with_status: bool = False) -> str:
+    """시각별로 묶은 게시물 카드(메일·확인 페이지 공용, 인라인 스타일)."""
+    from html import escape
+
+    slots: dict[tuple, list[dict]] = {}
+    for p in _post_plan(state):
+        slots.setdefault(p["time"], []).append(p)
+    nums = "①②③④⑤⑥⑦⑧"
+    html = ""
+    for i, ((h, m), posts) in enumerate(slots.items()):
+        langs = sorted({p["lang"] for p in posts if p["lang"]})
+        head = f"{nums[i] if i < len(nums) else i + 1} {h:02d}:{m:02d}" + (f" · {' / '.join(langs)}" if langs else "")
+        where = " + ".join(f"{p['platform']} {p['format'].split(' · ')[0]}" for p in posts)
+        html += (f'<div style="margin:22px 0 8px;padding:10px 14px;background:#3B3640;color:#F6F2E7;border-radius:10px">'
+                 f'<div style="font-size:19px;font-weight:700">{escape(head)}</div>'
+                 f'<div style="font-size:14px;opacity:.85;margin-top:2px">{escape(where)}</div></div>')
+        shown: set[str] = set()
+        for p in posts:
+            color = "#C13584" if p["platform"] == "Instagram" else "#111111"
+            status = ""
+            if with_status:
+                status = f' · {_STATUS_KO.get(p["status"], "")}' + (f' · {escape(p["error"])}' if p.get("error") else "")
+            html += (f'<div style="border:2px solid #3B3640;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff">'
+                     f'<div><span style="display:inline-block;background:{color};color:#fff;font-weight:700;font-size:13px;'
+                     f'padding:3px 9px;border-radius:999px">{escape(p["platform"])}</span> '
+                     f'<b style="font-size:15px">{escape(p["format"])}</b>{status}</div>')
+            for f in p["files"]:
+                url = media_url(state, f)
+                if f in shown:
+                    html += '<div style="color:#777;font-size:13px;margin-top:8px">그림: 위와 같은 장</div>'
+                    continue
+                shown.add(f)
+                if f.endswith(".mp4"):
+                    html += f'<p><a href="{url}">영상 보기</a></p>'
+                else:
+                    w = "260px" if f == "story.png" else "100%"
+                    html += (f'<img src="{url}" alt="{escape(f)}" style="display:block;width:{w};max-width:100%;'
+                             f'border-radius:10px;margin-top:10px">')
+            if p["text"]:
+                html += (f'<div style="font-size:12px;color:#8A6BD8;font-weight:700;margin-top:12px">'
+                         f'{"캡션" if p["platform"] == "Instagram" else "글"}</div>'
+                         f'<div style="white-space:pre-wrap;background:#F6F2E7;padding:10px 12px;border-radius:8px;'
+                         f'font-size:14px;line-height:1.55;margin-top:4px">{escape(p["text"])}</div>')
+            html += "</div>"
+    return html
+
+
+def _button(url: str, shadow: bool) -> str:
+    from html import escape
+
+    return (f'<a href="{escape(url)}" style="display:block;text-align:center;background:#8A6BD8;color:#fff;font-size:18px;'
+            f'font-weight:800;text-decoration:none;padding:15px;border-radius:12px;margin:16px 0;'
+            f'{"box-shadow:4px 4px 0 #3B3640" if shadow else ""}">확인하고 승인하기 →</a>')
+
+
 def send_preview_email(state: dict) -> bool:
     import smtplib
     from email.message import EmailMessage
+    from html import escape
 
     # 보내는 계정은 SNS 전용(SOCIAL_SMTP_*)을 먼저 씀 — 앱 피드백 메일(FEEDBACK_SMTP_*)을 같이 켜지 않게
     to = os.environ.get("SOCIAL_PREVIEW_MAIL_TO")
@@ -422,34 +546,37 @@ def send_preview_email(state: dict) -> bool:
     if not to or not user or not password:
         print("[social] 미리보기 메일 설정 없음(SOCIAL_PREVIEW_MAIL_TO / SOCIAL_SMTP_*) — 건너뜀")
         return False
-    t = times()
     key = state.get("key", state["date"])
-    sched = ", ".join(f"{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d}" for c in channels() if c in state["posts"])
-    if state.get("kind") == "promo":
-        subject = f"[소피앱스 SNS] {state['date']} Ripe Weekly 홍보 확인 — {state['promo']['ko']['topic']} / {state['promo']['en']['topic']}"
-        body = state["promo"]["ko"]["caption"] + "\n\n---\n\n" + state["promo"]["en"]["caption"]
-        body_label = "인스타그램 캡션(한국어 / 영어)"
-    elif state.get("kind") == "devlog":
-        names = " · ".join(p["name"] for p in state.get("projects", []))
-        what = "앱 에피소드" if state.get("weekly") else "게임 개발 일지"
-        subject = f"[소피앱스 SNS] {state['date']} {what} 확인 — {names}"
-        body = state.get("caption") or state.get("devlog_text") or ""
-        body_label = "인스타그램 캡션" if state.get("caption") else "Threads 글"
-    else:
-        keywords = " · ".join(it.get("keyword") or "" for it in state["issues"])
-        subject = f"[이슈팝 SNS] {state['date']} 게시 확인 — {keywords}"
-        body, body_label = state["caption"], "인스타그램 캡션"
+    title, purpose = _about(state)
+    plan = _post_plan(state)
+    times_ = sorted({p["time"] for p in plan})
+    when = " · ".join(f"{h:02d}:{m:02d}" for h, m in times_)
+    mode = "승인해야 올라가요" if require_approval() else "반려하지 않으면 예정대로 올라가요"
+    dry = " · 지금은 dry-run(승인해도 실제로는 안 올라감)" if dry_run() else ""
+    url = review_url(key)
+
     msg = EmailMessage()
-    msg["Subject"] = subject[:150]
+    msg["Subject"] = f"[소피앱스 SNS] {_day_label(state)} {when} · {title}"[:150]
     msg["From"] = user
     msg["To"] = to
-    mode = "확인 필요 — 승인해야 올라가요" if require_approval() else "자동 게시 모드 — 반려하면 안 올라가요"
-    msg.set_content(
-        f"오늘 SNS 게시물 미리보기예요. ({mode})\n\n"
-        f"확인·승인: {review_url(key)}\n\n"
-        f"예정: {sched}{' (dry-run: 실제로는 안 올라감)' if dry_run() else ''}\n\n"
-        f"--- {body_label} ---\n{body}\n"
-    )
+    lines = [f"{_day_label(state)} {title}", f"목적: {purpose}", f"{mode}{dry}", "", f"확인·승인: {url}", ""]
+    for p in plan:
+        lines.append(f"[{p['time'][0]:02d}:{p['time'][1]:02d}] {p['platform']} {p['format']}"
+                     + (f" ({p['lang']})" if p["lang"] else ""))
+        if p["text"]:
+            lines += [p["text"], ""]
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(
+        f'<!doctype html><html><body style="margin:0;background:#F6F2E7">'
+        f'<div style="max-width:600px;margin:0 auto;padding:18px 16px;font-family:-apple-system,Segoe UI,'
+        f'Apple SD Gothic Neo,Malgun Gothic,sans-serif;color:#3B3640">'
+        f'<div style="font-size:13px;color:#8A6BD8;font-weight:700">소피앱스 SNS · {escape(_day_label(state))}</div>'
+        f'<div style="font-size:23px;font-weight:800;margin:4px 0 10px">{escape(title)}</div>'
+        f'<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.5">'
+        f'<b>목적</b><br>{escape(purpose)}<br><br><b>올라가는 것</b><br>{len(times_)}번 · 게시물 {len(plan)}개 ({escape(when)})'
+        f'<br><br><b>{escape(mode)}</b>{escape(dry)}</div>'
+        f'{_button(url, True)}{_plan_html(state)}{_button(url, False)}'
+        f'</div></body></html>', subtype="html")
     host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
     port = int(os.environ.get("FEEDBACK_SMTP_PORT") or 587)
     with smtplib.SMTP(host, port, timeout=20) as smtp:
@@ -477,69 +604,40 @@ def review_html(state: dict, sig: str) -> str:
     """메일 링크로 여는 확인 페이지. 승인/반려는 버튼(POST)으로만 — 메일 앱이 링크를 미리 열어 봐도 승인되지 않게."""
     from html import escape
 
-    t = times()
     if state["approved"] is True:
         decision = "✅ 승인됨"
     elif state["approved"] is False:
-        decision = "⛔ 반려됨 (오늘은 안 올라가요)"
+        decision = "⛔ 반려됨 (이번엔 안 올라가요)"
     else:
         decision = "⏳ 대기 중" + (" — 승인해야 올라가요" if require_approval() else " — 반려하지 않으면 예정대로 올라가요")
     key = state.get("key", state["date"])
-    mine = [c for c in channels() if c in state["posts"]]
-    rows = "".join(
-        f"<li>{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d} — {_STATUS_KO.get(state['posts'][c]['status'], '')}"
-        f"{' · ' + escape(state['posts'][c]['error']) if state['posts'][c].get('error') else ''}</li>"
-        for c in mine
-    )
+    title, purpose = _about(state)
     action = f"/social/review/{key}?sig={escape(sig)}"
     buttons = ""
-    if any(state["posts"][c]["status"] == "pending" for c in mine):
+    if any(p["status"] == "pending" for p in state["posts"].values()):
         buttons = (
             f'<form method="post" action="{action}&action=approve" style="display:inline">'
-            f'<button style="background:#17356b;color:#fff">승인</button></form> '
+            f'<button style="background:#8A6BD8;color:#fff">승인</button></form> '
             f'<form method="post" action="{action}&action=reject" style="display:inline">'
-            f'<button>반려(오늘 게시 안 함)</button></form>'
+            f'<button>반려(이번엔 안 올림)</button></form>'
         )
-    base = f"/social/media/{state['dir']}"
-    if state.get("kind") == "promo":
-        media = "".join(f'<h3>{"한국어" if l == "ko" else "영어"}</h3><img src="{base}/{l}.png" alt="{l}">'
-                        f'<h4>Instagram 캡션</h4><pre>{escape(state["promo"][l]["caption"])}</pre>'
-                        f'<h4>Threads 글</h4><pre>{escape(state["promo"][l]["threads"])}</pre>' for l in ("ko", "en"))
-        return _review_page(state, "Ripe Weekly 홍보", decision, buttons, rows, media)
-    devlog = state.get("kind") == "devlog"
-    title = ("앱 에피소드" if state.get("weekly") else "게임 개발 일지") if devlog else "이슈팝 SNS"
-    media = ""
-    if not devlog:
-        media = (f'<h3>카드 (Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
-                 f'<h3>스토리</h3><img src="{base}/story.png" alt="스토리" style="max-width:320px">')
-        if "ig_reel" in state["posts"]:
-            media += f'<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>'
-    for i in range(1, (state.get("slides") or 0) + 1):
-        media += f'<img src="{base}/slide{i}.png" alt="{i}장">'
-    if state.get("slides"):
-        media = "<h3>이미지</h3>" + media
-    texts = ""
-    for field, label in (("caption", "Instagram 캡션"), ("threads_text", "Threads 글"),
-                         ("devlog_text", "Threads 게임 개발 일지")):
-        if state.get(field):
-            texts += f"<h3>{label}</h3><pre>{escape(state[field])}</pre>"
+    body = _plan_html(state, with_status=True)
     if state.get("empty"):
-        texts = "<p>이 기간 공개 저장소 커밋이 없어서 올릴 게 없어요.</p>"
-    return _review_page(state, title, decision, buttons, rows, media + texts)
-
-
-def _review_page(state: dict, title: str, decision: str, buttons: str, rows: str, body: str) -> str:
+        body = "<p>이 기간엔 올릴 게 없어요(게임 화면이 안 바뀌었거나 커밋 없음).</p>"
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>{title} 확인 {state['date']}</title>
-<style>body{{font-family:sans-serif;max-width:560px;margin:0 auto;padding:16px;color:#14161c}}
-img,video{{width:100%;border-radius:12px;margin:8px 0}} pre{{white-space:pre-wrap;background:#f4f4f1;padding:12px;border-radius:8px}}
-button{{font-size:17px;padding:12px 20px;border-radius:10px;border:1px solid #17356b;margin:4px 0}}</style></head><body>
-<h2>{state['date']} {title} 게시 확인</h2>
-<p><b>{decision}</b>{' · dry-run(실제로는 안 올라감)' if dry_run() else ''}</p>
-{buttons}
-<ul>{rows}</ul>
+<title>SNS 확인 {state['date']}</title>
+<style>body{{font-family:-apple-system,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;max-width:600px;
+margin:0 auto;padding:16px;color:#3B3640;background:#F6F2E7}}
+button{{font-size:17px;font-weight:700;padding:12px 22px;border-radius:12px;border:2px solid #3B3640;margin:4px 0;
+background:#fff;box-shadow:3px 3px 0 #3B3640}}</style></head><body>
+<div style="font-size:13px;color:#8A6BD8;font-weight:700">소피앱스 SNS · {escape(_day_label(state))}</div>
+<h2 style="margin:4px 0 10px">{escape(title)}</h2>
+<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:12px 14px;line-height:1.5">
+<b>목적</b><br>{escape(purpose)}<br><br><b>{decision}</b>{' · dry-run(실제로는 안 올라감)' if dry_run() else ''}</div>
+<p>{buttons}</p>
 {body}
+<p>{buttons}</p>
 </body></html>"""
 
 
