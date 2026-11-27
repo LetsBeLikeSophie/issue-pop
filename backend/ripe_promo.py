@@ -1,7 +1,8 @@
 """Ripe Weekly 홍보(매주, 한국어 한 장 + 영어 한 장) — 인스타 피드 + Threads.
 
 Ripe Weekly: 궁금한 분야를 한 줄로 적으면 AI가 매주 많은 글을 읽고 지금 뜨는 것만 3분짜리 리포트로 보내 주는 앱
-(저장소 ripe-weekly, 한국어·영어·일본어 지원). 웹 ripe.itssophie.dev는 스토어 없이 어디서나 열려서 링크는 이걸 씀.
+(저장소 ripe-weekly, 한국어·영어·일본어 지원). **링크는 넣지 않음**(2026-11-27 사용자 결정): 웹 버전은 아직 무료·유료
+확인 없이 AI 토큰을 써서, 공개 링크로 사람이 몰리면 비용이 나감. 출시 전까지는 "팔로우해 두면 소식 알려 드림"으로만.
 그림은 ripe-weekly/marketing/threads-2026-11-20.png 톤 그대로: 크림 바탕 + 파란 큰 제목(Black Han Sans), 아래
 갈색 띠 + 손글씨 로고(Gochi Hand) + 리포트 카드(막 뜨는 중 → 오르는 중 → 식는 중 곡선). 글꼴은 assets/fonts(OFL).
 카드 속 주제·항목은 "이런 식으로 보여 준다"는 **예시 그림**이고 실제 트렌드 데이터가 아님 — 글에서도 예시라고 씀.
@@ -18,7 +19,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 from social_card import _font
 
-WEB_URL = "https://ripe.itssophie.dev"
 FONTS = Path(__file__).resolve().parent / "assets" / "fonts"
 W, H = 1080, 1350
 BG = (247, 247, 244)
@@ -78,21 +78,21 @@ def caption(lang: str, s: dict) -> str:
     if lang == "ko":
         return (f"궁금한 분야를 한 줄만 적으면, AI가 매주 많은 글을 읽고 지금 뜨는 것만 3분짜리 리포트로 보내 드려요.\n\n"
                 f"그림은 '{s['topic']}' 예시 — 막 뜨는 것, 오르는 것, 식는 것을 한눈에.\n\n"
-                f"👉 프로필 링크에서 바로 써 보세요 (ripe.itssophie.dev)\n\n"
+                f"곧 만나요 — 출시 소식은 팔로우해 두시면 알려 드릴게요.\n\n"
                 f"#RipeWeekly #트렌드 #트렌드리포트 #뉴스레터 #생산성")
     return (f"Write one line about what you're into. Every week, AI reads a ton so you don't have to — "
             f"and sends you a 3-minute report on what's rising.\n\n"
             f"Pictured: an example for \"{s['topic']}\" — what's new, what's rising, what's cooling.\n\n"
-            f"👉 Try it — link in bio (ripe.itssophie.dev)\n\n"
+            f"Coming soon — follow for launch updates.\n\n"
             f"#RipeWeekly #trends #trendreport #newsletter #productivity")
 
 
 def threads_text(lang: str, s: dict) -> str:
     if lang == "ko":
         return (f"궁금한 분야를 한 줄만 적으면, 매주 지금 뜨는 것만 골라 3분짜리 리포트로 보내 드려요.\n\n"
-                f"예: '{s['topic']}' → 막 뜨는 중 · 오르는 중 · 식는 중\n\n{WEB_URL}")
+                f"예: '{s['topic']}' → 막 뜨는 중 · 오르는 중 · 식는 중\n\n곧 만나요. 출시 소식은 팔로우로!")
     return (f"Write one line about what you're into. Every week you get a 3-minute report "
-            f"on what's rising — and what's cooling.\n\nExample: {s['topic']}\n\n{WEB_URL}")
+            f"on what's rising — and what's cooling.\n\nExample: {s['topic']}\n\nComing soon. Follow for launch updates!")
 
 
 def _f(name: str, size: int) -> ImageFont.FreeTypeFont:

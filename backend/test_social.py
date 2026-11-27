@@ -419,8 +419,9 @@ assert k in ripe_promo.SETS["ko"] and ripe_promo.pick("en", wed(10, 0)) in ripe_
 assert ripe_promo.pick("ko", wed(10, 0)) != ripe_promo.pick("ko", datetime(2026, 12, 9, tzinfo=social.KST))  # 주마다 바뀜
 for lang in ("ko", "en"):
     s_ = ripe_promo.SETS[lang][0]
-    assert ripe_promo.WEB_URL in ripe_promo.threads_text(lang, s_) and len(ripe_promo.threads_text(lang, s_)) <= 500
-    assert "ripe.itssophie.dev" in ripe_promo.caption(lang, s_)
+    # 링크는 넣지 않음(웹 버전이 무료·유료 확인 없이 AI 토큰을 써서)
+    for text in (ripe_promo.threads_text(lang, s_), ripe_promo.caption(lang, s_)):
+        assert "itssophie.dev" not in text and "http" not in text and len(text) <= 1000
 assert "예시" in ripe_promo.caption("ko", k) and "example" in ripe_promo.caption("en", ripe_promo.SETS["en"][0])
 os.environ["SOCIAL_PROMO"] = "1"
 os.environ["SOCIAL_DEVLOG"] = "0"
@@ -439,7 +440,7 @@ assert social.tick(get_issues, wed(22, 59)) == []
 assert sorted(social.tick(get_issues, wed(23, 0))) == ["promo_en_ig", "promo_en_threads"]
 sigp = social.sign("promo-2026-12-02")
 r = client.get(f"/social/review/promo-2026-12-02?sig={sigp}")
-assert r.status_code == 200 and "Ripe Weekly" in r.text and "en.png" in r.text and "ripe.itssophie.dev" in r.text
+assert r.status_code == 200 and "Ripe Weekly" in r.text and "en.png" in r.text and "ripe.itssophie.dev" not in r.text
 ripe_promo.render = _real_render
 os.environ["SOCIAL_PROMO"] = "0"
 os.environ["SOCIAL_DEVLOG"] = "1"

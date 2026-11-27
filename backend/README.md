@@ -1652,6 +1652,7 @@ Threads(08:00) · Instagram 피드(08:00) · Instagram 릴스(12:10)에 올림. 
 - `ripe_promo.py`: 한국어 한 장 + 영어 한 장. 그림은 ripe-weekly/marketing의 기존 홍보 이미지 톤(크림 + 파란 제목,
   갈색 띠 + 손글씨 로고 + 리포트 곡선 카드). 글꼴 Black Han Sans·Gochi Hand는 `assets/fonts`(OFL, 라이선스 파일 같이).
 - 수요일 10:00 생성 → 12:10 한국어, 23:00 영어(미국 동부 아침 9시) — 각각 인스타 피드 + Threads. 승인은 `promo-날짜`.
-- 링크는 웹 https://ripe.itssophie.dev (스토어 없이 어디서나 열림). Threads는 본문 링크, 인스타는 "프로필 링크".
+- **링크는 넣지 않음**: 웹 버전(ripe.itssophie.dev)이 아직 무료·유료 확인 없이 AI 토큰을 써서. 출시 전까지
+  "곧 만나요 — 팔로우해 두면 소식 알려 드림"으로만.
 - 카드 속 주제·항목은 예시 그림(실제 트렌드 데이터 아님) — 캡션에도 "예시"라고 씀. 예시 세트 4개씩을 주마다 돌림.
 - 끄기: `SOCIAL_PROMO=0`, 요일: `SOCIAL_PROMO_WEEKDAY`(기본 2).
