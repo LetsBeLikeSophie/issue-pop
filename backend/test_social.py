@@ -325,6 +325,7 @@ end = at(20, 0, day=29)
 ep = devlog.weekly_episode(groups, start, end)
 assert ep["angle"] == "story" and ep["name"] == "앱줍줍" and ep["line1"] and ep["line2"]
 assert ep["color"] == (242, 106, 27) and "프로필 링크" in ep["caption"] and len(ep["threads"]) <= 400
+assert "👾" in ep["threads"] and "💜" in ep["threads"] and "만들구 이쏘" in ep["threads"]  # 기본 글도 소피 말투
 vibe = devlog.weekly_episode(many, start, end, [{"angle": "story", "repo": "appjupjup"}])
 assert vibe["angle"] == "vibe" and vibe["number"] == 24 and vibe["repo"] == "" and vibe["line1"]
 newep = devlog.weekly_episode(new_app, start, end)
@@ -422,6 +423,8 @@ for lang in ("ko", "en"):
     # 링크는 넣지 않음(웹 버전이 무료·유료 확인 없이 AI 토큰을 써서)
     for text in (ripe_promo.threads_text(lang, s_), ripe_promo.caption(lang, s_)):
         assert "itssophie.dev" not in text and "http" not in text and len(text) <= 1000
+    th = ripe_promo.threads_text(lang, s_)
+    assert "👾" in th and "💜" in th and len(th) <= 500  # Threads는 소피 말투
 assert "예시" in ripe_promo.caption("ko", k) and "example" in ripe_promo.caption("en", ripe_promo.SETS["en"][0])
 os.environ["SOCIAL_PROMO"] = "1"
 os.environ["SOCIAL_DEVLOG"] = "0"
@@ -441,7 +444,7 @@ assert sorted(social.tick(get_issues, wed(23, 0))) == ["promo_en_ig", "promo_en_
 sigp = social.sign("promo-2026-12-02")
 r = client.get(f"/social/review/promo-2026-12-02?sig={sigp}")
 assert r.status_code == 200 and "Ripe Weekly" in r.text and "en.png" in r.text and "ripe.itssophie.dev" not in r.text
-assert "① 12:10 · 한국어" in r.text and "② 23:00 · 영어" in r.text and "출시 전 알리기" in r.text
+assert "12:10  인스타 피드 · 스레드 (한국어)" in r.text and "23:00  인스타 피드 · 스레드 (영어)" in r.text
 ripe_promo.render = _real_render
 os.environ["SOCIAL_PROMO"] = "0"
 os.environ["SOCIAL_DEVLOG"] = "1"
@@ -482,16 +485,16 @@ _, frm, to, subj, body, html = sent_mail[1]
 assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에피소드" in subj and "21:00" in subj
 assert "/social/review/devlog-2026-11-29?sig=" in body and "/social/review/devlog-2026-11-29?sig=" in html
 # 메일 한눈에: 목적, 몇 번 올라가는지, 채널(플랫폼·형식)별 그림과 글
-assert "목적" in html and "1번 · 게시물 2개" in html and "피드 게시물" in html and "Threads" in html
-assert "slide1.png" in html and "그림: 위와 같은 장" in html and "A · 한 줄 임팩트" in html
+assert "21:00  인스타 피드 · 스레드" in html and "21:00  인스타 피드 · 스레드" in subj
+assert "slide1.png" in html and "그림은 위와 같음" in html and "만든 이유" in subj
 # 이슈팝: 08:00 한 번에 피드 + 스토리(스토리는 글 없음)
 sent_mail.clear()
 st25 = social.load_state("2026-11-25")
 st25["posts"] = {c: social._new_post() for c in ("ig_feed", "ig_story")}  # 기본 채널(피드 + 스토리)
 assert social.send_preview_email(st25) is True
 _, _, _, subj, body, html = sent_mail[1]
-assert "08:00" in subj and "Instagram 피드 게시물 + Instagram 스토리" in html and "story.png" in html
-assert "24시간 뒤 사라짐" in html and "[08:00] Instagram 스토리" in body
+assert "08:00  인스타 피드 · 인스타 스토리" in subj and "story.png" in html
+assert "(글 없음)" in html and "[08:00] 인스타 스토리" in body
 smtplib.SMTP = _real_smtp
 for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_SMTP_USER", "SOCIAL_SMTP_PASSWORD", "FEEDBACK_SMTP_USER"):
     os.environ.pop(k)

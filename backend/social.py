@@ -411,40 +411,43 @@ def threads_text(issues: list[dict], now: datetime | None = None) -> str:
 
 # ---------- 미리보기 메일 ----------
 
-# 채널마다: (플랫폼, 형식 설명) — 메일·확인 페이지에서 "어디에 어떤 모양으로" 올라가는지 보여 줌
+# 채널마다 짧은 이름(플랫폼, 어디) — 메일을 열면 "언제 · 어디에 · 뭐가"만 바로 보이게(2026-11-27 사용자 요청)
 CHANNEL_FORMAT = {
-    "ig_feed": ("Instagram", "피드 게시물 · 사진 1장 + 캡션"),
-    "ig_story": ("Instagram", "스토리 · 사진만(글 없음), 24시간 뒤 사라짐"),
-    "ig_reel": ("Instagram", "릴스 · 영상 + 캡션"),
-    "threads": ("Threads", "글 + 사진"),
-    "devlog_threads": ("Threads", "글 + 사진(전→후)"),
-    "episode_ig": ("Instagram", "피드 게시물 · 사진 + 캡션"),
-    "episode_threads": ("Threads", "글 + 사진"),
+    "ig_feed": ("Instagram", "인스타 피드"), "ig_story": ("Instagram", "인스타 스토리"),
+    "ig_reel": ("Instagram", "인스타 릴스"), "threads": ("Threads", "스레드"),
+    "devlog_threads": ("Threads", "스레드"), "episode_ig": ("Instagram", "인스타 피드"),
+    "episode_threads": ("Threads", "스레드"),
 }
 for _l in ("ko", "en"):
-    CHANNEL_FORMAT[f"promo_{_l}_ig"] = ("Instagram", "피드 게시물 · 사진 1장 + 캡션")
-    CHANNEL_FORMAT[f"promo_{_l}_threads"] = ("Threads", "글 + 사진")
-ANGLE_LABELS = {"story": "A · 한 줄 임팩트(만든 이유)", "new": "C · 메모(새 앱 소개)", "vibe": "D · 숫자(이번 주 바이브 코딩)"}
+    CHANNEL_FORMAT[f"promo_{_l}_ig"] = ("Instagram", "인스타 피드")
+    CHANNEL_FORMAT[f"promo_{_l}_threads"] = ("Threads", "스레드")
+ANGLE_LABELS = {"story": "만든 이유", "new": "새 앱", "vibe": "이번 주 커밋 수"}
 _WEEKDAY_KO = "월화수목금토일"
 
 
-def _about(state: dict) -> tuple[str, str]:
-    """(제목, 목적) — 이 게시물을 왜 올리는지 한 줄."""
+def _about(state: dict) -> str:
+    """무엇인지 짧게(제목)."""
     kind = state.get("kind")
     if kind == "promo":
-        return (f"Ripe Weekly 홍보 — {state['promo']['ko']['topic']} / {state['promo']['en']['topic']}",
-                "Ripe Weekly 출시 전 알리기: 어떤 앱인지 한 장으로 보여 주고 팔로우해 두게 하기. "
-                "같은 그림을 한국어(점심)·영어(미국 아침) 두 번 올려요. 링크는 안 넣음(웹은 아직 무료·유료 확인 없이 AI 토큰을 씀).")
+        return "Ripe Weekly 홍보"
     if kind == "devlog" and state.get("weekly"):
         ep = state.get("episode") or {}
-        return (f"앱 에피소드 — {ep.get('name') or '이번 주 바이브 코딩'}",
-                f"앱 만드는 이야기로 소피앱스 계정 팔로우 늘리기. 이번 주 소재: {ANGLE_LABELS.get(ep.get('angle'), '')}")
+        return f"앱 에피소드 · {ep.get('name') or '바이브 코딩'}({ANGLE_LABELS.get(ep.get('angle'), '')})"
     if kind == "devlog":
-        name = (state.get("game") or {}).get("name") or " · ".join(p["name"] for p in state.get("projects", []))
-        return (f"게임 개발 일지 — {name}", "게임 만드는 과정 보여 주기: 화면이 바뀐 날만, 전→후 한 장.")
-    keywords = " · ".join(it.get("keyword") or "" for it in state.get("issues", []))
-    return (f"이슈팝 오늘의 이슈 — {keywords}",
-            "이슈팝 앱 알리기: 출근길에 오늘 가장 많이 보도된 이슈 TOP5를 보여 주고, 프로필 링크로 앱 설치까지.")
+        return f"게임 개발 일지 · {(state.get('game') or {}).get('name') or ''}".rstrip(" ·")
+    return "이슈팝 오늘의 이슈 TOP5"
+
+
+def _summary(plan: list[dict]) -> list[str]:
+    """['12:10  인스타 피드 · 스레드 (한국어)', …] — 시각마다 한 줄."""
+    slots: dict[tuple, list[dict]] = {}
+    for p in plan:
+        slots.setdefault(p["time"], []).append(p)
+    out = []
+    for (h, m), posts in slots.items():
+        langs = sorted({p["lang"] for p in posts if p["lang"]})
+        out.append(f"{h:02d}:{m:02d}  " + " · ".join(p["format"] for p in posts) + (f" ({'/'.join(langs)})" if langs else ""))
+    return out
 
 
 def _post_plan(state: dict) -> list[dict]:
@@ -486,15 +489,12 @@ def _plan_html(state: dict, with_status: bool = False) -> str:
     slots: dict[tuple, list[dict]] = {}
     for p in _post_plan(state):
         slots.setdefault(p["time"], []).append(p)
-    nums = "①②③④⑤⑥⑦⑧"
     html = ""
-    for i, ((h, m), posts) in enumerate(slots.items()):
+    for (h, m), posts in slots.items():
         langs = sorted({p["lang"] for p in posts if p["lang"]})
-        head = f"{nums[i] if i < len(nums) else i + 1} {h:02d}:{m:02d}" + (f" · {' / '.join(langs)}" if langs else "")
-        where = " + ".join(f"{p['platform']} {p['format'].split(' · ')[0]}" for p in posts)
-        html += (f'<div style="margin:22px 0 8px;padding:10px 14px;background:#3B3640;color:#F6F2E7;border-radius:10px">'
-                 f'<div style="font-size:19px;font-weight:700">{escape(head)}</div>'
-                 f'<div style="font-size:14px;opacity:.85;margin-top:2px">{escape(where)}</div></div>')
+        head = f"{h:02d}:{m:02d}" + (f" · {'/'.join(langs)}" if langs else "")
+        html += (f'<div style="margin:22px 0 8px;padding:8px 14px;background:#3B3640;color:#F6F2E7;border-radius:10px;'
+                 f'font-size:18px;font-weight:700">{escape(head)}</div>')
         shown: set[str] = set()
         for p in posts:
             color = "#C13584" if p["platform"] == "Instagram" else "#111111"
@@ -504,11 +504,12 @@ def _plan_html(state: dict, with_status: bool = False) -> str:
             html += (f'<div style="border:2px solid #3B3640;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff">'
                      f'<div><span style="display:inline-block;background:{color};color:#fff;font-weight:700;font-size:13px;'
                      f'padding:3px 9px;border-radius:999px">{escape(p["platform"])}</span> '
-                     f'<b style="font-size:15px">{escape(p["format"])}</b>{status}</div>')
+                     f'<b style="font-size:15px">{escape(p["format"])}</b>'
+                     f'{" (글 없음)" if not p["text"] and p["channel"] == "ig_story" else ""}{status}</div>')
             for f in p["files"]:
                 url = media_url(state, f)
                 if f in shown:
-                    html += '<div style="color:#777;font-size:13px;margin-top:8px">그림: 위와 같은 장</div>'
+                    html += '<div style="color:#777;font-size:13px;margin-top:8px">그림은 위와 같음</div>'
                     continue
                 shown.add(f)
                 if f.endswith(".mp4"):
@@ -547,34 +548,30 @@ def send_preview_email(state: dict) -> bool:
         print("[social] 미리보기 메일 설정 없음(SOCIAL_PREVIEW_MAIL_TO / SOCIAL_SMTP_*) — 건너뜀")
         return False
     key = state.get("key", state["date"])
-    title, purpose = _about(state)
+    title = _about(state)
     plan = _post_plan(state)
-    times_ = sorted({p["time"] for p in plan})
-    when = " · ".join(f"{h:02d}:{m:02d}" for h, m in times_)
-    mode = "승인해야 올라가요" if require_approval() else "반려하지 않으면 예정대로 올라가요"
-    dry = " · 지금은 dry-run(승인해도 실제로는 안 올라감)" if dry_run() else ""
+    summary = _summary(plan)
+    note = ("승인해야 올라가요" if require_approval() else "반려 안 하면 올라가요") + (" · 지금은 테스트(안 올라감)" if dry_run() else "")
     url = review_url(key)
 
     msg = EmailMessage()
-    msg["Subject"] = f"[소피앱스 SNS] {_day_label(state)} {when} · {title}"[:150]
+    msg["Subject"] = (f"[SNS] {_day_label(state)} {title} — " + " / ".join(summary))[:150]
     msg["From"] = user
     msg["To"] = to
-    lines = [f"{_day_label(state)} {title}", f"목적: {purpose}", f"{mode}{dry}", "", f"확인·승인: {url}", ""]
+    lines = [f"{_day_label(state)} {title}", *summary, note, "", f"확인·승인: {url}", ""]
     for p in plan:
-        lines.append(f"[{p['time'][0]:02d}:{p['time'][1]:02d}] {p['platform']} {p['format']}"
-                     + (f" ({p['lang']})" if p["lang"] else ""))
+        lines.append(f"[{p['time'][0]:02d}:{p['time'][1]:02d}] {p['format']}" + (f" ({p['lang']})" if p["lang"] else ""))
         if p["text"]:
             lines += [p["text"], ""]
     msg.set_content("\n".join(lines))
+    rows = "".join(f'<div style="font-size:17px;font-weight:700;padding:3px 0">{escape(x)}</div>' for x in summary)
     msg.add_alternative(
         f'<!doctype html><html><body style="margin:0;background:#F6F2E7">'
         f'<div style="max-width:600px;margin:0 auto;padding:18px 16px;font-family:-apple-system,Segoe UI,'
         f'Apple SD Gothic Neo,Malgun Gothic,sans-serif;color:#3B3640">'
-        f'<div style="font-size:13px;color:#8A6BD8;font-weight:700">소피앱스 SNS · {escape(_day_label(state))}</div>'
-        f'<div style="font-size:23px;font-weight:800;margin:4px 0 10px">{escape(title)}</div>'
-        f'<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:12px 14px;font-size:15px;line-height:1.5">'
-        f'<b>목적</b><br>{escape(purpose)}<br><br><b>올라가는 것</b><br>{len(times_)}번 · 게시물 {len(plan)}개 ({escape(when)})'
-        f'<br><br><b>{escape(mode)}</b>{escape(dry)}</div>'
+        f'<div style="font-size:13px;color:#8A6BD8;font-weight:700">{escape(_day_label(state))} · {escape(title)}</div>'
+        f'<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:10px 14px;margin-top:8px">'
+        f'{rows}<div style="font-size:13px;color:#777;margin-top:4px">{escape(note)}</div></div>'
         f'{_button(url, True)}{_plan_html(state)}{_button(url, False)}'
         f'</div></body></html>', subtype="html")
     host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
@@ -611,7 +608,8 @@ def review_html(state: dict, sig: str) -> str:
     else:
         decision = "⏳ 대기 중" + (" — 승인해야 올라가요" if require_approval() else " — 반려하지 않으면 예정대로 올라가요")
     key = state.get("key", state["date"])
-    title, purpose = _about(state)
+    title = _about(state)
+    summary = "".join(f"<div><b>{escape(x)}</b></div>" for x in _summary(_post_plan(state)))
     action = f"/social/review/{key}?sig={escape(sig)}"
     buttons = ""
     if any(p["status"] == "pending" for p in state["posts"].values()):
@@ -631,10 +629,9 @@ def review_html(state: dict, sig: str) -> str:
 margin:0 auto;padding:16px;color:#3B3640;background:#F6F2E7}}
 button{{font-size:17px;font-weight:700;padding:12px 22px;border-radius:12px;border:2px solid #3B3640;margin:4px 0;
 background:#fff;box-shadow:3px 3px 0 #3B3640}}</style></head><body>
-<div style="font-size:13px;color:#8A6BD8;font-weight:700">소피앱스 SNS · {escape(_day_label(state))}</div>
-<h2 style="margin:4px 0 10px">{escape(title)}</h2>
-<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:12px 14px;line-height:1.5">
-<b>목적</b><br>{escape(purpose)}<br><br><b>{decision}</b>{' · dry-run(실제로는 안 올라감)' if dry_run() else ''}</div>
+<div style="font-size:13px;color:#8A6BD8;font-weight:700">{escape(_day_label(state))} · {escape(title)}</div>
+<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:10px 14px;margin-top:8px;line-height:1.6">
+{summary}<div style="font-size:14px;margin-top:4px">{decision}{' · 테스트(안 올라감)' if dry_run() else ''}</div></div>
 <p>{buttons}</p>
 {body}
 <p>{buttons}</p>

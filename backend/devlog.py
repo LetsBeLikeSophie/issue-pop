@@ -214,6 +214,18 @@ _RULES = """규칙:
 - 출력은 JSON 하나만(설명·코드블록 없이)."""
 
 
+# Threads 글은 소피가 실제로 쓰는 말투로(2026-11-27 @itssophie.dev 글·답글을 읽고 정리). 인스타 캡션은 그대로 존댓말.
+THREADS_TONE = """Threads 글 말투(소피가 직접 쓰는 것처럼):
+- 반말, 친구한테 말하듯. 줄 짧게 끊어서 2~4줄.
+- 귀여운 소리 나는 맞춤법 살짝: "만들구 이쏘", "귀차나서", "~했지렁", "~자너", "딱조은", "마니".
+- 자기 디스 농담 가끔: 토큰 녹이는 중💸, 휴먼이 병목, 반나절 걸려 겨우 이만큼.
+- 끝은 팔로워한테 가볍게 묻거나 부탁: "다들 어떤 거 해?", "어때 보여?", "잘 부탁해".
+- 이모지는 👾 💜 를 꼭 섞고, 필요하면 💸 💦 🔥 조금. 해시태그는 맨 끝 하나만.
+- 예(실제 소피 글): "불타는 금요일 반나절 걸려 자동화 중인데 / 한게 겨우 이메일 뚫고 이런것 뿌니네 / 다들 어떤걸 자동화 하구 있으까"
+  "무료로 만들어 놓은 뉴스앱 매달 -6천원💸", "제 피씨는 클로드가 장악ㅋㅋㅋ 휴먼이 병목"
+"""
+
+
 def _ask(prompt: str) -> dict | None:
     import llm
 
@@ -264,13 +276,14 @@ def game_visual(groups: list[dict], since: datetime, until: datetime, now: datet
         older = [c for c in caps if c < after and c[0] < after[0]] or [c for c in caps if c < after]
         before = older[-1][1] if older else None
         data = _ask(f"""게임 "{g['name']}"({g['tagline']})의 오늘 화면이 바뀌었어. Threads에 이미지와 같이 올릴 짧은 글.
-화면(그래픽·시야·연출)에서 뭐가 달라졌는지만, 2줄 이내 60자 이내. 마지막 줄 #게임개발
+화면(그래픽·시야·연출)에서 뭐가 달라졌는지만, 3줄 이내 70자 이내. 마지막 줄 #게임개발
 캡처 파일 이름: 전={before or '없음'}, 후={after[1]}
+{THREADS_TONE}
 {_RULES}
 형식: {{"text": "..."}}
 
 {_commit_block([g], 15)}""") or {}
-        text = _str(data, "text") or f"🎮 {g['name']} · 오늘 바뀐 화면\n#게임개발"
+        text = _str(data, "text") or f"{g['name']} 오늘 화면 바뀌었지렁👾\n전 → 후 어때 보여?💜\n#게임개발"
         return {"repo": g["repo"], "name": g["name"], "tagline": g["tagline"], "color": g.get("color"),
                 "before": before, "after": after[1], "text": redact(text)[:300]}
     return None
@@ -312,7 +325,8 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
     total = sum(x["count"] for x in groups)
     n_projects = len([x for x in groups if x["app"]])
     tail = """- caption: 인스타 캡션(250자 이내). 첫 줄 한마디 → 한두 줄 → "프로필 링크에서" → #개발일지 #1인개발 #바이브코딩
-- threads: Threads 글(150자 이내, 이미지와 같이 올라감, 마지막 줄 #개발일지)"""
+- threads: Threads 글(150자 이내, 이미지와 같이 올라감, 마지막 줄 #개발일지). 아래 Threads 말투로.
+""" + THREADS_TONE
     if angle == "vibe":
         data = _ask(f"""이번 주 바이브 코딩 기록: 프로젝트 {n_projects}개에 커밋 {total}번. 이미지에는 큰 숫자 {total}과 두 줄만 들어가.
 - line1, line2: 숫자 아래 두 줄(각 10자 이내). 예: "앱 4개를 동시에" / "굴리면 생기는 일"
@@ -327,6 +341,8 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
               "line2": _cut(_str(data, "line2") or "굴리면 생기는 일", 14),
               "apps": [{"name": x["name"], "count": x["count"]} for x in busy]}
         fb = f"이번 주 커밋 {total}번 · 프로젝트 {n_projects}개\n\n" + " / ".join(f"{x['name']} {x['count']}번" for x in busy)
+        th = (f"이번 주 커밋 {total}번 찍음👾\n앱 {n_projects}개 동시에 굴리는 중… 토큰 녹는 소리💸\n"
+              f"다들 이번 주 뭐 만들었어?💜")
     elif angle == "new":
         why = f'\n만든 이유: "{g["why"]}"' if g.get("why") else ""
         data = _ask(f"""새로 만들기 시작한 앱 "{g['name']}": {g['tagline']}{why}
@@ -342,6 +358,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
         ep = {"lines": lines or [f"새로 만들기 시작했다.", _cut(g["tagline"], 14)],
               "date_label": f"{end.month}월 {end.day}일 · 바이브 코딩 중"}
         fb = f"새로 만들기 시작한 앱, {g['name']}\n\n{g['tagline']}"
+        th = f"새 앱 만들기 시작했지렁👾\n{g['name']} — {g['tagline']}\n잘 부탁해💜"
     else:
         why = f'\n만든 이유(소피가 직접 쓴 키워드): "{g["why"]}"' if g.get("why") else ""
         data = _ask(f"""앱 "{g['name']}": {g['tagline']}{why}
@@ -356,10 +373,11 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
         ep = {"line1": _cut(_str(data, "line1") or g["name"], 16),
               "line2": _cut(_str(data, "line2") or g["tagline"], 28)}
         fb = f"{g['name']} — {g['tagline']}" + (f"\n\n{g['why']}" if g.get("why") else "")
+        th = f"{g['name']} 왜 만들었냐면👾\n{g.get('why') or g['tagline']}\n그래서 만들구 이쏘💜"
     if g is not None:
         ep.update(name=g["name"], tagline=g["tagline"], repo=g["repo"], icon=g.get("icon"), color=g.get("color"))
     caption = _str(data, "caption") or f"{fb}\n\n프로필 링크에서 만나 보세요.\n\n#개발일지 #1인개발 #바이브코딩"
-    threads = _str(data, "threads") or f"{fb}\n\n#개발일지"
+    threads = _str(data, "threads") or f"{th}\n#개발일지"
     others = [x["name"] for x in groups if x is not g and x["app"] and not x["game"]][:4] if g else []
     return {**ep, "angle": angle, "count": g["count"] if g else total, "total": total,
             "span": f"{start.month}월 {start.day}일 ~ {end.month}월 {end.day}일", "others": others,

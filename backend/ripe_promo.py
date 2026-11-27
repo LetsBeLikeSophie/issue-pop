@@ -88,11 +88,16 @@ def caption(lang: str, s: dict) -> str:
 
 
 def threads_text(lang: str, s: dict) -> str:
+    """Threads는 소피 말투(반말, 짧은 줄, 👾💜) — devlog.THREADS_TONE 참고. 인스타 캡션은 존댓말 그대로."""
     if lang == "ko":
-        return (f"궁금한 분야를 한 줄만 적으면, 매주 지금 뜨는 것만 골라 3분짜리 리포트로 보내 드려요.\n\n"
-                f"예: '{s['topic']}' → 막 뜨는 중 · 오르는 중 · 식는 중\n\n곧 만나요. 출시 소식은 팔로우로!")
-    return (f"Write one line about what you're into. Every week you get a 3-minute report "
-            f"on what's rising — and what's cooling.\n\nExample: {s['topic']}\n\nComing soon. Follow for launch updates!")
+        return (f"트렌드 따라가기 너무 빠르자너💦\n그래서 만들구 이쏘👾\n\n"
+                f"궁금한 거 한 줄만 적으면\n매주 지금 뜨는 것만 3분 리포트로 보내줌\n"
+                f"예: {s['topic']} → 막 뜨는 중 · 오르는 중 · 식는 중\n\n"
+                f"곧 나와! 팔로우해 두면 알려줄게💜")
+    return (f"trends move way too fast 💦\nso I built this 👾\n\n"
+            f"write one line about what you're into\n→ every week, a 3-min report on what's rising (and cooling)\n"
+            f"e.g. {s['topic']}\n\n"
+            f"coming soon! follow and I'll let you know 💜")
 
 
 def _f(name: str, size: int) -> ImageFont.FreeTypeFont:
