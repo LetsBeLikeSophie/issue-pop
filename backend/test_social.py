@@ -82,14 +82,15 @@ d = social.times()
 assert d["threads"] == d["ig_feed"] == d["ig_story"] == (8, 0) and d["ig_reel"] == (12, 10)
 assert social.PLAY_URL in social.threads_text(ISSUES) and len(social.threads_text(ISSUES)) <= 500
 assert "프로필 링크" in social_card.caption(ISSUES)
-# 기본 채널: 피드 + 스토리 + Threads, 릴스는 꺼짐(영상도 안 만듦)
-assert "ig_story" in social.channels() and "ig_reel" not in social.channels()
+# 기본 채널: 이슈팝은 인스타 피드 + 스토리만(Threads·릴스 꺼짐, 영상도 안 만듦). Threads는 게임 일지·앱 에피소드
+assert "ig_story" in social.channels() and "ig_reel" not in social.channels() and "threads" not in social.channels()
+assert "devlog_threads" in social.channels() and "episode_threads" in social.channels()
 social.tick(get_issues, at(7, 0, day=20))
 s20 = social.load_state("2026-11-20")
-assert set(s20["posts"]) == {"threads", "ig_feed", "ig_story"} and render_calls == ["card", "story"]
+assert set(s20["posts"]) == {"ig_feed", "ig_story"} and render_calls == ["card", "story"]
 assert social.media_file(s20["dir"], "story.png") is not None
 social.decide("2026-11-20", True)
-assert sorted(social.tick(get_issues, at(8, 0, day=20))) == ["ig_feed", "ig_story", "threads"]
+assert sorted(social.tick(get_issues, at(8, 0, day=20))) == ["ig_feed", "ig_story"]
 render_calls.clear()
 # 아래 순서 확인은 채널마다 시각이 달라야 쉬워서 예전 일정(+릴스 켬)으로 고정해서 봄
 os.environ["SOCIAL_TIMES"] = "preview=07:00,threads=07:40,ig_feed=08:00,ig_reel=12:10"

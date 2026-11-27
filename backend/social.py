@@ -2,7 +2,7 @@
 
 하루 흐름(KST, 시각은 환경변수로 바꿀 수 있음):
   07:00  오늘자 카드(PNG)·영상(MP4) 생성 → 미리보기 메일 발송(승인 링크)
-  08:00  Threads  — 카드 이미지 + TOP5 글 + 플레이스토어 링크
+  (08:00  Threads  — 이슈팝 카드 + TOP5 글 + 플레이스토어 링크: 기본으로 꺼짐)
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   12:10  Instagram 릴스 — 영상
   20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
@@ -63,8 +63,9 @@ CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_story
                   "devlog_threads": "Threads 게임 개발 일지", "episode_ig": "Instagram 피드(앱 에피소드)",
                   "episode_threads": "Threads 앱 에피소드"}
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
-# 릴스는 기본으로 끔(2026-11-27: 이슈팝은 매일 뉴스 남기듯 피드 + 스토리가 맞다고 정함). SOCIAL_CHANNELS로 다시 켤 수 있음
-DEFAULT_OFF = ("ig_reel",)
+# 이슈팝은 매일 08:00 인스타 피드 + 스토리만(2026-11-27 사용자 결정). Threads는 게임 개발 일지(화면 바뀐 날)와
+# 주간 앱 에피소드용. 이슈팝 Threads·릴스는 기본으로 끔 — SOCIAL_CHANNELS에 넣으면 다시 켜짐
+DEFAULT_OFF = ("ig_reel", "threads")
 DEFAULT_TIMES = ("preview=07:00,threads=08:00,ig_feed=08:00,ig_story=08:00,ig_reel=12:10,"
                  "devlog_preview=20:00,devlog_threads=21:00,episode_ig=21:00,episode_threads=21:00")
 MAX_ATTEMPTS = 3
@@ -256,7 +257,7 @@ def generate(issues: list[dict], now: datetime | None = None) -> dict:
         "approved": None,  # None=대기, True=승인, False=반려
         "decided_at": None,
         "preview_sent": False,
-        "posts": {c: _new_post() for c in ISSUEPOP_CHANNELS if c != "ig_reel" or "ig_reel" in channels()},
+        "posts": {c: _new_post() for c in ISSUEPOP_CHANNELS if c in channels()},
     }
     with _lock:
         _save_state(state)
