@@ -5,6 +5,7 @@
   (08:00  Threads  — 이슈팝 카드 + TOP5 글 + 플레이스토어 링크: 기본으로 꺼짐)
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   08:00  Instagram 스토리 — 같은 카드 9:16  (12:10 릴스는 기본으로 꺼짐)
+  수요일 10:00 Ripe Weekly 홍보 생성 → 12:10 한국어, 23:00 영어(인스타 피드 + Threads, ripe_promo.py)
   20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
   21:00  Threads 게임 개발 일지(화면 위주: 게임 저장소 social/에 새 캡처가 있는 날만, 전→후 이미지 + 짧은 글)
          일요일엔 대신 앱 에피소드 한 장(새 앱=메모 / 앱 이야기=한 줄 임팩트 / 바이브 코딩=숫자) → 인스타 피드 + Threads
@@ -32,6 +33,7 @@ SOCIAL_MEDIA_DIR/<날짜>-<무작위>/ 에 저장하고 GET /social/media/<그 �
   SOCIAL_LATE_LIMIT_MINUTES   기본 180
   SOCIAL_DEVLOG=0             개발 일지 끔(기본 켬). 저장소 빼기·모델 등은 devlog.py 참고
   SOCIAL_EPISODE_WEEKDAY      주간 에피소드 요일(월=0 … 일=6, 기본 6)
+  SOCIAL_PROMO=0              Ripe Weekly 홍보 끔(기본 켬). SOCIAL_PROMO_WEEKDAY 기본 2(수요일), ripe_promo.py 참고
   ANTHROPIC_KEY_SOCIAL        개발 일지 글쓰기용 Claude 키(없으면 커밋 제목으로 만든 기본 글)
   IG_USER_ID, IG_ACCESS_TOKEN, THREADS_USER_ID, THREADS_ACCESS_TOKEN
   IG_GRAPH_VERSION            기본 v23.0
@@ -58,23 +60,29 @@ KST = ZoneInfo("Asia/Seoul")
 ISSUEPOP_CHANNELS = ("threads", "ig_feed", "ig_story", "ig_reel")
 DEVLOG_CHANNELS = ("devlog_threads",)                  # 매일(게임 커밋 있는 날만) Threads 게임 개발 일지
 EPISODE_CHANNELS = ("episode_ig", "episode_threads")   # 주 1회 "이번 주 만든 것"
-CHANNELS = ISSUEPOP_CHANNELS + DEVLOG_CHANNELS + EPISODE_CHANNELS
+PROMO_CHANNELS = ("promo_ko_ig", "promo_ko_threads", "promo_en_ig", "promo_en_threads")  # 주 1회 Ripe Weekly 홍보
+CHANNELS = ISSUEPOP_CHANNELS + DEVLOG_CHANNELS + EPISODE_CHANNELS + PROMO_CHANNELS
 CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_story": "Instagram 스토리",
                   "ig_reel": "Instagram 릴스",
                   "devlog_threads": "Threads 게임 개발 일지", "episode_ig": "Instagram 피드(앱 에피소드)",
-                  "episode_threads": "Threads 앱 에피소드"}
+                  "episode_threads": "Threads 앱 에피소드",
+                  "promo_ko_ig": "Instagram Ripe Weekly(한국어)", "promo_ko_threads": "Threads Ripe Weekly(한국어)",
+                  "promo_en_ig": "Instagram Ripe Weekly(영어)", "promo_en_threads": "Threads Ripe Weekly(영어)"}
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
 # 이슈팝은 매일 08:00 인스타 피드 + 스토리만(2026-11-27 사용자 결정). Threads는 게임 개발 일지(화면 바뀐 날)와
 # 주간 앱 에피소드용. 이슈팝 Threads·릴스는 기본으로 끔 — SOCIAL_CHANNELS에 넣으면 다시 켜짐
 DEFAULT_OFF = ("ig_reel", "threads")
 DEFAULT_TIMES = ("preview=07:00,threads=08:00,ig_feed=08:00,ig_story=08:00,ig_reel=12:10,"
-                 "devlog_preview=20:00,devlog_threads=21:00,episode_ig=21:00,episode_threads=21:00")
+                 "devlog_preview=20:00,devlog_threads=21:00,episode_ig=21:00,episode_threads=21:00,"
+                 # Ripe Weekly 홍보(수요일): 한국어는 점심, 영어는 23:00 = 미국 동부 아침 9시
+                 "promo_preview=10:00,promo_ko_ig=12:10,promo_ko_threads=12:10,promo_en_ig=23:00,promo_en_threads=23:00")
 MAX_ATTEMPTS = 3
 GEN_RETRY_MINUTES = 15  # 생성(렌더·GitHub·Claude)이 실패하면 이만큼 쉬었다 다시, 3번까지
 TOKEN_REFRESH_AFTER_DAYS = 45  # 장기 토큰은 60일 — 넉넉히 앞서 갱신
-KEY_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}$")  # 승인 단위: 이슈팝은 날짜, 개발 일지는 devlog-날짜
-DIR_RE = re.compile(r"^(?:devlog-)?\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
+KEY_RE = re.compile(r"^(?:devlog-|promo-)?\d{4}-\d{2}-\d{2}$")  # 승인 단위: 이슈팝은 날짜, 개발 일지는 devlog-날짜
+DIR_RE = re.compile(r"^(?:devlog-|promo-)?\d{4}-\d{2}-\d{2}-[0-9a-f]{16}$")
 MEDIA_FILES = {"card.png": "image/png", "story.png": "image/png", "reel.mp4": "video/mp4",
+               "ko.png": "image/png", "en.png": "image/png",
                **{f"slide{i}.png": "image/png" for i in range(1, 11)}}
 
 _lock = threading.Lock()  # 상태 파일 읽고 쓰기(루프 스레드 ↔ 승인 요청)
@@ -140,6 +148,15 @@ def devlog_enabled() -> bool:
 def episode_weekday() -> int:
     """주간 에피소드 요일(월=0 … 일=6). 그날은 한 줄 일지 대신 에피소드를 올림."""
     return int(os.environ.get("SOCIAL_EPISODE_WEEKDAY") or 6)
+
+
+def promo_enabled() -> bool:
+    return _flag("SOCIAL_PROMO", True)
+
+
+def promo_weekday() -> int:
+    """Ripe Weekly 홍보 요일(월=0 … 일=6, 기본 수요일 2)."""
+    return int(os.environ.get("SOCIAL_PROMO_WEEKDAY") or 2)
 
 
 def late_limit_minutes() -> int:
@@ -352,6 +369,33 @@ def generate_devlog(now: datetime | None = None) -> dict:
     return state
 
 
+def generate_promo(now: datetime | None = None) -> dict:
+    """Ripe Weekly 홍보: 한국어·영어 한 장씩(ko.png/en.png) + 캡션·Threads 글. 주마다 예시 세트가 바뀜."""
+    import ripe_promo
+
+    now = now or datetime.now(KST)
+    date = now.strftime("%Y-%m-%d")
+    key = f"promo-{date}"
+    existing = load_state(key)
+    if existing is not None:
+        return existing
+    dirname = f"{key}-{secrets.token_hex(8)}"
+    out = media_root() / dirname
+    out.mkdir(parents=True, exist_ok=True)
+    texts = {}
+    for lang in ("ko", "en"):
+        s_ = ripe_promo.pick(lang, now)
+        (out / f"{lang}.png").write_bytes(ripe_promo.render(lang, s_))
+        texts[lang] = {"topic": s_["topic"], "caption": ripe_promo.caption(lang, s_),
+                       "threads": ripe_promo.threads_text(lang, s_)}
+    state = {"kind": "promo", "key": key, "date": date, "dir": dirname, "generated_at": now.isoformat(),
+             "promo": texts, "approved": None, "decided_at": None, "preview_sent": False,
+             "posts": {c: _new_post() for c in PROMO_CHANNELS}}
+    with _lock:
+        _save_state(state)
+    return state
+
+
 def threads_text(issues: list[dict], now: datetime | None = None) -> str:
     """Threads 본문(500자 제한, 해시태그 대신 주제 태그 하나)."""
     from social_card import _keyword
@@ -381,7 +425,11 @@ def send_preview_email(state: dict) -> bool:
     t = times()
     key = state.get("key", state["date"])
     sched = ", ".join(f"{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d}" for c in channels() if c in state["posts"])
-    if state.get("kind") == "devlog":
+    if state.get("kind") == "promo":
+        subject = f"[소피앱스 SNS] {state['date']} Ripe Weekly 홍보 확인 — {state['promo']['ko']['topic']} / {state['promo']['en']['topic']}"
+        body = state["promo"]["ko"]["caption"] + "\n\n---\n\n" + state["promo"]["en"]["caption"]
+        body_label = "인스타그램 캡션(한국어 / 영어)"
+    elif state.get("kind") == "devlog":
         names = " · ".join(p["name"] for p in state.get("projects", []))
         what = "앱 에피소드" if state.get("weekly") else "게임 개발 일지"
         subject = f"[소피앱스 SNS] {state['date']} {what} 확인 — {names}"
@@ -453,11 +501,16 @@ def review_html(state: dict, sig: str) -> str:
             f'<button>반려(오늘 게시 안 함)</button></form>'
         )
     base = f"/social/media/{state['dir']}"
+    if state.get("kind") == "promo":
+        media = "".join(f'<h3>{"한국어" if l == "ko" else "영어"}</h3><img src="{base}/{l}.png" alt="{l}">'
+                        f'<h4>Instagram 캡션</h4><pre>{escape(state["promo"][l]["caption"])}</pre>'
+                        f'<h4>Threads 글</h4><pre>{escape(state["promo"][l]["threads"])}</pre>' for l in ("ko", "en"))
+        return _review_page(state, "Ripe Weekly 홍보", decision, buttons, rows, media)
     devlog = state.get("kind") == "devlog"
     title = ("앱 에피소드" if state.get("weekly") else "게임 개발 일지") if devlog else "이슈팝 SNS"
     media = ""
     if not devlog:
-        media = (f'<h3>카드 (Threads · Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
+        media = (f'<h3>카드 (Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
                  f'<h3>스토리</h3><img src="{base}/story.png" alt="스토리" style="max-width:320px">')
         if "ig_reel" in state["posts"]:
             media += f'<h3>릴스</h3><video src="{base}/reel.mp4" controls playsinline></video>'
@@ -472,6 +525,10 @@ def review_html(state: dict, sig: str) -> str:
             texts += f"<h3>{label}</h3><pre>{escape(state[field])}</pre>"
     if state.get("empty"):
         texts = "<p>이 기간 공개 저장소 커밋이 없어서 올릴 게 없어요.</p>"
+    return _review_page(state, title, decision, buttons, rows, media + texts)
+
+
+def _review_page(state: dict, title: str, decision: str, buttons: str, rows: str, body: str) -> str:
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>{title} 확인 {state['date']}</title>
@@ -482,8 +539,7 @@ button{{font-size:17px;padding:12px 20px;border-radius:10px;border:1px solid #17
 <p><b>{decision}</b>{' · dry-run(실제로는 안 올라감)' if dry_run() else ''}</p>
 {buttons}
 <ul>{rows}</ul>
-{media}
-{texts}
+{body}
 </body></html>"""
 
 
@@ -661,6 +717,12 @@ def _publish(channel: str, state: dict) -> str:
             return publish_instagram("image", media_url(state, "slide1.png"), state["caption"])
         slides = [media_url(state, f"slide{i}.png") for i in range(1, state["slides"] + 1)]
         return publish_instagram("carousel", slides, state["caption"])
+    if channel.startswith("promo_"):
+        lang = channel.split("_")[1]
+        image = media_url(state, f"{lang}.png")
+        if channel.endswith("_ig"):
+            return publish_instagram("image", image, state["promo"][lang]["caption"])
+        return publish_threads(image, state["promo"][lang]["threads"])
     if channel == "episode_threads":
         return publish_threads(media_url(state, "slide1.png"), state["threads_text"])
     raise ValueError(channel)
@@ -679,6 +741,8 @@ def tick(get_issues, now: datetime | None = None) -> list[str]:
     if devlog_enabled():
         did += _run_batch(f"devlog-{date}", "devlog_preview", DEVLOG_CHANNELS + EPISODE_CHANNELS,
                           lambda: generate_devlog(now), now, "devlog_")
+    if promo_enabled() and now.weekday() == promo_weekday():
+        did += _run_batch(f"promo-{date}", "promo_preview", PROMO_CHANNELS, lambda: generate_promo(now), now, "promo_")
     return did
 
 

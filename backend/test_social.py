@@ -18,6 +18,7 @@ os.environ.update(
     SOCIAL_REQUIRE_APPROVAL="1",
     SOCIAL_PUBLIC_BASE="https://api.example.test",
     SOCIAL_DEVLOG="0",  # 개발 일지는 맨 아래 14)에서 따로 켜서 확인
+    SOCIAL_PROMO="0",  # Ripe Weekly 홍보는 맨 아래 15)에서 따로 켜서 확인
 )
 for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_TIMES", "SOCIAL_CHANNELS", "IG_ACCESS_TOKEN", "THREADS_ACCESS_TOKEN",
           "SOCIAL_EPISODE_WEEKDAY", "ANTHROPIC_KEY_SOCIAL", "ANTHROPIC_API_KEY"):
@@ -407,6 +408,41 @@ r = client.get(f"/social/review/devlog-2026-11-29?sig={sigw}")
 assert r.status_code == 200 and "앱 에피소드" in r.text and "slide1.png" in r.text
 assert client.get("/social/review/devlog-2026-11-29?sig=bad").status_code == 404
 assert client.get(f"/social/media/{w['dir']}/slide1.png").content == b"PNG1"
+
+# 15) Ripe Weekly 홍보: 수요일 10:00 생성(한국어·영어 한 장씩) → 12:10 한국어, 23:00 영어(인스타 + Threads)
+import ripe_promo  # noqa: E402
+
+wed = lambda h, m: datetime(2026, 12, 2, h, m, tzinfo=social.KST)  # noqa: E731 - 수요일
+assert wed(10, 0).weekday() == 2
+k = ripe_promo.pick("ko", wed(10, 0))
+assert k in ripe_promo.SETS["ko"] and ripe_promo.pick("en", wed(10, 0)) in ripe_promo.SETS["en"]
+assert ripe_promo.pick("ko", wed(10, 0)) != ripe_promo.pick("ko", datetime(2026, 12, 9, tzinfo=social.KST))  # 주마다 바뀜
+for lang in ("ko", "en"):
+    s_ = ripe_promo.SETS[lang][0]
+    assert ripe_promo.WEB_URL in ripe_promo.threads_text(lang, s_) and len(ripe_promo.threads_text(lang, s_)) <= 500
+    assert "ripe.itssophie.dev" in ripe_promo.caption(lang, s_)
+assert "예시" in ripe_promo.caption("ko", k) and "example" in ripe_promo.caption("en", ripe_promo.SETS["en"][0])
+os.environ["SOCIAL_PROMO"] = "1"
+os.environ["SOCIAL_DEVLOG"] = "0"
+_real_render = ripe_promo.render
+ripe_promo.render = lambda lang, s: f"PNG-{lang}".encode()
+assert not any(x.startswith("promo_") for x in social.tick(get_issues, datetime(2026, 12, 1, 10, 0, tzinfo=social.KST)))
+assert "promo_generate" not in social.tick(get_issues, wed(9, 59))
+assert "promo_generate" in social.tick(get_issues, wed(10, 0))
+pr = social.load_state("promo-2026-12-02")
+assert pr["kind"] == "promo" and set(pr["posts"]) == set(social.PROMO_CHANNELS)
+assert social.media_file(pr["dir"], "ko.png").read_bytes() == b"PNG-ko"
+assert social.tick(get_issues, wed(12, 10)) == []  # 승인 전
+social.decide("promo-2026-12-02", True)
+assert sorted(social.tick(get_issues, wed(12, 10))) == ["promo_ko_ig", "promo_ko_threads"]
+assert social.tick(get_issues, wed(22, 59)) == []
+assert sorted(social.tick(get_issues, wed(23, 0))) == ["promo_en_ig", "promo_en_threads"]
+sigp = social.sign("promo-2026-12-02")
+r = client.get(f"/social/review/promo-2026-12-02?sig={sigp}")
+assert r.status_code == 200 and "Ripe Weekly" in r.text and "en.png" in r.text and "ripe.itssophie.dev" in r.text
+ripe_promo.render = _real_render
+os.environ["SOCIAL_PROMO"] = "0"
+os.environ["SOCIAL_DEVLOG"] = "1"
 
 # 미리보기 메일: SNS 전용 보내는 계정(SOCIAL_SMTP_*)으로, 받는 주소는 SOCIAL_PREVIEW_MAIL_TO, 확인 링크 포함
 import smtplib  # noqa: E402
