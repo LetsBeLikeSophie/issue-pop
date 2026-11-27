@@ -9,6 +9,7 @@ sqlmodel>=0.0.22
 requests>=2.31  # 날씨 카드용 Open-Meteo 조회(api.py의 _fetch_weather)
 bcrypt>=4.1  # 로그인 비밀번호 해시(api.py의 _hash_password/_verify_password)
 slowapi>=0.1.9  # 로그인/가입 무차별 대입 방지 rate limiting
+Pillow>=10.0  # SNS 카드·영상 프레임 렌더(social_card.py / social_video.py). 영상 인코딩은 서버의 ffmpeg
 firebase-admin>=6.5  # 다이제스트 등 실제 푸시 발송(FCM). 서버에
 # GOOGLE_APPLICATION_CREDENTIALS 환경변수로 서비스 계정 키 JSON 경로를
 # 줘야 함 — 키 파일 자체는 git에 안 올림(backend/README.md 참고).
