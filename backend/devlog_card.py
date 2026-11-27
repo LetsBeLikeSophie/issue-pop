@@ -1,11 +1,12 @@
-"""주간 개발 에피소드 캐러셀(1080x1350, 4:5) — 앱 하나 집중, 소피앱스 브랜드 톤.
+"""개발 일지 이미지(1080x1350, 4:5, 한 장) — 짧고 임팩트 있게(2026-11-27 사용자 피드백: 장수·글이 많으면 3초 안에 넘김).
 
-1 훅 → 2 이 앱은요(소개 + 대표 화면) → 3 이야기(소재에 따라 제목·칸 이름이 다름, 캡처가 있으면 같이)
-→ 4 그래서 → 5 써 보기. 소재(ep["angle"]): story(앱 이야기) / new(새로 시작한 앱) / vibe(바이브 코딩 기록 —
-2장은 이번 주 만진 앱 목록, 5장은 소피앱스 전체).
-크림 종이 배경 + 굵은 잉크 외곽선 + 스티커 그림자(오프셋 그림자, 그라데이션 없음) + 라벤더/볼터치 포인트.
-로고는 assets/brand의 원본 PNG를 그대로 씀(다시 그리지 않음).
-한글 제목은 브랜드 글꼴 Jua(SOCIAL_FONT_DIR에 Jua-Regular.ttf가 있으면), 없으면 Noto Sans CJK Black.
+앱 에피소드는 소재마다 한 장:
+  A 한 줄 임팩트(story) — 앱 색 배경 + 큰 글씨 두 마디
+  C 개발 일지 메모(new) — 메모지에 3~4줄, 머리띠는 앱 색
+  D 숫자 한 방(vibe)   — 소피앱스 라벤더 + 큰 숫자
+게임 개발 일지는 화면 위주: 전 → 후 캡처를 위아래로(전 캡처가 없으면 오늘 화면 한 장).
+배경색은 앱마다 다르게(devlog.APPS의 color, 없으면 앱 아이콘에서 뽑은 색, 그것도 없으면 소피앱스 라벤더 잉크).
+소피앱스 로고는 구석에 작게. 로고는 assets/brand 원본 PNG를 그대로 씀.
 """
 from __future__ import annotations
 
@@ -23,14 +24,15 @@ LAVENDER_INK = (138, 107, 216)
 CHEEK = (247, 169, 160)
 PAPER = (246, 242, 231)
 WHITE = (255, 255, 255)
-SOFT = (120, 114, 128)
+SOFT = (130, 126, 136)
 OUTLINE = 5
 SHADOW = 10
-PAGES = 5
-X0 = 72
+X0 = 80
 
 ASSETS = Path(__file__).resolve().parent / "assets" / "brand"
 
+
+# ---------- 공용 ----------
 
 def _title_font(size: int) -> ImageFont.FreeTypeFont:
     jua = Path(FONT_DIR) / "Jua-Regular.ttf"
@@ -52,8 +54,7 @@ def _plain(text: str) -> str:
 
 
 def _wrap(d: ImageDraw.ImageDraw, text: str, font, max_w: int, max_lines: int) -> list[str]:
-    """띄어쓰기 단위로 줄바꿈(단어가 중간에 잘리거나 '?'만 혼자 남지 않게). 한 단어가 한 줄보다 길면
-    그 단어만 글자 단위로 자름. 넘치면 마지막 줄 말줄임."""
+    """띄어쓰기 단위로 줄바꿈. 한 단어가 한 줄보다 길면 그 단어만 글자 단위로. 넘치면 마지막 줄 말줄임."""
     lines, cur = [], ""
     for word in _plain(text).split(" "):
         cand = f"{cur} {word}" if cur else word
@@ -63,7 +64,7 @@ def _wrap(d: ImageDraw.ImageDraw, text: str, font, max_w: int, max_lines: int) -
         if cur:
             lines.append(cur)
         cur = ""
-        for ch in word:  # 한 줄에 안 들어가는 긴 단어
+        for ch in word:
             if d.textlength(cur + ch, font=font) > max_w:
                 lines.append(cur)
                 cur = ch
@@ -79,12 +80,11 @@ def _wrap(d: ImageDraw.ImageDraw, text: str, font, max_w: int, max_lines: int) -
     return lines
 
 
-def _text(d, xy, text, font, max_w, max_lines, line_h, fill=INK) -> int:
-    """줄바꿈해서 쓰고 다음 y를 돌려줌."""
-    x, y = xy
+def _lines(d, x, y, text, font, max_w, max_lines, fill, gap=1.22, center=False) -> int:
     for ln in _wrap(d, text, font, max_w, max_lines):
-        d.text((x, y), ln, font=font, fill=fill)
-        y += line_h
+        lx = (W - d.textlength(ln, font=font)) // 2 if center else x
+        d.text((lx, y), ln, font=font, fill=fill)
+        y += int(font.size * gap)
     return y
 
 
@@ -111,8 +111,8 @@ def _sparkle(d: ImageDraw.ImageDraw, cx, cy, r, fill):
                (cx, cy + r), (cx - k, cy + k), (cx - r, cy), (cx - k, cy - k)], fill=fill, outline=INK, width=3)
 
 
-def _picture(img: Image.Image, d: ImageDraw.ImageDraw, pic: Image.Image, box, radius=32) -> None:
-    """그림을 box 안에 비율 유지로 맞추고, 실제 크기에 맞춘 스티커 테두리를 둘러 붙임(가운데 정렬)."""
+def _picture(img: Image.Image, d: ImageDraw.ImageDraw, pic: Image.Image, box, radius=28) -> tuple:
+    """그림을 box 안에 비율 유지로 맞추고 스티커 테두리를 둘러 붙임(가운데). 실제 그려진 영역을 돌려줌."""
     bx0, by0, bx1, by1 = box
     scale = min((bx1 - bx0) / pic.width, (by1 - by0) / pic.height)
     w, h = max(1, int(pic.width * scale)), max(1, int(pic.height * scale))
@@ -123,20 +123,18 @@ def _picture(img: Image.Image, d: ImageDraw.ImageDraw, pic: Image.Image, box, ra
     ImageDraw.Draw(rounded).rounded_rectangle([0, 0, w - 1, h - 1], radius=max(4, radius - OUTLINE), fill=255)
     mask = Image.composite(pic.getchannel("A"), Image.new("L", (w, h), 0), rounded)
     img.paste(pic, (x, y), mask)
+    return x, y, x + w, y + h
 
 
-def _base(page: int, label: str) -> tuple[Image.Image, ImageDraw.ImageDraw]:
-    img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
-    logo = _logo(54)
-    img.paste(logo, (X0, 64), logo)
-    f = _font("Bold", 30)
-    pg = f"{page}/{PAGES}"
-    d.text((W - X0 - d.textlength(pg, font=f), 74), pg, font=f, fill=SOFT)
-    if label:
-        _pill(d, X0, 170, label, _font("Bold", 34), LAVENDER)
-    d.text((X0, H - 92), "@itssophie.dev · 만드는 과정 공개", font=_font("Medium", 30), fill=SOFT)
-    return img, d
+def _corner_logo(img: Image.Image, on_color: bool) -> None:
+    """오른쪽 아래 작은 소피앱스 로고. 진한 배경 위엔 흰 칩에 얹음."""
+    logo = _logo(40)
+    if on_color:
+        ImageDraw.Draw(img).rounded_rectangle([W - X0 - logo.width - 28, H - 104, W - X0, H - 44], radius=30,
+                                              fill=WHITE)
+        img.paste(logo, (W - X0 - logo.width - 14, H - 94), logo)
+    else:
+        img.paste(logo, (W - X0 - logo.width, H - 96), logo)
 
 
 def _png(img: Image.Image) -> bytes:
@@ -145,166 +143,122 @@ def _png(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def _app_badge(img, d, ep, icon, x, y, size=72) -> int:
-    """아이콘(있으면) + 앱 이름 칩. 끝 x를 돌려줌."""
+def _lum(c) -> float:
+    return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255
+
+
+def theme_color(color=None, icon=None) -> tuple:
+    """앱 색: 지정된 색 → 아이콘에서 가장 많이 쓰인 '색다운' 색 → 소피앱스 라벤더 잉크."""
+    if color:
+        return tuple(color)
     if icon is not None:
-        _picture(img, d, icon, (x, y, x + size, y + size), radius=18)
-        x += size + 22
-    return _pill(d, x, y + (size - 56) // 2, ep["name"], _font("Bold", 36), PAPER)
+        small = icon.convert("RGBA").resize((64, 64))
+        counts: dict = {}
+        for r, g, b, a in small.getdata():
+            if a < 200:
+                continue
+            mx, mn = max(r, g, b), min(r, g, b)
+            if mx - mn < 40 or mx < 60:  # 흰색·회색·검정 빼고
+                continue
+            key = (r // 24 * 24, g // 24 * 24, b // 24 * 24)
+            counts[key] = counts.get(key, 0) + 1
+        if counts:
+            return max(counts, key=counts.get)
+    return LAVENDER_INK
 
 
-def slide_hook(ep: dict, icon) -> bytes:
-    img, d = _base(1, f"BUILD LOG · {ep['span']}")
-    sym = _logo(150, symbol=True)
-    img.paste(sym, (W - X0 - 150, 150), sym)
-    _sparkle(d, W - 260, 175, 22, CHEEK)
-    _sparkle(d, W - 60, 300, 16, LAVENDER)
+# ---------- A. 한 줄 임팩트(앱 이야기) ----------
 
-    y = _text(d, (X0, 360), ep["hook"], _title_font(108), W - 2 * X0, 3, 132)
-    _app_badge(img, d, ep, icon, X0, y + 50)
-    _text(d, (X0, y + 160), ep["tagline"], _font("Regular", 40), W - 2 * X0, 2, 56, fill=SOFT)
-    f = _font("Bold", 34)
-    hint = "넘겨서 보기 →"
-    d.text((W - X0 - d.textlength(hint, font=f), H - 96), hint, font=f, fill=LAVENDER_INK)
+def render_impact(ep: dict, color: tuple) -> bytes:
+    img = Image.new("RGB", (W, H), color)
+    d = ImageDraw.Draw(img)
+    dark = _lum(color) < 0.62
+    first = WHITE if dark else INK
+    second = (INK if _lum(color) > 0.38 else LAVENDER) if dark else LAVENDER_INK
+    y = _lines(d, X0, 380, ep["line1"], _title_font(116), W - 2 * X0, 2, first)
+    _lines(d, X0, y + 70, ep["line2"], _title_font(100), W - 2 * X0, 2, second)
+    _pill(d, X0, H - 200, ep["name"], _font("Bold", 40), WHITE)
+    _corner_logo(img, on_color=True)
     return _png(img)
 
 
-def slide_apps(ep: dict) -> bytes:
-    """바이브 코딩 기록의 2장: 이번 주 만진 앱들(이름 + 한 줄 소개 + 커밋 수)."""
-    img, d = _base(2, "이번 주 만진 것들")
-    y = 280
-    fn, ft = _font("Bold", 44), _font("Regular", 34)
-    for a in ep["apps"][:4]:
-        lines = _wrap(d, a["tagline"], ft, W - 2 * X0 - 100 - SHADOW, 2)
-        box = (X0, y, W - X0 - SHADOW, y + 96 + len(lines) * 48)
-        _sticker(d, box, WHITE, radius=24)
-        d.text((X0 + 40, y + 26), _plain(a["name"]), font=fn, fill=INK)
-        cnt = f"커밋 {a['count']}번"
-        fc = _font("Bold", 32)
-        d.text((box[2] - 40 - d.textlength(cnt, font=fc), y + 34), cnt, font=fc, fill=LAVENDER_INK)
-        for i, ln in enumerate(lines):
-            d.text((X0 + 40, y + 86 + i * 48), ln, font=ft, fill=SOFT)
-        y = box[3] + 34
-        if y > H - 260:
-            break
+# ---------- C. 개발 일지 메모(새로 시작한 앱) ----------
+
+def render_memo(ep: dict, color: tuple, date_label: str) -> bytes:
+    img = Image.new("RGB", (W, H), PAPER)
+    d = ImageDraw.Draw(img)
+    box = (110, 220, W - 110 - SHADOW, 1120)
+    _sticker(d, box, WHITE, radius=36)
+    d.rounded_rectangle([box[0] + OUTLINE, box[1] + OUTLINE, box[2] - OUTLINE, box[1] + 110], radius=30, fill=color)
+    d.rectangle([box[0] + OUTLINE, box[1] + 60, box[2] - OUTLINE, box[1] + 110], fill=color)
+    head = WHITE if _lum(color) < 0.62 else INK
+    d.text((160, box[1] + 30), _plain(f"개발 일지 · {ep['name']}"), font=_font("Bold", 44), fill=head)
+    lines = ep["lines"][:4]
+    accent = color if _lum(color) < 0.75 else LAVENDER_INK
+    split = max(1, len(lines) - 2)  # 마지막 두 줄은 앱 색으로 강조, 그 앞에 한 칸 띄움
+    y = 430
+    for i, ln in enumerate(lines):
+        if i == split:
+            y += 50
+        y = _lines(d, 170, y, ln, _title_font(76), box[2] - 170 - 60, 2, accent if i >= split else INK, gap=1.3)
+    d.text((170, box[3] - 100), _plain(date_label), font=_font("Medium", 34), fill=SOFT)
+    sym = _logo(190, symbol=True)
+    img.paste(sym, (box[2] - 230, box[3] - 120), sym)
+    _sparkle(d, box[2] - 250, box[3] - 90, 22, CHEEK)
+    _corner_logo(img, on_color=False)
     return _png(img)
 
 
-def slide_about(ep: dict, icon, shot) -> bytes:
-    if ep.get("angle") == "vibe":
-        return slide_apps(ep)
-    img, d = _base(2, "새로 만드는 앱" if ep.get("angle") == "new" else "이 앱은요")
-    x = X0
-    if icon is not None:
-        _picture(img, d, icon, (X0, 270, X0 + 110, 380), radius=26)
-        x = X0 + 140
-    _text(d, (x, 278), ep["name"], _title_font(88), W - x - X0, 1, 100)
-    y = _text(d, (X0, 420), ep["tagline"], _font("Medium", 42), W - 2 * X0, 3, 60)
-    if shot is not None:
-        _picture(img, d, shot, (X0 + 40, y + 50, W - X0 - 40 - SHADOW, H - 150))
-    else:  # 화면이 아직 없는 앱: 몬스터 스티커로
-        sym = _logo(360, symbol=True)
-        img.paste(sym, ((W - 360) // 2, y + 140), sym)
-        _sparkle(d, W // 2 - 230, y + 190, 30, CHEEK)
-        _sparkle(d, W // 2 + 220, y + 420, 24, LAVENDER)
-        f = _font("Bold", 36)
-        msg = "화면은 곧 공개할게요"
-        d.text(((W - d.textlength(msg, font=f)) // 2, y + 560), msg, font=f, fill=SOFT)
-    return _png(img)
+# ---------- D. 숫자 한 방(바이브 코딩 기록) ----------
 
-
-def _labeled(d, y, tag, tag_fill, text, font, max_lines) -> int:
-    _pill(d, X0, y, tag, _font("Bold", 30), tag_fill, pad=(18, 8))
-    return _text(d, (X0, y + 76), text, font, W - 2 * X0, max_lines, int(font.size * 1.38)) + 30
-
-
-def _points(d, y, points) -> int:
-    fp = _font("Bold", 40)
-    for pt in points[:3]:
-        d.ellipse([X0 + 8, y + 12, X0 + 36, y + 40], fill=LAVENDER, outline=INK, width=4)
-        y = _text(d, (X0 + 62, y), pt, fp, W - 2 * X0 - 62, 2, 56) + 26
-    return y
-
-
-def slide_change(ep: dict, capture) -> bytes:
-    """이야기 두 칸(소재마다 이름이 다름). 핵심 목록(points)은 4장에서 보여 주니 여기선 이야기와 (있으면) 캡처만."""
-    img, d = _base(3, ep.get("section") or "이번 주 바꾼 것")
-    shot = capture is not None
-    f = _font("Medium", 42 if shot else 48)
-    labels = ep.get("labels") or ["불편했던 점", "그래서"]
-    y = 290
-    if ep.get("part1"):
-        y = _labeled(d, y, labels[0], CHEEK, ep["part1"], f, 2 if shot else 4) + (0 if shot else 30)
-    if ep.get("part2"):
-        y = _labeled(d, y, labels[1], LAVENDER, ep["part2"], f, 2 if shot else 5)
-    if shot:
-        _picture(img, d, capture, (X0 + 40, y + 20, W - X0 - 40 - SHADOW, H - 150))
-    else:
-        _sparkle(d, W - 130, H - 230, 30, CHEEK)
-        _sparkle(d, W - 210, H - 170, 20, LAVENDER)
-    return _png(img)
-
-
-def slide_result(ep: dict) -> bytes:
-    img, d = _base(4, "그래서 이렇게")
-    y = 290
-    if ep.get("result"):
-        fs = _font("Medium", 44)
-        lines = _wrap(d, ep["result"], fs, W - 2 * X0 - 100 - SHADOW, 4)
-        box = (X0, y, W - X0 - SHADOW, y + 70 + len(lines) * 64)
-        _sticker(d, box, WHITE)
-        for i, ln in enumerate(lines):
-            d.text((X0 + 50, y + 36 + i * 64), ln, font=fs, fill=INK)
-        y = box[3] + 70
-    y = _points(d, y, ep["points"])
-    yy = max(y + 40, H - 330)
-    if ep.get("count"):
-        fn = _title_font(84)
-        num = str(ep["count"])
-        unit = "번 커밋한 한 주" if ep.get("angle") == "vibe" else "번 고친 한 주"
-        d.text((X0, yy), num, font=fn, fill=LAVENDER_INK)
-        d.text((X0 + d.textlength(num, font=fn) + 8, yy + 34), unit, font=_font("Bold", 42), fill=INK)
-    _sparkle(d, W - 120, yy + 40, 26, CHEEK)
-    return _png(img)
-
-
-def slide_try(ep: dict, icon) -> bytes:
-    if ep.get("angle") == "vibe":  # 앱 하나가 아니라 소피앱스 전체로
-        ep = {**ep, "name": "소피앱스", "tagline": "혼자 바이브 코딩으로 만드는 작은 앱과 게임들", "others": []}
-        icon = None
-    img, d = _base(5, "")
-    if icon is not None:
-        _picture(img, d, icon, ((W - 260) // 2, 230, (W + 260) // 2, 490), radius=56)
-    else:
-        sym = _logo(260, symbol=True)
-        img.paste(sym, ((W - 260) // 2, 230), sym)
-    _sparkle(d, W // 2 - 200, 260, 28, CHEEK)
-    _sparkle(d, W // 2 + 190, 470, 22, LAVENDER)
-    ft = _title_font(96)
-    name = _plain(ep["name"])
-    d.text(((W - d.textlength(name, font=ft)) // 2, 540), name, font=ft, fill=INK)
-    fs = _font("Medium", 40)
-    y = 680
-    for ln in _wrap(d, ep["tagline"], fs, W - 2 * X0 - 40, 2):
-        d.text(((W - d.textlength(ln, font=fs)) // 2, y), ln, font=fs, fill=INK)
-        y += 58
-    fb = _font("Bold", 46)
-    cta = "프로필 링크에서 만나 보세요"
-    bw = d.textlength(cta, font=fb) + 100
-    box = (int((W - bw) // 2), y + 60, int((W + bw) // 2), y + 60 + 110)
-    _sticker(d, box, LAVENDER, radius=55)
-    d.text(((W - d.textlength(cta, font=fb)) // 2, box[1] + 28), cta, font=fb, fill=INK)
-    if ep.get("others"):
-        fo = _font("Regular", 34)
-        other = "이번 주엔 " + ", ".join(_plain(o) for o in ep["others"]) + "도 만졌어요"
-        for i, ln in enumerate(_wrap(d, other, fo, W - 2 * X0, 2)):
-            d.text(((W - d.textlength(ln, font=fo)) // 2, box[3] + 70 + i * 48), ln, font=fo, fill=SOFT)
+def render_number(ep: dict) -> bytes:
+    img = Image.new("RGB", (W, H), LAVENDER)
+    d = ImageDraw.Draw(img)
+    fl = _font("Bold", 64)
+    label = _plain(ep.get("label") or "이번 주 커밋")
+    d.text(((W - d.textlength(label, font=fl)) // 2, 250), label, font=fl, fill=INK)
+    num = str(ep["number"])
+    fn = _title_font(420 if len(num) <= 2 else 330)
+    d.text(((W - d.textlength(num, font=fn)) // 2, 330), num, font=fn, fill=WHITE, stroke_width=6, stroke_fill=INK)
+    y = _lines(d, X0, 860, ep["line1"], _title_font(84), W - 2 * X0, 1, INK, center=True)
+    _lines(d, X0, y + 10, ep["line2"], _title_font(84), W - 2 * X0, 1, INK, center=True)
+    _sparkle(d, 190, 430, 40, CHEEK)
+    _sparkle(d, 890, 720, 30, WHITE)
+    _corner_logo(img, on_color=False)
     return _png(img)
 
 
 def render_episode(ep: dict, images: dict | None = None) -> list[bytes]:
-    """5장 PNG. images: {"icon", "shot", "capture"} PIL 이미지(없으면 None)."""
+    """앱 에피소드 한 장(PNG 목록 하나짜리 — 게시 쪽은 장수로 피드/캐러셀을 고름)."""
     images = images or {}
-    icon, shot, capture = images.get("icon"), images.get("shot"), images.get("capture")
-    return [slide_hook(ep, icon), slide_about(ep, icon, shot), slide_change(ep, capture),
-            slide_result(ep), slide_try(ep, icon)]
+    if ep["angle"] == "vibe":
+        return [render_number(ep)]
+    color = theme_color(ep.get("color"), images.get("icon"))
+    if ep["angle"] == "new":
+        return [render_memo(ep, color, ep.get("date_label") or "")]
+    return [render_impact(ep, color)]
+
+
+# ---------- 게임 개발 일지: 화면 전 → 후 ----------
+
+def render_game(info: dict, before, after) -> bytes:
+    """after(오늘 화면)는 꼭 있음. before가 있으면 위(전)·아래(후), 없으면 오늘 화면 한 장 크게."""
+    img = Image.new("RGB", (W, H), INK)
+    d = ImageDraw.Draw(img)
+    x = _pill(d, X0, 70, info["name"], _font("Bold", 38), LAVENDER)
+    _pill(d, x + 16, 70, "화면 바뀜" if before is not None else "오늘 화면", _font("Bold", 38), CHEEK)
+    top, bottom = 170, H - 130
+    if before is not None:
+        mid = (top + bottom) // 2
+        _picture(img, d, before, (X0, top + 10, W - X0 - SHADOW, mid - 30))
+        _picture(img, d, after, (X0, mid + 30, W - X0 - SHADOW, bottom))
+        fb = _font("Black", 40)
+        _pill(d, X0 + 20, top + 30, "전", fb, WHITE, pad=(20, 6))
+        _pill(d, X0 + 20, mid + 50, "후", fb, LAVENDER, pad=(20, 6))
+    else:
+        _picture(img, d, after, (X0, top + 10, W - X0 - SHADOW, bottom))
+    d.text((X0, H - 92), "@itssophie.dev · 게임 개발 일지", font=_font("Medium", 30), fill=(200, 196, 206))
+    logo = _logo(40)
+    d.rounded_rectangle([W - X0 - logo.width - 28, H - 104, W - X0, H - 44], radius=30, fill=WHITE)
+    img.paste(logo, (W - X0 - logo.width - 14, H - 94), logo)
+    return _png(img)

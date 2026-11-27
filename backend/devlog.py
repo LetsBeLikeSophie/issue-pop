@@ -1,15 +1,16 @@
-"""만드는 과정 공개(build in public): GitHub 커밋 → 게임 개발 일지·앱 에피소드.
+"""만드는 과정 공개(build in public): GitHub 커밋 → 게임 개발 일지·앱 에피소드. **전부 한 장, 짧게**
+(2026-11-27 피드백: 장수·글이 많으면 3초 안에 넘김).
 
-- 매일(Threads): **게임 개발 일지** — 게임 저장소(GAME_REPOS)에 지난 24시간 커밋이 있는 날만, 글만.
-- 주 1회(인스타 캐러셀 5장 + Threads, SOCIAL_EPISODE_WEEKDAY 기본 일요일): **앱 에피소드**. 매주 최근 커밋만
-  정리하면 "무슨 얘긴지 모르겠다"가 돼서(2026-11-27 피드백) 그 주 상황에 맞는 소재 하나를 고름:
-    new    이번 주 새로 만든 앱 저장소가 있으면 "이런 앱을 만들기 시작했어요"
-    vibe   바이브 코딩 기록 — "이번 주 앱 N개에 커밋 M번, 왜 이렇게 많이?"(직전 에피소드가 story였고 많이 한 주)
-    story  앱 이야기 — 앱마다 적어 둔 만든 이유(APPS[...]["why"])를 중심으로, 최근 커밋은 "이번 주엔"으로만
-  앱 화면은 각 저장소의 스토어 스크린샷·아이콘(GitHub raw). 그 주 캡처를 쓰려면 그 앱 저장소의 social/ 폴더에
-  `YYYY-MM-DD-이름.png|jpg`로 넣어 푸시.
-소재는 **공개 저장소의 커밋 메시지·저장소 정보와 여기 적어 둔 앱 소개뿐**(Claude Code 대화 기록은 키·개인정보가
-섞일 수 있어 안 씀). 글은 Claude(키 ANTHROPIC_KEY_SOCIAL, 없으면 기본 글), 올리기 전 social.py의 미리보기·승인.
+- 매일(Threads): **게임 개발 일지 = 화면 위주**. 게임 저장소(APPS의 game=True, SOCIAL_GAME_REPOS로 추가)의
+  social/ 폴더에 새 캡처(`YYYY-MM-DD-이름.png|jpg`)가 있는 날만, 바로 앞 캡처와 전→후로 한 장 + 짧은 글.
+  화면이 안 바뀐 날은 커밋이 있어도 안 올림. 이미 올린 캡처는 다시 안 씀.
+- 주 1회(인스타 피드 + Threads, SOCIAL_EPISODE_WEEKDAY 기본 일요일): **앱 에피소드 한 장**, 소재에 따라 형식이 다름
+    new    이번 주 새로 만든 앱 저장소 → C 개발 일지 메모(3~4줄)
+    vibe   바이브 코딩 기록(커밋 20개 이상 + 직전이 story) → D 숫자 한 방
+    story  앱 이야기(APPS의 why = 만든 이유 중심, 이번 주 커밋 없어도 가능) → A 앱 색 배경 + 큰 글씨 두 마디
+  앱마다 배경색이 다름(APPS의 color, 없으면 앱 아이콘에서 뽑음). 최근 다룬 앱·같은 소재는 피함.
+소재는 **공개 저장소의 커밋 메시지·캡처와 여기 적어 둔 앱 소개뿐**(Claude Code 대화 기록은 키·개인정보가 섞일 수
+있어 안 씀). 글은 Claude(키 ANTHROPIC_KEY_SOCIAL, 없으면 기본 글), 올리기 전 social.py의 미리보기·승인.
 
 환경변수:
   SOCIAL_GITHUB_USER       기본 LetsBeLikeSophie
@@ -34,10 +35,10 @@ DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 VIBE_MIN_COMMITS = 20  # 이만큼은 해야 "바이브 코딩 기록" 소재가 됨
 
-# 저장소 → 보여 줄 이름·한 줄 소개·만든 이유(why, 에피소드 이야기의 중심)·그림 경로·게임 여부.
+# 저장소 → 보여 줄 이름·한 줄 소개·만든 이유(why, 에피소드 이야기의 중심)·그림 경로·앱 색(color, 없으면 아이콘에서)·게임 여부.
 # app=False: 앱이 아니라 에피소드 주인공으로 안 고름. game=True: 인스타 에피소드 대신 Threads 게임 개발 일지로.
 APPS = {
-    "issue-pop": {"name": "이슈팝", "tagline": "여러 언론사 기사를 이슈별로 묶어 오늘 가장 많이 보도된 뉴스를 보여 주는 앱",
+    "issue-pop": {"name": "이슈팝", "color": (23, 53, 107), "tagline": "여러 언론사 기사를 이슈별로 묶어 오늘 가장 많이 보도된 뉴스를 보여 주는 앱",
                   "icon": "app/assets/icon/app_icon_512_store.png",
                   "shot": "app/assets/screenshots/phone/Screenshot_20261003_155415.jpg"},
     "dailycut": {"name": "데일리컷", "tagline": "혜택·청약·물가 같은 생활 정보를 매일 카드로 모아 보여 주는 앱",
@@ -45,7 +46,7 @@ APPS = {
     "mehh": {"name": "Mehh", "tagline": "귀찮아서 못 한 사진 정리, 지울 만한 사진을 이유와 함께 골라 주는 앱",
              "icon": "docs/store/icon-512.png", "shot": "docs/store/screenshots-ko/1-home.png"},
     "cortex": {"name": "Cortex", "tagline": "어디서든 공유 버튼 하나로 저장하고 검색 한 번으로 다시 찾는 아카이브 앱"},
-    "appjupjup": {"name": "앱줍줍", "tagline": "내 앱 올리고 남의 앱 줍줍, 한 줄 피드백을 주고받는 앱 품앗이",
+    "appjupjup": {"name": "앱줍줍", "color": (242, 106, 27), "tagline": "내 앱 올리고 남의 앱 줍줍, 한 줄 피드백을 주고받는 앱 품앗이",
                   "why": "앱 홍보 사이트가 많은 건 알지만 내 목적과 달라서 직접 만들었다. 홍보가 아니라 만든 사람끼리 "
                          "서로 받아 써 보고 한 줄 피드백을 주고받는 곳. 앱을 계속 만들고 있어서 필요했다."},
     "camtrip": {"name": "CamTrip", "tagline": "메뉴판·영수증을 찍으면 폰에서 바로 번역하고 여행 경비로 정리해 주는 앱",
@@ -70,7 +71,7 @@ def _extra_games() -> set[str]:
 def app_info(repo: str) -> dict:
     a = APPS.get(repo.lower(), {})
     return {"repo": repo, "name": a.get("name", repo), "tagline": a.get("tagline", ""), "why": a.get("why", ""),
-            "icon": a.get("icon"), "shot": a.get("shot"), "app": a.get("app", True),
+            "icon": a.get("icon"), "shot": a.get("shot"), "color": a.get("color"), "app": a.get("app", True),
             "game": a.get("game", False) or repo.lower() in _extra_games()}
 
 
@@ -185,25 +186,29 @@ def fetch_image(repo: str, path: str | None):
         return None
 
 
-def week_capture(repo: str, since: datetime, until: datetime) -> str | None:
-    """저장소 social/ 폴더에서 이번 주 날짜(YYYY-MM-DD-*.png|jpg)로 시작하는 캡처 중 가장 최근 것의 경로."""
+def list_captures(repo: str) -> list[tuple[str, str]]:
+    """저장소 social/ 폴더의 캡처 [(YYYY-MM-DD, 경로)] 날짜순. 파일 이름은 `YYYY-MM-DD-아무이름.png|jpg`."""
     items = _get(f"{GITHUB_API}/repos/{_user()}/{repo}/contents/social")
-    best = None
+    out = []
     for it in items if isinstance(items, list) else []:
         m = re.match(r"^(\d{4}-\d{2}-\d{2})-.+\.(png|jpe?g)$", it.get("name", ""), re.I)
-        if not m or it.get("type") != "file":
-            continue
-        day = m.group(1)
-        if since.strftime("%Y-%m-%d") <= day <= until.strftime("%Y-%m-%d") and (best is None or day >= best[0]):
-            best = (day, it["path"])
-    return best[1] if best else None
+        if m and it.get("type") == "file":
+            out.append((m.group(1), it["path"]))
+    return sorted(out)
+
+
+def week_capture(repo: str, since: datetime, until: datetime) -> str | None:
+    """이번 주 날짜 캡처 중 가장 최근 것의 경로."""
+    inside = [p for day, p in list_captures(repo)
+              if since.strftime("%Y-%m-%d") <= day <= until.strftime("%Y-%m-%d")]
+    return inside[-1] if inside else None
 
 
 # ---------- 글쓰기 ----------
 
 _RULES = """규칙:
-- 한국어, 친근한 해요체. 혼자 바이브 코딩으로 앱과 게임을 만드는 1인 개발자 소피(@itssophie.dev)가 직접 쓰는 말투.
-- 처음 보는 사람이 "오 재밌네" 하고 멈출 만한 것 위주. 개발 용어는 풀어서.
+- 한국어. 혼자 바이브 코딩으로 앱과 게임을 만드는 1인 개발자 소피(@itssophie.dev)가 직접 쓰는 말투.
+- **짧게.** 3초 안에 읽히고 "오?" 하고 멈추게. 설명하지 말고 궁금하게.
 - 가격·매출·사용자 수·비밀번호·키·메일·서버 주소·회사나 다른 사람 이름은 쓰지 않는다.
 - 주어진 정보(커밋·소개·만든 이유)에 없는 사실을 지어내지 않는다. 과장 금지.
 - 출력은 JSON 하나만(설명·코드블록 없이)."""
@@ -212,7 +217,7 @@ _RULES = """규칙:
 def _ask(prompt: str) -> dict | None:
     import llm
 
-    text = llm.complete(prompt, max_tokens=2500, temperature=0.7, purpose="social",
+    text = llm.complete(prompt, max_tokens=1500, temperature=0.8, purpose="social",
                         model=os.environ.get("SOCIAL_LLM_MODEL") or DEFAULT_MODEL)
     if not text:
         return None
@@ -241,30 +246,37 @@ def _str(data: dict, key: str) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
-def game_post(groups: list[dict], now: datetime) -> str | None:
-    """Threads 게임 개발 일지(글만, 500자 이내). 게임 커밋이 없으면 None."""
-    games = [g for g in groups if g["game"]][:2]
-    if not games:
-        return None
-    data = _ask(f"""오늘({now.month}월 {now.day}일) 게임 개발 커밋이야. Threads에 올릴 "게임 개발 일지"를 써 줘.
-350자 이내. 첫 줄은 "🎮 게임 개발 일지" 다음에 오늘 한 걸 한 문장으로. 게임 이름과 무슨 게임인지 짧게 넣어.
-변화가 작아도 괜찮아 — 작은 진척도 솔직하고 재밌게. 마지막 줄은 #게임개발 #개발일지.
+# ---------- 게임 개발 일지(화면 위주) ----------
+
+def game_visual(groups: list[dict], since: datetime, until: datetime, now: datetime,
+                used: set | None = None) -> dict | None:
+    """게임 저장소 social/에 이 기간 새 캡처가 있으면 {repo, name, tagline, before, after, text}.
+    화면이 안 바뀐 날(캡처 없음)은 커밋이 있어도 None — 게임 일지는 보이는 변화만 올림.
+    캡처 이름엔 날짜만 있어서 하루 창이 겹치므로, 이미 올린 캡처(used: "저장소/경로")는 뺌."""
+    used = used or set()
+    for g in [g for g in groups if g["game"]]:
+        caps = list_captures(g["repo"])
+        new = [(d, p) for d, p in caps if since.strftime("%Y-%m-%d") <= d <= until.strftime("%Y-%m-%d")
+               and f"{g['repo']}/{p}" not in used]
+        if not new:
+            continue
+        after = new[-1]
+        older = [c for c in caps if c < after and c[0] < after[0]] or [c for c in caps if c < after]
+        before = older[-1][1] if older else None
+        data = _ask(f"""게임 "{g['name']}"({g['tagline']})의 오늘 화면이 바뀌었어. Threads에 이미지와 같이 올릴 짧은 글.
+화면(그래픽·시야·연출)에서 뭐가 달라졌는지만, 2줄 이내 60자 이내. 마지막 줄 #게임개발
+캡처 파일 이름: 전={before or '없음'}, 후={after[1]}
 {_RULES}
 형식: {{"text": "..."}}
 
-{_commit_block(games, 12)}""") or {}
-    text = _str(data, "text")
-    if not text:  # Claude 키가 없거나 실패 → 커밋 제목으로 만든 기본 글
-        lines = [f"🎮 게임 개발 일지 ({now.month}월 {now.day}일)", ""]
-        for g in games:
-            first = g["messages"][-1].splitlines()[0]  # GitHub는 최신순 → 맨 끝이 그날 첫 커밋
-            more = f" 외 {g['count'] - 1}개" if g["count"] > 1 else ""
-            lines.append(f"· {g['name']}" + (f" ({g['tagline']})" if g.get("tagline") else ""))
-            lines.append(f"  → {_cut(first, 70)}{more}")
-        lines += ["", "#게임개발 #개발일지"]
-        text = "\n".join(lines)
-    return redact(text)[:500]
+{_commit_block([g], 15)}""") or {}
+        text = _str(data, "text") or f"🎮 {g['name']} · 오늘 바뀐 화면\n#게임개발"
+        return {"repo": g["repo"], "name": g["name"], "tagline": g["tagline"], "color": g.get("color"),
+                "before": before, "after": after[1], "text": redact(text)[:300]}
+    return None
 
+
+# ---------- 앱 에피소드(한 장) ----------
 
 def choose_angle(groups: list[dict], start: datetime, history: list[dict]) -> tuple[str, dict | None]:
     """이번 주 소재와 주인공 앱. history: 최근 에피소드들 [{angle, repo}] (최근 것이 앞)."""
@@ -292,83 +304,66 @@ def choose_angle(groups: list[dict], start: datetime, history: list[dict]) -> tu
     return "none", None
 
 
-_SECTION = {  # 3장 제목, 첫·둘째 이야기 칸 이름
-    "story": ("이 앱 이야기", "만든 이유", "이번 주엔"),
-    "new": ("새로 시작한 앱", "왜 만드나요", "지금은 여기까지"),
-    "vibe": ("이번 주 바이브 코딩", "이번 주 한 일", "왜 이렇게 많이?"),
-}
-
-
 def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: list[dict] | None = None) -> dict | None:
-    """주간 앱 에피소드. 소재(angle)에 따라 글을 쓰고, 그림은 넣지 않음(social.generate_devlog에서 받음)."""
+    """주간 앱 에피소드 한 장. angle: story(A 한 줄 임팩트) / new(C 개발 일지 메모) / vibe(D 숫자 한 방)."""
     angle, g = choose_angle(groups, start, history or [])
     if angle == "none":
         return None
-    span = f"{start.month}월 {start.day}일 ~ {end.month}월 {end.day}일"
     total = sum(x["count"] for x in groups)
-    busy = [x for x in groups if x["app"]][:4]
+    n_projects = len([x for x in groups if x["app"]])
+    tail = """- caption: 인스타 캡션(250자 이내). 첫 줄 한마디 → 한두 줄 → "프로필 링크에서" → #개발일지 #1인개발 #바이브코딩
+- threads: Threads 글(150자 이내, 이미지와 같이 올라감, 마지막 줄 #개발일지)"""
     if angle == "vibe":
-        brief = (f"이번 주 바이브 코딩 기록: 프로젝트 {len(groups)}개에 커밋 {total}번.\n"
-                 "1장 훅은 이 숫자로 궁금하게, 이야기는 '이번 주 한 일'(앱별 한 줄) → '왜 이렇게 많이?'"
-                 "(커밋에서 보이는 이유: 출시 준비, 피드백 반영 등).")
-        block = _commit_block(groups[:5], 10)
+        data = _ask(f"""이번 주 바이브 코딩 기록: 프로젝트 {n_projects}개에 커밋 {total}번. 이미지에는 큰 숫자 {total}과 두 줄만 들어가.
+- line1, line2: 숫자 아래 두 줄(각 10자 이내). 예: "앱 4개를 동시에" / "굴리면 생기는 일"
+{tail}
+{_RULES}
+형식: {{"line1":"","line2":"","caption":"","threads":""}}
+
+{_commit_block(groups[:5], 8)}""") or {}
+        busy = [x for x in groups if x["app"]][:4]
+        ep = {"name": "바이브 코딩 기록", "tagline": "", "repo": "", "number": total, "label": "이번 주 커밋",
+              "line1": _cut(_str(data, "line1") or f"앱 {n_projects}개를 동시에", 14),
+              "line2": _cut(_str(data, "line2") or "굴리면 생기는 일", 14),
+              "apps": [{"name": x["name"], "count": x["count"]} for x in busy]}
+        fb = f"이번 주 커밋 {total}번 · 프로젝트 {n_projects}개\n\n" + " / ".join(f"{x['name']} {x['count']}번" for x in busy)
+    elif angle == "new":
+        why = f'\n만든 이유: "{g["why"]}"' if g.get("why") else ""
+        data = _ask(f"""새로 만들기 시작한 앱 "{g['name']}": {g['tagline']}{why}
+이미지는 손으로 쓴 개발 일지 메모 한 장이야. 3~4줄, 각 12자 이내. 앞줄은 계기, 마지막 두 줄은 그래서 만든 것.
+예: "앱이 계속 생기는데" / "써 줄 사람이 없었다." / "그래서 서로 써 주는" / "곳을 만들었다."
+- lines: 위 메모 줄들(목록)
+{tail}
+{_RULES}
+형식: {{"lines":[""],"caption":"","threads":""}}
+
+{_commit_block([g], 15)}""") or {}
+        lines = [_cut(x, 14) for x in (data.get("lines") or []) if isinstance(x, str) and x.strip()][:4]
+        ep = {"lines": lines or [f"새로 만들기 시작했다.", _cut(g["tagline"], 14)],
+              "date_label": f"{end.month}월 {end.day}일 · 바이브 코딩 중"}
+        fb = f"새로 만들기 시작한 앱, {g['name']}\n\n{g['tagline']}"
     else:
         why = f'\n만든 이유(소피가 직접 쓴 키워드): "{g["why"]}"' if g.get("why") else ""
-        started = f"\n저장소 만든 날: {g['created'][:10]}" if g.get("created") else ""
-        brief = (f"{g['name']}: {g['tagline']}{why}{started}\n"
-                 + ("이번 주에 새로 시작한 앱이야. '왜 만드나요' → '지금은 여기까지'로."
-                    if angle == "new" else
-                    "이번 주 커밋 정리가 아니라 이 앱 이야기야. 만든 이유가 중심이고, 이번 주 작업은 '이번 주엔'에서만 짧게."
-                    " 꾸준히 만들고 있다는 느낌이 나게."))
-        block = _commit_block([g], 25) if g["count"] else f"[{g['name']}] 이번 주 커밋 없음"
-    sec = _SECTION[angle]
-    data = _ask(f"""{span} 인스타 캐러셀(5장)과 Threads 글을 써 줘.
-{brief}
-- hook: 1장 큰 제목(24자 이내). 앱을 몰라도 멈춰서 넘겨 보고 싶게
-- part1: '{sec[1]}' 칸(90자 이내)
-- part2: '{sec[2]}' 칸(110자 이내)
-- result: 4장 — 그래서 뭐가 좋아졌는지/앞으로(80자 이내)
-- points: 핵심 2~3개(각 20자 이내)
-- caption: 인스타 캡션(500자 이내). 첫 줄 훅 → 이야기 → "프로필 링크에서 만나 보세요" → #개발일지 #1인개발 #바이브코딩
-- threads: Threads 글(350자 이내, 수다스럽게, 마지막 줄 #개발일지)
+        data = _ask(f"""앱 "{g['name']}": {g['tagline']}{why}
+이미지는 앱 색 배경에 큰 글씨 두 마디뿐이야.
+- line1: 누구나 고개를 끄덕일 한마디(12자 이내). 예: "앱 홍보 사이트, 많죠."
+- line2: 뒤집는 한마디(12자 이내). 예: "근데 이건 홍보가 아니에요."
+{tail}
 {_RULES}
-형식: {{"hook":"","part1":"","part2":"","result":"","points":[""],"caption":"","threads":""}}
+형식: {{"line1":"","line2":"","caption":"","threads":""}}
 
-{block}""") or {}
-
-    subjects = [m.splitlines()[0] for m in (g["messages"] if g else [])]
-    if angle == "vibe":
-        name, tagline, repo = "바이브 코딩 기록", f"이번 주 커밋 {total}번 · 프로젝트 {len(groups)}개", ""
-        fb_hook = f"일주일에 커밋 {total}번, 무슨 일이?"
-        fb1 = " / ".join(f"{x['name']} {x['count']}번" for x in busy)
-        fb2 = ""
-        fb_points = [_cut(f"{x['name']} — {x['tagline']}", 22) for x in busy[:3]]
-    else:
-        name, tagline, repo = g["name"], g["tagline"], g["repo"]
-        fb_hook = (f"새로 만들기 시작한 앱, {name}" if angle == "new" else f"{name}, 왜 만들었냐면")
-        fb1 = g.get("why") or tagline
-        fb2 = subjects[-1] if subjects else ""
-        fb_points = [_cut(s, 22) for s in subjects[:3]]
-    points = [x for x in (data.get("points") or []) if isinstance(x, str) and x.strip()][:3]
-    caption = _str(data, "caption") or "\n".join(
-        [f"🛠 {fb_hook}", "", f"{name} — {tagline}", "", _cut(fb1, 200), "", "프로필 링크에서 만나 보세요.", "",
-         "#개발일지 #1인개발 #바이브코딩"])
-    threads = _str(data, "threads") or "\n".join([f"🛠 {fb_hook}", "", f"{name} — {tagline}", "", "#개발일지"])
-    return {
-        "angle": angle, "repo": repo, "name": name, "tagline": tagline,
-        "icon": g.get("icon") if g else None, "shot": g.get("shot") if g else None,
-        "count": g["count"] if g else total, "total": total, "span": span,
-        "section": sec[0], "labels": [sec[1], sec[2]],
-        "apps": [{"name": x["name"], "tagline": x["tagline"], "count": x["count"]} for x in busy],
-        "others": [x["name"] for x in groups if x is not g and x["app"] and not x["game"]][:4] if g else [],
-        "hook": _cut(_str(data, "hook") or fb_hook, 26),
-        "part1": _cut(_str(data, "part1") or fb1, 110),
-        "part2": _cut(_str(data, "part2") or fb2, 120),
-        "result": _cut(_str(data, "result"), 90),
-        "points": [_cut(x, 22) for x in points] or fb_points,
-        "caption": redact(caption)[:2000],
-        "threads": redact(threads)[:500],
-    }
+{_commit_block([g], 15) if g["count"] else ""}""") or {}
+        ep = {"line1": _cut(_str(data, "line1") or g["name"], 16),
+              "line2": _cut(_str(data, "line2") or g["tagline"], 28)}
+        fb = f"{g['name']} — {g['tagline']}" + (f"\n\n{g['why']}" if g.get("why") else "")
+    if g is not None:
+        ep.update(name=g["name"], tagline=g["tagline"], repo=g["repo"], icon=g.get("icon"), color=g.get("color"))
+    caption = _str(data, "caption") or f"{fb}\n\n프로필 링크에서 만나 보세요.\n\n#개발일지 #1인개발 #바이브코딩"
+    threads = _str(data, "threads") or f"{fb}\n\n#개발일지"
+    others = [x["name"] for x in groups if x is not g and x["app"] and not x["game"]][:4] if g else []
+    return {**ep, "angle": angle, "count": g["count"] if g else total, "total": total,
+            "span": f"{start.month}월 {start.day}일 ~ {end.month}월 {end.day}일", "others": others,
+            "caption": redact(caption)[:1000], "threads": redact(threads)[:400]}
 
 
 def window(now: datetime, days: int) -> tuple[datetime, datetime]:
