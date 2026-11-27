@@ -4,7 +4,7 @@
   07:00  오늘자 카드(PNG)·영상(MP4) 생성 → 미리보기 메일 발송(승인 링크)
   (08:00  Threads  — 이슈팝 카드 + TOP5 글 + 플레이스토어 링크: 기본으로 꺼짐)
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
-  12:10  Instagram 릴스 — 영상
+  08:00  Instagram 스토리 — 같은 카드 9:16  (12:10 릴스는 기본으로 꺼짐)
   20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
   21:00  Threads 게임 개발 일지(화면 위주: 게임 저장소 social/에 새 캡처가 있는 날만, 전→후 이미지 + 짧은 글)
          일요일엔 대신 앱 에피소드 한 장(새 앱=메모 / 앱 이야기=한 줄 임팩트 / 바이브 코딩=숫자) → 인스타 피드 + Threads
@@ -23,7 +23,8 @@ SOCIAL_MEDIA_DIR/<날짜>-<무작위>/ 에 저장하고 GET /social/media/<그 �
   SOCIAL_DRY_RUN=0            실제 API 호출(기본 1 = 호출하지 않고 로그만)
   SOCIAL_REQUIRE_APPROVAL=0   확인 없이 자동 게시(기본 1)
   SOCIAL_SIGNING_SECRET       승인 링크 서명 키(없으면 승인 불가 → 승인 필요 모드에선 아무것도 안 올라감)
-  SOCIAL_PREVIEW_MAIL_TO      미리보기 받을 주소(메일 계정은 FEEDBACK_SMTP_* 재사용)
+  SOCIAL_PREVIEW_MAIL_TO      미리보기 받을 주소
+  SOCIAL_SMTP_USER/PASSWORD   보내는 Gmail 주소·앱 비밀번호(없으면 FEEDBACK_SMTP_*). 호스트·포트는 FEEDBACK_SMTP_HOST/PORT, 기본 Gmail
   SOCIAL_PUBLIC_BASE          기본 https://api.issue-pop.com
   SOCIAL_MEDIA_DIR            기본 backend/data/social
   SOCIAL_TIMES                기본 DEFAULT_TIMES(아래) — 일부만 적으면 나머지는 기본값
@@ -370,11 +371,12 @@ def send_preview_email(state: dict) -> bool:
     import smtplib
     from email.message import EmailMessage
 
+    # 보내는 계정은 SNS 전용(SOCIAL_SMTP_*)을 먼저 씀 — 앱 피드백 메일(FEEDBACK_SMTP_*)을 같이 켜지 않게
     to = os.environ.get("SOCIAL_PREVIEW_MAIL_TO")
-    user = os.environ.get("FEEDBACK_SMTP_USER")
-    password = os.environ.get("FEEDBACK_SMTP_PASSWORD")
+    user = os.environ.get("SOCIAL_SMTP_USER") or os.environ.get("FEEDBACK_SMTP_USER")
+    password = os.environ.get("SOCIAL_SMTP_PASSWORD") or os.environ.get("FEEDBACK_SMTP_PASSWORD")
     if not to or not user or not password:
-        print("[social] 미리보기 메일 설정 없음(SOCIAL_PREVIEW_MAIL_TO / FEEDBACK_SMTP_*) — 건너뜀")
+        print("[social] 미리보기 메일 설정 없음(SOCIAL_PREVIEW_MAIL_TO / SOCIAL_SMTP_*) — 건너뜀")
         return False
     t = times()
     key = state.get("key", state["date"])
@@ -391,7 +393,7 @@ def send_preview_email(state: dict) -> bool:
         body, body_label = state["caption"], "인스타그램 캡션"
     msg = EmailMessage()
     msg["Subject"] = subject[:150]
-    msg["From"] = os.environ.get("FEEDBACK_MAIL_FROM") or user
+    msg["From"] = user
     msg["To"] = to
     mode = "확인 필요 — 승인해야 올라가요" if require_approval() else "자동 게시 모드 — 반려하면 안 올라가요"
     msg.set_content(

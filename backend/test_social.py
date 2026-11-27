@@ -408,6 +408,44 @@ assert r.status_code == 200 and "앱 에피소드" in r.text and "slide1.png" in
 assert client.get("/social/review/devlog-2026-11-29?sig=bad").status_code == 404
 assert client.get(f"/social/media/{w['dir']}/slide1.png").content == b"PNG1"
 
+# 미리보기 메일: SNS 전용 보내는 계정(SOCIAL_SMTP_*)으로, 받는 주소는 SOCIAL_PREVIEW_MAIL_TO, 확인 링크 포함
+import smtplib  # noqa: E402
+
+sent_mail = []
+
+
+class FakeSMTP:
+    def __init__(self, host, port, timeout=None):
+        self.host = host
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def starttls(self):
+        pass
+
+    def login(self, user, pw):
+        sent_mail.append(("login", user, pw))
+
+    def send_message(self, msg):
+        sent_mail.append(("msg", msg["From"], msg["To"], msg["Subject"], msg.get_content()))
+
+
+smtplib.SMTP, _real_smtp = FakeSMTP, smtplib.SMTP
+os.environ.update(SOCIAL_PREVIEW_MAIL_TO="threads@example.test", SOCIAL_SMTP_USER="sns@example.test",
+                  SOCIAL_SMTP_PASSWORD="app-pw", FEEDBACK_SMTP_USER="feedback@example.test")
+assert social.send_preview_email(social.load_state("devlog-2026-11-29")) is True
+assert sent_mail[0] == ("login", "sns@example.test", "app-pw")
+_, frm, to, subj, body = sent_mail[1]
+assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에피소드" in subj
+assert "/social/review/devlog-2026-11-29?sig=" in body
+smtplib.SMTP = _real_smtp
+for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_SMTP_USER", "SOCIAL_SMTP_PASSWORD", "FEEDBACK_SMTP_USER"):
+    os.environ.pop(k)
+
 # 생성 실패(GitHub 오류 등): 바로 다시 부르지 않고 15분 쉬고, 3번 실패하면 그날은 포기
 def boom(since, until):
     raise RuntimeError("github down")
