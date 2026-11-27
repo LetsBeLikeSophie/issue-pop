@@ -6,7 +6,7 @@
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   12:10  Instagram 릴스 — 영상
   20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
-  21:00  Threads 개발 일지(글만, 커밋 있는 날만) / 일요일엔 대신 주간 에피소드 → 인스타 캐러셀 + Threads
+  21:00  Threads 개발 일지(글만, 커밋 있는 날만) / 일요일엔 대신 주간 에피소드(앱 하나 집중) → 인스타 캐러셀 5장 + Threads
 승인이 필요한 동안(SOCIAL_REQUIRE_APPROVAL=1, 기본값)은 승인된 날만 게시한다(이슈팝·개발 일지 따로 승인). 게시 시각이 지난 뒤
 승인하면 다음 확인 주기(1분)에 바로 올라가되, 너무 늦으면(SOCIAL_LATE_LIMIT_MINUTES) 그 채널은 건너뛴다.
 
@@ -286,7 +286,12 @@ def generate_devlog(now: datetime | None = None) -> dict:
         state["empty"] = True
     elif weekly:
         ep = devlog.weekly_episode(groups, since, until)
-        slides = devlog_card.render_episode(ep)
+        # 그림: 앱 아이콘·대표 화면(스토어 스크린샷), 그 주 캡처(저장소 social/YYYY-MM-DD-*.png)가 있으면 그걸
+        images = {"icon": devlog.fetch_image(ep["repo"], ep.get("icon")),
+                  "shot": devlog.fetch_image(ep["repo"], ep.get("shot")),
+                  "capture": devlog.fetch_image(ep["repo"], devlog.week_capture(ep["repo"], since, until))}
+        ep["has"] = {k: v is not None for k, v in images.items()}
+        slides = devlog_card.render_episode(ep, images)
         for i, png in enumerate(slides, 1):
             (out / f"slide{i}.png").write_bytes(png)
         state.update(episode=ep, slides=len(slides), caption=ep["caption"], threads_text=ep["threads"],

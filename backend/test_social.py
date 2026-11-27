@@ -252,28 +252,50 @@ COMMITS = [{"repo": "Appjupjup", "sha": "a1", "date": "", "message": "홈: 티�
 groups = devlog.group_by_project(COMMITS)
 assert [(g["name"], g["count"]) for g in groups] == [("앱줍줍", 2), ("이슈팝", 1)]
 
-# Claude 키가 없으면 커밋 제목으로 기본 글
+# Claude 키가 없으면 커밋 제목으로 기본 글 — 앱마다 한 줄 소개가 같이 나감(처음 보는 사람도 무슨 앱인지)
 text = devlog.daily_post(groups, at(20, 0))
-assert "앱줍줍" in text and "#개발일지" in text and len(text) <= 500
+assert "앱줍줍 (내 앱 올리고" in text and "#개발일지" in text and len(text) <= 500
+
+# 주간 에피소드: 앱 하나(커밋 가장 많은 앱, 사이트는 주인공에서 빼기)
+site = devlog.group_by_project(COMMITS + [{"repo": "portfolio", "sha": "p", "date": "", "message": "x"}] * 5)
+assert site[0]["name"] == "포트폴리오 사이트" and devlog.pick_focus(site)["name"] == "앱줍줍"
 ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
-assert ep["total"] == 3 and [p["name"] for p in ep["projects"]] == ["앱줍줍", "이슈팝"] and ep["caption"]
+assert ep["name"] == "앱줍줍" and ep["count"] == 2 and ep["tagline"] and ep["others"] == ["이슈팝"]
+assert ep["hook"] and ep["change"] and ep["points"] and "프로필 링크" in ep["caption"]
+assert devlog.weekly_episode([], at(20, 0, day=22), at(20, 0, day=29)) is None
 
 # Claude 답(JSON)이 오면 그걸 쓰되, 길이 자르고 민감한 건 가림
-devlog._ask = lambda prompt: {"title": "티켓 하나로 정리한 한 주", "intro": "소개",
-                              "projects": [{"repo": "앱줍줍", "headline": "티켓으로 정리", "story": "문제→해결",
-                                            "points": ["하나", "둘"]}],
+devlog._ask = lambda prompt: {"hook": "보상이 어디 있는지 아무도 몰랐다", "problem": "흩어져 있었어요",
+                              "change": "티켓 하나로", "result": "한눈에", "points": ["하나", "둘"],
                               "caption": "캡션 me@x.com", "threads": "스레드 글"}
 ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
-assert ep["title"] == "티켓 하나로 정리한 한 주" and ep["projects"][0]["headline"] == "티켓으로 정리"
-assert ep["projects"][1]["headline"] == "SNS 자동 게시"  # Claude가 빠뜨린 프로젝트는 커밋 제목으로
+assert ep["hook"] == "보상이 어디 있는지 아무도 몰랐다" and ep["points"] == ["하나", "둘"]
 assert "me@x.com" not in ep["caption"] and ep["threads"] == "스레드 글"
+
+# 그림: 저장소 social/ 폴더에서 그 주 날짜 캡처만, 없거나 깨진 그림은 None(에피소드는 그림 없이도 만들어짐)
+devlog._get = lambda url, params=None: [
+    {"name": "2026-11-20-old.png", "type": "file", "path": "social/2026-11-20-old.png"},
+    {"name": "2026-11-25-ticket.png", "type": "file", "path": "social/2026-11-25-ticket.png"},
+    {"name": "2026-11-27-home.jpg", "type": "file", "path": "social/2026-11-27-home.jpg"},
+    {"name": "notes.md", "type": "file", "path": "social/notes.md"}]
+assert devlog.week_capture("Appjupjup", at(20, 0, day=22), at(20, 0, day=29)) == "social/2026-11-27-home.jpg"
+assert devlog.week_capture("Appjupjup", at(20, 0, day=28), at(20, 0, day=29)) is None
+assert devlog.fetch_image("x", None) is None
+pngs = devlog_card.render_episode(ep, {})  # 실제 렌더(그림 없이) — 5장
+assert len(pngs) == 5 and all(p[:8] == b"\x89PNG\r\n\x1a\n" for p in pngs)
+from PIL import Image  # noqa: E402
+
+pic = Image.new("RGB", (300, 600), (10, 20, 30))
+assert len(devlog_card.render_episode(ep, {"icon": pic, "shot": pic, "capture": pic})) == 5
 
 # 루프: 20:00 생성(목요일=한 줄 일지) → 승인 → 21:00 Threads(글만)
 os.environ["SOCIAL_DEVLOG"] = "1"
 os.environ["SOCIAL_TIMES"] = ""  # 기본 일정
 fetched = []
 devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or COMMITS
-devlog_card.render_episode = lambda ep: [b"PNG1", b"PNG2", b"PNG3"]
+rendered = []
+devlog_card.render_episode = lambda ep, images=None: rendered.append((ep, images)) or [b"PNG1", b"PNG2", b"PNG3"]
+devlog.fetch_image = lambda repo, path: f"IMG:{repo}:{path}" if path else None
 assert at(20, 0).weekday() == 3
 assert "devlog_generate" not in social.tick(get_issues, at(19, 59))
 assert "devlog_generate" in social.tick(get_issues, at(20, 0))
@@ -298,6 +320,9 @@ devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or CO
 social.tick(get_issues, at(20, 0, day=29))
 w = social.load_state("devlog-2026-11-29")
 assert w["weekly"] and w["slides"] == 3 and set(w["posts"]) == {"episode_ig", "episode_threads"}
+ep_r, imgs = rendered[-1]
+assert ep_r["name"] == "앱줍줍" and imgs["capture"] == "IMG:Appjupjup:social/2026-11-27-home.jpg"
+assert imgs["icon"] is None and w["episode"]["has"]["capture"] is True
 assert fetched[-1][1] - fetched[-1][0] == social.timedelta(days=7)
 assert social.media_file(w["dir"], "slide2.png") is not None and social.media_file(w["dir"], "slide11.png") is None
 social.decide("devlog-2026-11-29", True)
