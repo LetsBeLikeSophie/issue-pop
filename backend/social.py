@@ -6,7 +6,8 @@
   08:00  Instagram 피드 — 카드(캡션 링크는 눌리지 않아서 "프로필 링크"로 안내)
   12:10  Instagram 릴스 — 영상
   20:00  개발 일지 생성(devlog.py: 공개 저장소 커밋) → 미리보기 메일
-  21:00  Threads 개발 일지(글만, 커밋 있는 날만) / 일요일엔 대신 주간 에피소드(앱 하나 집중) → 인스타 캐러셀 5장 + Threads
+  21:00  Threads 게임 개발 일지(글만, 게임 커밋 있는 날만)
+         일요일엔 대신 앱 에피소드(새 앱 / 앱 이야기 / 바이브 코딩 기록 중 하나) → 인스타 캐러셀 5장 + Threads
 승인이 필요한 동안(SOCIAL_REQUIRE_APPROVAL=1, 기본값)은 승인된 날만 게시한다(이슈팝·개발 일지 따로 승인). 게시 시각이 지난 뒤
 승인하면 다음 확인 주기(1분)에 바로 올라가되, 너무 늦으면(SOCIAL_LATE_LIMIT_MINUTES) 그 채널은 건너뛴다.
 
@@ -54,12 +55,12 @@ import requests
 
 KST = ZoneInfo("Asia/Seoul")
 ISSUEPOP_CHANNELS = ("threads", "ig_feed", "ig_story", "ig_reel")
-DEVLOG_CHANNELS = ("devlog_threads",)                  # 매일(커밋 있는 날만) Threads 한 줄 일지
+DEVLOG_CHANNELS = ("devlog_threads",)                  # 매일(게임 커밋 있는 날만) Threads 게임 개발 일지
 EPISODE_CHANNELS = ("episode_ig", "episode_threads")   # 주 1회 "이번 주 만든 것"
 CHANNELS = ISSUEPOP_CHANNELS + DEVLOG_CHANNELS + EPISODE_CHANNELS
 CHANNEL_LABELS = {"threads": "Threads", "ig_feed": "Instagram 피드", "ig_story": "Instagram 스토리",
                   "ig_reel": "Instagram 릴스",
-                  "devlog_threads": "Threads 개발 일지", "episode_ig": "Instagram 캐러셀(주간 에피소드)",
+                  "devlog_threads": "Threads 게임 개발 일지", "episode_ig": "Instagram 캐러셀(주간 에피소드)",
                   "episode_threads": "Threads 주간 에피소드"}
 PLAY_URL = "https://play.google.com/store/apps/details?id=com.issuepop.issue_pop"
 # 릴스는 기본으로 끔(2026-11-27: 이슈팝은 매일 뉴스 남기듯 피드 + 스토리가 맞다고 정함). SOCIAL_CHANNELS로 다시 켤 수 있음
@@ -266,9 +267,26 @@ def _new_post() -> dict:
     return {"status": "pending", "attempts": 0, "id": None, "error": None}
 
 
+def episode_history(now: datetime, days: int = 60) -> list[dict]:
+    """최근 에피소드들 [{date, angle, repo}] (최근 것이 앞) — 같은 소재·같은 앱이 연달아 나오지 않게."""
+    root = media_root()
+    out = []
+    if not root.exists():
+        return out
+    cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d")
+    for p in sorted(root.glob("devlog-*"), reverse=True):
+        if not (DIR_RE.match(p.name) and (p / "state.json").exists()):
+            continue
+        st = json.loads((p / "state.json").read_text(encoding="utf-8"))
+        ep = st.get("episode")
+        if ep and cutoff <= st["date"] < now.strftime("%Y-%m-%d") and st.get("approved") is not False:
+            out.append({"date": st["date"], "angle": ep.get("angle"), "repo": ep.get("repo")})
+    return out
+
+
 def generate_devlog(now: datetime | None = None) -> dict:
-    """개발 일지: 에피소드 요일이면 지난 7일 → 캐러셀+글, 아니면 지난 24시간 → Threads 한 줄 일지.
-    커밋이 없으면 empty 상태만 남기고 아무것도 안 올림."""
+    """개발 일지: 에피소드 요일이면 지난 7일 → 앱 에피소드(캐러셀+글), 아니면 지난 24시간 → Threads 게임 개발 일지.
+    올릴 게 없으면(게임 커밋 없음 등) empty 상태만 남기고 아무것도 안 올림."""
     import devlog
     import devlog_card
 
@@ -288,14 +306,17 @@ def generate_devlog(now: datetime | None = None) -> dict:
     state = {"kind": "devlog", "key": key, "date": date, "dir": dirname, "generated_at": now.isoformat(),
              "weekly": weekly, "approved": None, "decided_at": None, "preview_sent": False,
              "projects": [{"name": g["name"], "count": g["count"]} for g in groups], "posts": {}}
-    if not groups:
+    ep = devlog.weekly_episode(groups, since, until, episode_history(now)) if weekly else None
+    game_text = None if weekly else devlog.game_post(groups, now)
+    if weekly and ep is None or not weekly and game_text is None:
         state["empty"] = True
     elif weekly:
-        ep = devlog.weekly_episode(groups, since, until)
-        # 그림: 앱 아이콘·대표 화면(스토어 스크린샷), 그 주 캡처(저장소 social/YYYY-MM-DD-*.png)가 있으면 그걸
-        images = {"icon": devlog.fetch_image(ep["repo"], ep.get("icon")),
-                  "shot": devlog.fetch_image(ep["repo"], ep.get("shot")),
-                  "capture": devlog.fetch_image(ep["repo"], devlog.week_capture(ep["repo"], since, until))}
+        # 그림: 앱 아이콘·대표 화면(스토어 스크린샷), 그 주 캡처(저장소 social/YYYY-MM-DD-*.png)가 있으면 그걸.
+        # 바이브 코딩 기록은 앱 하나가 아니라서 그림 없음
+        repo = ep["repo"]
+        images = {"icon": devlog.fetch_image(repo, ep.get("icon")) if repo else None,
+                  "shot": devlog.fetch_image(repo, ep.get("shot")) if repo else None,
+                  "capture": devlog.fetch_image(repo, devlog.week_capture(repo, since, until)) if repo else None}
         ep["has"] = {k: v is not None for k, v in images.items()}
         slides = devlog_card.render_episode(ep, images)
         for i, png in enumerate(slides, 1):
@@ -303,7 +324,7 @@ def generate_devlog(now: datetime | None = None) -> dict:
         state.update(episode=ep, slides=len(slides), caption=ep["caption"], threads_text=ep["threads"],
                      posts={c: _new_post() for c in EPISODE_CHANNELS})
     else:
-        state.update(devlog_text=devlog.daily_post(groups, now), posts={c: _new_post() for c in DEVLOG_CHANNELS})
+        state.update(devlog_text=game_text, posts={c: _new_post() for c in DEVLOG_CHANNELS})
     with _lock:
         _save_state(state)
     return state
@@ -339,7 +360,7 @@ def send_preview_email(state: dict) -> bool:
     sched = ", ".join(f"{CHANNEL_LABELS[c]} {t[c][0]:02d}:{t[c][1]:02d}" for c in channels() if c in state["posts"])
     if state.get("kind") == "devlog":
         names = " · ".join(p["name"] for p in state.get("projects", []))
-        what = "주간 에피소드" if state.get("weekly") else "개발 일지"
+        what = "앱 에피소드" if state.get("weekly") else "게임 개발 일지"
         subject = f"[소피앱스 SNS] {state['date']} {what} 확인 — {names}"
         body = state.get("caption") or state.get("devlog_text") or ""
         body_label = "인스타그램 캡션" if state.get("caption") else "Threads 글"
@@ -410,7 +431,7 @@ def review_html(state: dict, sig: str) -> str:
         )
     base = f"/social/media/{state['dir']}"
     devlog = state.get("kind") == "devlog"
-    title = ("주간 에피소드" if state.get("weekly") else "개발 일지") if devlog else "이슈팝 SNS"
+    title = ("앱 에피소드" if state.get("weekly") else "게임 개발 일지") if devlog else "이슈팝 SNS"
     media = ""
     if not devlog:
         media = (f'<h3>카드 (Threads · Instagram 피드)</h3><img src="{base}/card.png" alt="카드">'
@@ -423,7 +444,7 @@ def review_html(state: dict, sig: str) -> str:
         media = "<h3>캐러셀 (1장은 Threads에도)</h3>" + media
     texts = ""
     for field, label in (("caption", "Instagram 캡션"), ("threads_text", "Threads 글"),
-                         ("devlog_text", "Threads 개발 일지")):
+                         ("devlog_text", "Threads 게임 개발 일지")):
         if state.get(field):
             texts += f"<h3>{label}</h3><pre>{escape(state[field])}</pre>"
     if state.get("empty"):

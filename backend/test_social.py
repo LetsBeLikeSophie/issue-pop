@@ -260,7 +260,7 @@ assert client.post(f"/social/review/2026-11-25?sig=bad&action=approve").status_c
 r = client.post(f"/social/review/2026-11-25?sig={sig25}&action=approve", follow_redirects=False)
 assert r.status_code == 303 and social.load_state("2026-11-25")["approved"] is True
 
-# 14) 개발 일지(만드는 과정 공개): GitHub 커밋 → 한 줄 일지 / 주간 에피소드
+# 14) 만드는 과정 공개: GitHub 커밋 → Threads 게임 개발 일지 / 주간 앱 에피소드
 import devlog  # noqa: E402
 import devlog_card  # noqa: E402
 
@@ -271,30 +271,56 @@ assert "sk-ant" not in red and "me@x.com" not in red and "203.0.113" not in red 
 assert "EAAQ" not in red and "a" * 40 not in red
 assert devlog._clean_message("고침\n\nCo-Authored-By: Claude <noreply@anthropic.com>") == "고침"
 
-COMMITS = [{"repo": "Appjupjup", "sha": "a1", "date": "", "message": "홈: 티켓 칩 하나로"},
-           {"repo": "Appjupjup", "sha": "a2", "date": "", "message": "캡처는 하루 1장씩"},
-           {"repo": "issue-pop", "sha": "b1", "date": "", "message": "SNS 자동 게시"}]
+def c(repo, msg, created="2026-10-01T00:00:00Z", date="2026-11-26T10:00:00Z"):
+    return {"repo": repo, "sha": "x", "date": date, "created": created, "message": msg}
+
+
+COMMITS = [c("Appjupjup", "홈: 티켓 칩 하나로"), c("Appjupjup", "캡처는 하루 1장씩"),
+           c("issue-pop", "SNS 자동 게시"), c("SubwayRush", "환승역 맵 추가")]
 groups = devlog.group_by_project(COMMITS)
-assert [(g["name"], g["count"]) for g in groups] == [("앱줍줍", 2), ("이슈팝", 1)]
+assert [(g["name"], g["count"]) for g in groups] == [("앱줍줍", 2), ("이슈팝", 1), ("지옥철", 1)]
+assert [g["game"] for g in groups] == [False, False, True]
+os.environ["SOCIAL_GAME_REPOS"] = "Durango-Like"  # 새 게임 저장소는 환경변수로 바로 추가
+assert devlog.app_info("durango-like")["game"] is True
+os.environ.pop("SOCIAL_GAME_REPOS")
 
-# Claude 키가 없으면 커밋 제목으로 기본 글 — 앱마다 한 줄 소개가 같이 나감(처음 보는 사람도 무슨 앱인지)
-text = devlog.daily_post(groups, at(20, 0))
-assert "앱줍줍 (내 앱 올리고" in text and "#개발일지" in text and len(text) <= 500
+# 게임 개발 일지(Threads): 게임 커밋만, 없으면 None. Claude 키가 없으면 커밋 제목으로 기본 글
+text = devlog.game_post(groups, at(20, 0))
+assert text.startswith("🎮 게임 개발 일지") and "지옥철 (출근길" in text and "앱줍줍" not in text
+assert "#게임개발" in text and len(text) <= 500
+assert devlog.game_post(groups[:2], at(20, 0)) is None
 
-# 주간 에피소드: 앱 하나(커밋 가장 많은 앱, 사이트는 주인공에서 빼기)
-site = devlog.group_by_project(COMMITS + [{"repo": "portfolio", "sha": "p", "date": "", "message": "x"}] * 5)
-assert site[0]["name"] == "포트폴리오 사이트" and devlog.pick_focus(site)["name"] == "앱줍줍"
-ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
-assert ep["name"] == "앱줍줍" and ep["count"] == 2 and ep["tagline"] and ep["others"] == ["이슈팝"]
-assert ep["hook"] and ep["change"] and ep["points"] and "프로필 링크" in ep["caption"]
-assert devlog.weekly_episode([], at(20, 0, day=22), at(20, 0, day=29)) is None
+# 에피소드 소재 고르기
+start = at(20, 0, day=22)
+assert devlog.choose_angle(groups, start, [])[0] == "story"
+assert devlog.choose_angle(groups, start, [])[1]["name"] == "앱줍줍"  # 만든 이유가 적힌 앱 우선
+new_app = devlog.group_by_project(COMMITS + [c("cortex", "첫 화면", created="2026-11-24T00:00:00Z")])
+assert devlog.choose_angle(new_app, start, []) == ("new", next(g for g in new_app if g["repo"] == "cortex"))
+many = devlog.group_by_project(COMMITS * 6)  # 커밋 24개
+assert devlog.choose_angle(many, start, [{"angle": "story", "repo": "Appjupjup"}])[0] == "vibe"
+assert devlog.choose_angle(many, start, [{"angle": "vibe", "repo": ""}])[0] == "story"
+# 최근에 다룬 앱은 뒤로 — 이번 주 커밋이 없어도 만든 이유가 적힌 앱이면 이야기할 수 있음
+only_ip = devlog.group_by_project([c("issue-pop", "고침")])
+ang, g = devlog.choose_angle(only_ip, start, [])
+assert ang == "story" and g["name"] == "앱줍줍" and g["count"] == 0
+ang, g = devlog.choose_angle(only_ip, start, [{"angle": "story", "repo": "appjupjup"}])
+assert ang == "story" and g["name"] == "이슈팝"
+assert devlog.choose_angle([], start, [])[0] == "story"  # 커밋이 하나도 없어도 앱 이야기는 가능
+
+# 에피소드 글: Claude 없이(기본 글)
+ep = devlog.weekly_episode(groups, start, at(20, 0, day=29))
+assert ep["angle"] == "story" and ep["name"] == "앱줍줍" and ep["labels"] == ["만든 이유", "이번 주엔"]
+assert "목적" in ep["part1"] and ep["others"] == ["이슈팝"] and "프로필 링크" in ep["caption"]
+vibe = devlog.weekly_episode(many, start, at(20, 0, day=29), [{"angle": "story", "repo": "appjupjup"}])
+assert vibe["angle"] == "vibe" and vibe["repo"] == "" and vibe["count"] == 24 and len(vibe["apps"]) == 3
+assert "24" in vibe["hook"]
 
 # Claude 답(JSON)이 오면 그걸 쓰되, 길이 자르고 민감한 건 가림
-devlog._ask = lambda prompt: {"hook": "보상이 어디 있는지 아무도 몰랐다", "problem": "흩어져 있었어요",
-                              "change": "티켓 하나로", "result": "한눈에", "points": ["하나", "둘"],
+devlog._ask = lambda prompt: {"hook": "홍보 사이트는 많은데 왜 또?", "part1": "목적이 달라서", "part2": "티켓으로",
+                              "result": "한눈에", "points": ["하나", "둘"],
                               "caption": "캡션 me@x.com", "threads": "스레드 글"}
-ep = devlog.weekly_episode(groups, at(20, 0, day=22), at(20, 0, day=29))
-assert ep["hook"] == "보상이 어디 있는지 아무도 몰랐다" and ep["points"] == ["하나", "둘"]
+ep = devlog.weekly_episode(groups, start, at(20, 0, day=29))
+assert ep["hook"] == "홍보 사이트는 많은데 왜 또?" and ep["points"] == ["하나", "둘"]
 assert "me@x.com" not in ep["caption"] and ep["threads"] == "스레드 글"
 
 # 그림: 저장소 social/ 폴더에서 그 주 날짜 캡처만, 없거나 깨진 그림은 None(에피소드는 그림 없이도 만들어짐)
@@ -303,17 +329,18 @@ devlog._get = lambda url, params=None: [
     {"name": "2026-11-25-ticket.png", "type": "file", "path": "social/2026-11-25-ticket.png"},
     {"name": "2026-11-27-home.jpg", "type": "file", "path": "social/2026-11-27-home.jpg"},
     {"name": "notes.md", "type": "file", "path": "social/notes.md"}]
-assert devlog.week_capture("Appjupjup", at(20, 0, day=22), at(20, 0, day=29)) == "social/2026-11-27-home.jpg"
+assert devlog.week_capture("Appjupjup", start, at(20, 0, day=29)) == "social/2026-11-27-home.jpg"
 assert devlog.week_capture("Appjupjup", at(20, 0, day=28), at(20, 0, day=29)) is None
 assert devlog.fetch_image("x", None) is None
-pngs = devlog_card.render_episode(ep, {})  # 실제 렌더(그림 없이) — 5장
-assert len(pngs) == 5 and all(p[:8] == b"\x89PNG\r\n\x1a\n" for p in pngs)
 from PIL import Image  # noqa: E402
 
 pic = Image.new("RGB", (300, 600), (10, 20, 30))
-assert len(devlog_card.render_episode(ep, {"icon": pic, "shot": pic, "capture": pic})) == 5
+for e_ in (ep, vibe, {**ep, "angle": "new", "labels": ["왜 만드나요", "지금은 여기까지"], "count": 0}):
+    for imgs in ({}, {"icon": pic, "shot": pic, "capture": pic}):
+        pngs = devlog_card.render_episode(e_, imgs)  # 실제 렌더 — 5장
+        assert len(pngs) == 5 and all(p[:8] == b"\x89PNG\r\n\x1a\n" for p in pngs)
 
-# 루프: 20:00 생성(목요일=한 줄 일지) → 승인 → 21:00 Threads(글만)
+# 루프: 20:00 생성(목요일=게임 개발 일지) → 승인 → 21:00 Threads(글만)
 os.environ["SOCIAL_DEVLOG"] = "1"
 os.environ.pop("SOCIAL_CHANNELS", None)  # 기본 채널(개발 일지 포함)
 os.environ["SOCIAL_TIMES"] = ""  # 기본 일정
@@ -322,42 +349,46 @@ devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or CO
 rendered = []
 devlog_card.render_episode = lambda ep, images=None: rendered.append((ep, images)) or [b"PNG1", b"PNG2", b"PNG3"]
 devlog.fetch_image = lambda repo, path: f"IMG:{repo}:{path}" if path else None
+devlog._ask = lambda prompt: None
 assert at(20, 0).weekday() == 3
 assert "devlog_generate" not in social.tick(get_issues, at(19, 59))
 assert "devlog_generate" in social.tick(get_issues, at(20, 0))
 dl = social.load_state("devlog-2026-11-26")
-assert dl["devlog_text"] and list(dl["posts"]) == ["devlog_threads"] and dl["weekly"] is False
+assert "지옥철" in dl["devlog_text"] and list(dl["posts"]) == ["devlog_threads"] and dl["weekly"] is False
 assert fetched[-1][1] - fetched[-1][0] == social.timedelta(days=1)
 assert social.load_state("2026-11-26")["kind"] == "issuepop"  # 같은 날 이슈팝 상태와 섞이지 않음
 assert social.tick(get_issues, at(21, 0)) == []  # 승인 전
 social.decide("devlog-2026-11-26", True)
 assert social.tick(get_issues, at(21, 0)) == ["devlog_threads"]
 
-# 커밋 없는 날: 아무것도 안 올림, 메일도 안 보냄
-devlog.fetch_commits = lambda since, until: []
+# 게임 커밋 없는 날: 앱 커밋만 있어도 Threads 게임 일지는 안 올림, 메일도 안 보냄
+devlog.fetch_commits = lambda since, until: COMMITS[:3]
 social.tick(get_issues, at(20, 0, day=27))
 e = social.load_state("devlog-2026-11-27")
 assert e["empty"] is True and e["posts"] == {} and e["preview_sent"] is True
 social.decide("devlog-2026-11-27", True)
 assert social.tick(get_issues, at(21, 0, day=27)) == []
 
-# 일요일: 지난 7일 → 캐러셀(표지+프로젝트) + Threads(표지)
+# 일요일: 지난 7일 → 앱 에피소드 캐러셀 + Threads(1장)
 devlog.fetch_commits = lambda since, until: fetched.append((since, until)) or COMMITS
 social.tick(get_issues, at(20, 0, day=29))
 w = social.load_state("devlog-2026-11-29")
 assert w["weekly"] and w["slides"] == 3 and set(w["posts"]) == {"episode_ig", "episode_threads"}
 ep_r, imgs = rendered[-1]
-assert ep_r["name"] == "앱줍줍" and imgs["capture"] == "IMG:Appjupjup:social/2026-11-27-home.jpg"
-assert imgs["icon"] is None and w["episode"]["has"]["capture"] is True
+assert ep_r["angle"] == "story" and ep_r["name"] == "앱줍줍"
+assert imgs["capture"] == "IMG:Appjupjup:social/2026-11-27-home.jpg" and imgs["icon"] is None
+assert w["episode"]["has"]["capture"] is True
 assert fetched[-1][1] - fetched[-1][0] == social.timedelta(days=7)
 assert social.media_file(w["dir"], "slide2.png") is not None and social.media_file(w["dir"], "slide11.png") is None
 social.decide("devlog-2026-11-29", True)
 assert sorted(social.tick(get_issues, at(21, 0, day=29))) == ["episode_ig", "episode_threads"]
+# 다음 에피소드는 기록을 보고 같은 앱·같은 소재를 피함
+assert social.episode_history(at(20, 0, day=30)) == [{"date": "2026-11-29", "angle": "story", "repo": "Appjupjup"}]
 
 # 확인 페이지(개발 일지 key도 서명 필요)
 sigw = social.sign("devlog-2026-11-29")
 r = client.get(f"/social/review/devlog-2026-11-29?sig={sigw}")
-assert r.status_code == 200 and "주간 에피소드" in r.text and "slide3.png" in r.text
+assert r.status_code == 200 and "앱 에피소드" in r.text and "slide3.png" in r.text
 assert client.get("/social/review/devlog-2026-11-29?sig=bad").status_code == 404
 assert client.get(f"/social/media/{w['dir']}/slide1.png").content == b"PNG1"
 

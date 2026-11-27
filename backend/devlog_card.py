@@ -1,6 +1,8 @@
 """주간 개발 에피소드 캐러셀(1080x1350, 4:5) — 앱 하나 집중, 소피앱스 브랜드 톤.
 
-1 훅 → 2 이 앱은요(소개 + 대표 화면) → 3 이번 주 바꾼 것(캡처가 있으면 같이) → 4 그래서 → 5 써 보기.
+1 훅 → 2 이 앱은요(소개 + 대표 화면) → 3 이야기(소재에 따라 제목·칸 이름이 다름, 캡처가 있으면 같이)
+→ 4 그래서 → 5 써 보기. 소재(ep["angle"]): story(앱 이야기) / new(새로 시작한 앱) / vibe(바이브 코딩 기록 —
+2장은 이번 주 만진 앱 목록, 5장은 소피앱스 전체).
 크림 종이 배경 + 굵은 잉크 외곽선 + 스티커 그림자(오프셋 그림자, 그라데이션 없음) + 라벤더/볼터치 포인트.
 로고는 assets/brand의 원본 PNG를 그대로 씀(다시 그리지 않음).
 한글 제목은 브랜드 글꼴 Jua(SOCIAL_FONT_DIR에 Jua-Regular.ttf가 있으면), 없으면 Noto Sans CJK Black.
@@ -167,8 +169,31 @@ def slide_hook(ep: dict, icon) -> bytes:
     return _png(img)
 
 
+def slide_apps(ep: dict) -> bytes:
+    """바이브 코딩 기록의 2장: 이번 주 만진 앱들(이름 + 한 줄 소개 + 커밋 수)."""
+    img, d = _base(2, "이번 주 만진 것들")
+    y = 280
+    fn, ft = _font("Bold", 44), _font("Regular", 34)
+    for a in ep["apps"][:4]:
+        lines = _wrap(d, a["tagline"], ft, W - 2 * X0 - 100 - SHADOW, 2)
+        box = (X0, y, W - X0 - SHADOW, y + 96 + len(lines) * 48)
+        _sticker(d, box, WHITE, radius=24)
+        d.text((X0 + 40, y + 26), _plain(a["name"]), font=fn, fill=INK)
+        cnt = f"커밋 {a['count']}번"
+        fc = _font("Bold", 32)
+        d.text((box[2] - 40 - d.textlength(cnt, font=fc), y + 34), cnt, font=fc, fill=LAVENDER_INK)
+        for i, ln in enumerate(lines):
+            d.text((X0 + 40, y + 86 + i * 48), ln, font=ft, fill=SOFT)
+        y = box[3] + 34
+        if y > H - 260:
+            break
+    return _png(img)
+
+
 def slide_about(ep: dict, icon, shot) -> bytes:
-    img, d = _base(2, "이 앱은요")
+    if ep.get("angle") == "vibe":
+        return slide_apps(ep)
+    img, d = _base(2, "새로 만드는 앱" if ep.get("angle") == "new" else "이 앱은요")
     x = X0
     if icon is not None:
         _picture(img, d, icon, (X0, 270, X0 + 110, 380), radius=26)
@@ -202,14 +227,16 @@ def _points(d, y, points) -> int:
 
 
 def slide_change(ep: dict, capture) -> bytes:
-    """바꾼 점 목록(points)은 4장에서 보여 주니 여기선 이야기와 (있으면) 캡처만."""
-    img, d = _base(3, "이번 주 바꾼 것")
+    """이야기 두 칸(소재마다 이름이 다름). 핵심 목록(points)은 4장에서 보여 주니 여기선 이야기와 (있으면) 캡처만."""
+    img, d = _base(3, ep.get("section") or "이번 주 바꾼 것")
     shot = capture is not None
     f = _font("Medium", 42 if shot else 48)
+    labels = ep.get("labels") or ["불편했던 점", "그래서"]
     y = 290
-    if ep.get("problem"):
-        y = _labeled(d, y, "불편했던 점", CHEEK, ep["problem"], f, 2 if shot else 4) + (0 if shot else 30)
-    y = _labeled(d, y, "그래서", LAVENDER, ep["change"], f, 2 if shot else 5)
+    if ep.get("part1"):
+        y = _labeled(d, y, labels[0], CHEEK, ep["part1"], f, 2 if shot else 4) + (0 if shot else 30)
+    if ep.get("part2"):
+        y = _labeled(d, y, labels[1], LAVENDER, ep["part2"], f, 2 if shot else 5)
     if shot:
         _picture(img, d, capture, (X0 + 40, y + 20, W - X0 - 40 - SHADOW, H - 150))
     else:
@@ -230,16 +257,21 @@ def slide_result(ep: dict) -> bytes:
             d.text((X0 + 50, y + 36 + i * 64), ln, font=fs, fill=INK)
         y = box[3] + 70
     y = _points(d, y, ep["points"])
-    fn = _title_font(84)
-    num = str(ep["count"])
     yy = max(y + 40, H - 330)
-    d.text((X0, yy), num, font=fn, fill=LAVENDER_INK)
-    d.text((X0 + d.textlength(num, font=fn) + 8, yy + 34), "번 고친 한 주", font=_font("Bold", 42), fill=INK)
+    if ep.get("count"):
+        fn = _title_font(84)
+        num = str(ep["count"])
+        unit = "번 커밋한 한 주" if ep.get("angle") == "vibe" else "번 고친 한 주"
+        d.text((X0, yy), num, font=fn, fill=LAVENDER_INK)
+        d.text((X0 + d.textlength(num, font=fn) + 8, yy + 34), unit, font=_font("Bold", 42), fill=INK)
     _sparkle(d, W - 120, yy + 40, 26, CHEEK)
     return _png(img)
 
 
 def slide_try(ep: dict, icon) -> bytes:
+    if ep.get("angle") == "vibe":  # 앱 하나가 아니라 소피앱스 전체로
+        ep = {**ep, "name": "소피앱스", "tagline": "혼자 바이브 코딩으로 만드는 작은 앱과 게임들", "others": []}
+        icon = None
     img, d = _base(5, "")
     if icon is not None:
         _picture(img, d, icon, ((W - 260) // 2, 230, (W + 260) // 2, 490), radius=56)
