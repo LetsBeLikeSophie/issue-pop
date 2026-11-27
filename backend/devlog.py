@@ -218,6 +218,7 @@ _RULES = """규칙:
 THREADS_TONE = """Threads 글 말투(소피가 직접 쓰는 것처럼):
 - 반말, 친구한테 말하듯. 줄 짧게 끊어서 2~4줄.
 - 귀여운 소리 나는 맞춤법 살짝: "만들구 이쏘", "귀차나서", "~했지렁", "~자너", "딱조은", "마니".
+- 글자 하나를 자음·모음으로 쪼개 쓰기(한 글에 한 번쯤): "ㄴ ㅏ를 위한", "창업하시ㄱ ㅓ든", "했ㅈ ㅣ렁".
 - 자기 디스 농담 가끔: 토큰 녹이는 중💸, 휴먼이 병목, 반나절 걸려 겨우 이만큼.
 - 끝은 팔로워한테 가볍게 묻거나 부탁: "다들 어떤 거 해?", "어때 보여?", "잘 부탁해".
 - 이모지는 👾 💜 를 꼭 섞고, 필요하면 💸 💦 🔥 조금. 해시태그는 맨 끝 하나만.
@@ -283,7 +284,7 @@ def game_visual(groups: list[dict], since: datetime, until: datetime, now: datet
 형식: {{"text": "..."}}
 
 {_commit_block([g], 15)}""") or {}
-        text = _str(data, "text") or f"{g['name']} 오늘 화면 바뀌었지렁👾\n전 → 후 어때 보여?💜\n#게임개발"
+        text = _str(data, "text") or f"{g['name']} 오늘 화면 바뀌었ㅈ ㅣ렁👾\n전 → 후 어때 보여?💜\n#게임개발"
         return {"repo": g["repo"], "name": g["name"], "tagline": g["tagline"], "color": g.get("color"),
                 "before": before, "after": after[1], "text": redact(text)[:300]}
     return None
@@ -341,7 +342,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
               "line2": _cut(_str(data, "line2") or "굴리면 생기는 일", 14),
               "apps": [{"name": x["name"], "count": x["count"]} for x in busy]}
         fb = f"이번 주 커밋 {total}번 · 프로젝트 {n_projects}개\n\n" + " / ".join(f"{x['name']} {x['count']}번" for x in busy)
-        th = (f"이번 주 커밋 {total}번 찍음👾\n앱 {n_projects}개 동시에 굴리는 중… 토큰 녹는 소리💸\n"
+        th = (f"이번 주 커밋 {total}번 찍음👾\nㄴ ㅏ 앱 {n_projects}개 동시에 굴리는 중… 토큰 녹는 소리💸\n"
               f"다들 이번 주 뭐 만들었어?💜")
     elif angle == "new":
         why = f'\n만든 이유: "{g["why"]}"' if g.get("why") else ""
@@ -358,7 +359,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
         ep = {"lines": lines or [f"새로 만들기 시작했다.", _cut(g["tagline"], 14)],
               "date_label": f"{end.month}월 {end.day}일 · 바이브 코딩 중"}
         fb = f"새로 만들기 시작한 앱, {g['name']}\n\n{g['tagline']}"
-        th = f"새 앱 만들기 시작했지렁👾\n{g['name']} — {g['tagline']}\n잘 부탁해💜"
+        th = f"새 앱 만들기 시작했ㅈ ㅣ렁👾\n{g['name']} — {g['tagline']}\n잘 부탁해💜"
     else:
         why = f'\n만든 이유(소피가 직접 쓴 키워드): "{g["why"]}"' if g.get("why") else ""
         data = _ask(f"""앱 "{g['name']}": {g['tagline']}{why}
@@ -373,7 +374,7 @@ def weekly_episode(groups: list[dict], start: datetime, end: datetime, history: 
         ep = {"line1": _cut(_str(data, "line1") or g["name"], 16),
               "line2": _cut(_str(data, "line2") or g["tagline"], 28)}
         fb = f"{g['name']} — {g['tagline']}" + (f"\n\n{g['why']}" if g.get("why") else "")
-        th = f"{g['name']} 왜 만들었냐면👾\n{g.get('why') or g['tagline']}\n그래서 만들구 이쏘💜"
+        th = f"{g['name']} 왜 만들었냐면👾\n{g.get('why') or g['tagline']}\n그래서 ㄴ ㅏ 만들구 이쏘💜"
     if g is not None:
         ep.update(name=g["name"], tagline=g["tagline"], repo=g["repo"], icon=g.get("icon"), color=g.get("color"))
     caption = _str(data, "caption") or f"{fb}\n\n프로필 링크에서 만나 보세요.\n\n#개발일지 #1인개발 #바이브코딩"
