@@ -528,18 +528,14 @@ def _plan_html(state: dict, with_status: bool = False) -> str:
     return html
 
 
-def _buttons(url: str) -> str:
-    """메일의 [승인] [반려] 두 버튼. 누르면 확인 페이지가 열리고, 거기서 큰 버튼 하나를 한 번 더 눌러야 반영됨
-    (메일 앱·보안 검사가 링크를 미리 열어도 승인되지 않게 — 링크(GET)는 보기만, 반영은 POST)."""
+def _link(url: str) -> str:
+    """메일엔 '확인하기' 링크 하나만. 열리는 페이지에서 그림·글을 보고 승인/반려 버튼(POST)을 누름
+    (메일 앱·보안 검사가 링크를 미리 열어도 승인되지 않게 — 링크(GET)는 보기만)."""
     from html import escape
 
-    a = ('display:block;text-align:center;font-size:18px;font-weight:800;text-decoration:none;padding:14px 0;'
-         'border-radius:12px;border:2px solid #3B3640')
-    return (f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0"><tr>'
-            f'<td width="64%" style="padding-right:6px"><a href="{escape(url)}&amp;do=approve" '
-            f'style="{a};background:#8A6BD8;color:#fff">✅ 승인</a></td>'
-            f'<td width="36%" style="padding-left:6px"><a href="{escape(url)}&amp;do=reject" '
-            f'style="{a};background:#fff;color:#3B3640">반려</a></td></tr></table>')
+    return (f'<a href="{escape(url)}" style="display:block;text-align:center;font-size:18px;font-weight:800;'
+            f'text-decoration:none;padding:14px 0;margin:16px 0;border-radius:12px;border:2px solid #3B3640;'
+            f'background:#8A6BD8;color:#fff">확인하기 →</a>')
 
 
 def send_preview_email(state: dict) -> bool:
@@ -566,11 +562,7 @@ def send_preview_email(state: dict) -> bool:
     msg["From"] = user
     msg["To"] = to
     lines = [f"{_day_label(state)} {title}", *summary, note, "",
-             f"승인: {url}&do=approve", f"반려: {url}&do=reject", "(누르면 페이지가 열려요 → 큰 버튼 한 번 더)", ""]
-    for p in plan:
-        lines.append(f"[{p['time'][0]:02d}:{p['time'][1]:02d}] {p['format']}" + (f" ({p['lang']})" if p["lang"] else ""))
-        if p["text"]:
-            lines += [p["text"], ""]
+             f"확인하기: {url}", "(그림·글 보고 거기서 승인/반려)"]
     msg.set_content("\n".join(lines))
     rows = "".join(f'<div style="font-size:17px;font-weight:700;padding:3px 0">{escape(x)}</div>' for x in summary)
     msg.add_alternative(
@@ -580,9 +572,8 @@ def send_preview_email(state: dict) -> bool:
         f'<div style="font-size:13px;color:#8A6BD8;font-weight:700">{escape(_day_label(state))} · {escape(title)}</div>'
         f'<div style="background:#fff;border:2px solid #3B3640;border-radius:12px;padding:10px 14px;margin-top:8px">'
         f'{rows}<div style="font-size:13px;color:#777;margin-top:4px">{escape(note)}</div></div>'
-        f'{_buttons(url)}<div style="font-size:13px;color:#777;text-align:center;margin-top:-8px">'
-        f'누르면 페이지가 열려요 → 큰 버튼 한 번 더 누르면 끝</div>'
-        f'{_plan_html(state)}{_buttons(url)}'
+        f'{_link(url)}<div style="font-size:13px;color:#777;text-align:center;margin-top:-8px">'
+        f'그림·글 보고 거기서 승인/반려</div>'
         f'</div></body></html>', subtype="html")
     host = os.environ.get("FEEDBACK_SMTP_HOST") or "smtp.gmail.com"
     port = int(os.environ.get("FEEDBACK_SMTP_PORT") or 587)

@@ -501,18 +501,20 @@ assert frm == "sns@example.test" and to == "threads@example.test" and "앱 에�
 assert "/social/review/devlog-2026-11-29?sig=" in body and "/social/review/devlog-2026-11-29?sig=" in html
 # 메일 한눈에: 목적, 몇 번 올라가는지, 채널(플랫폼·형식)별 그림과 글
 assert "21:00  인스타 피드 · 스레드" in html and "21:00  인스타 피드 · 스레드" in subj
-assert "주제 1인개발" in html  # Threads 주제 태그가 메일에 보임
-# 메일 버튼은 [승인] [반려] 두 개 — 둘 다 확인 페이지(GET)를 열 뿐, 반영은 페이지의 큰 버튼(POST)
-assert "do=approve" in html and "do=reject" in html and "&do=approve" in body
-assert "slide1.png" in html and "그림은 위와 같음" in html and "만든 이유" in subj
+# 메일엔 '확인하기' 링크 하나만(do= 없음). 그림·글·주제 태그는 열리는 페이지에
+assert "확인하기" in html and "확인하기:" in body and "do=" not in html and "do=" not in body
+assert "slide1.png" not in html and "만든 이유" in subj
+page = social._plan_html(social.load_state("devlog-2026-11-29"))
+assert "주제 1인개발" in page and "slide1.png" in page and "그림은 위와 같음" in page
 # 이슈팝: 08:00 한 번에 피드 + 스토리(스토리는 글 없음)
 sent_mail.clear()
 st25 = social.load_state("2026-11-25")
 st25["posts"] = {c: social._new_post() for c in ("ig_feed", "ig_story")}  # 기본 채널(피드 + 스토리)
 assert social.send_preview_email(st25) is True
 _, _, _, subj, body, html = sent_mail[1]
-assert "08:00  인스타 피드 · 인스타 스토리" in subj and "story.png" in html
-assert "(글 없음)" in html and "[08:00] 인스타 스토리" in body
+assert "08:00  인스타 피드 · 인스타 스토리" in subj and "08:00  인스타 피드 · 인스타 스토리" in body
+page = social._plan_html(st25)
+assert "story.png" in page and "(글 없음)" in page
 smtplib.SMTP = _real_smtp
 for k in ("SOCIAL_PREVIEW_MAIL_TO", "SOCIAL_SMTP_USER", "SOCIAL_SMTP_PASSWORD", "FEEDBACK_SMTP_USER"):
     os.environ.pop(k)
