@@ -216,7 +216,7 @@ assert "topic_tag" not in calls[0][2]
 calls.clear()
 assert social.publish_threads(None, "글", sleep=lambda s: None, topic="창업") == "P1"
 assert calls[0][2]["topic_tag"] == "창업"
-assert social.THREADS_TOPICS["promo_en_threads"] == "startup" and social.THREADS_TOPICS["devlog_threads"] == "자동화"
+assert social.THREADS_TOPICS["promo_en_threads"] == "startup" and social.THREADS_TOPICS["devlog_threads"] == "게임개발"
 
 # 11) 실패하면 3번까지 다시 시도 후 failed
 os.environ["SOCIAL_DRY_RUN"] = "0"
