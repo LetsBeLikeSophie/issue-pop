@@ -92,11 +92,12 @@ def threads_text(lang: str, s: dict) -> str:
     if lang == "ko":
         from devlog import mix_jamo  # 쪼개 쓰기는 주마다 섞어서(예시 주제로 정해짐)
 
-        return mix_jamo(f"트렌드 따라가기 너무 빠르자너💦\n그래서 ㄴ ㅏ를 위해 만들구 이쏘👾\n\n"
+        return mix_jamo(f"트렌드 따라가기 너무 빠르자너💦\n트렌드 찾아보는 거 귀차나서 자동화해 버림👾\n"
+                f"그래서 ㄴ ㅏ를 위해 만들구 이쏘\n\n"
                 f"궁금한 거 한 줄만 적으면\n매주 지금 뜨는 것만 3분 리포트로 보내줌\n"
                 f"예: {s['topic']} → 막 뜨는 중 · 오르는 중 · 식는 중\n\n"
                 f"곧 나와! 팔로우해 두면 알려줄게💜", s["topic"])
-    return (f"trends move way too fast 💦\nso I built this 👾\n\n"
+    return (f"trends move way too fast 💦\ngot tired of trend-hunting, so I automated it 👾\n\n"
             f"write one line about what you're into\n→ every week, a 3-min report on what's rising (and cooling)\n"
             f"e.g. {s['topic']}\n\n"
             f"coming soon! follow and I'll let you know 💜")

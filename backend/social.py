@@ -800,9 +800,9 @@ def publish_instagram(kind: str, media, caption: str, sleep=time.sleep) -> str:
     return _post(f"{base}/{user}/media_publish", {"creation_id": container, "access_token": token})["id"]
 
 
-# Threads 주제 태그(글 하나에 하나). 창업 위주, 게임 일지만 게임개발 (사용자 요청 2026-11-28)
-THREADS_TOPICS = {"devlog_threads": "게임개발", "episode_threads": "창업",
-                  "promo_ko_threads": "창업", "promo_en_threads": "startup"}
+# Threads 주제 태그(글 하나에 하나). (사용자 요청 2026-11-28)
+THREADS_TOPICS = {"devlog_threads": "게임개발", "episode_threads": "1인개발",
+                  "promo_ko_threads": "자동화", "promo_en_threads": "automation"}
 
 
 def publish_threads(image: str | None, text: str, sleep=time.sleep, topic: str | None = None) -> str:
